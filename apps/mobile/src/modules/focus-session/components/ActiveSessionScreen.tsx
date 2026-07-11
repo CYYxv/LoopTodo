@@ -23,11 +23,12 @@ export function ActiveSessionScreen({
   session: ActiveSession;
   task: Task;
   onComplete: (completedAmount?: number) => Promise<void>;
-  onExit: () => Promise<void>;
+  onExit: (reason?: string) => Promise<void>;
   onFinishRest: () => Promise<void>;
 }) {
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [completedAmount, setCompletedAmount] = useState('');
+  const [exitReason, setExitReason] = useState('');
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(Date.now()), 1000);
@@ -52,7 +53,7 @@ export function ActiveSessionScreen({
         <Card><Card.Body className="items-center gap-4 py-8"><Text type="h1" weight="bold">{display}</Text><Text type="body" color="muted" align="center">先完成一个小闭环，再讨论完美不完美。</Text></Card.Body></Card>
         {task.kind === 'goal' ? <TextField><Label>本次完成量（{task.targetUnit}）</Label><Input value={completedAmount} onChangeText={setCompletedAmount} keyboardType="numeric" placeholder="由你填写确认" /></TextField> : null}
       </View>
-      <View className="gap-3"><Button variant="primary" size="lg" onPress={() => void onComplete(task.kind === 'goal' ? Number(completedAmount) : undefined)}>完成本次闭环</Button><Button variant="secondary" onPress={() => void onExit()}>退出专注</Button></View>
+      <View className="gap-3">{session.mode === 'lock' ? <TextField><Label>紧急退出原因</Label><Input value={exitReason} onChangeText={setExitReason} placeholder="本月紧急次数有限，请说明原因" /></TextField> : null}<Button variant="primary" size="lg" onPress={() => void onComplete(task.kind === 'goal' ? Number(completedAmount) : undefined)}>完成本次闭环</Button><Button variant="secondary" onPress={() => void onExit(exitReason)}>{session.mode === 'lock' ? '紧急退出锁机' : '退出专注'}</Button></View>
     </View>
   );
 }

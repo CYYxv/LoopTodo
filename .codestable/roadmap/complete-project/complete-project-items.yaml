@@ -61,8 +61,8 @@ items:
   - slug: android-lock-engine
     description: 实现 Kotlin 锁机 bridge、权限引导、时长限制、紧急入口和状态恢复
     depends_on: [local-task-focus-loop, lock-engine-spike]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-07-11-android-lock-engine
     minimal_loop: false
     notes: 不承诺所有厂商绝对不可绕过
   - slug: forced-trigger-scheduler

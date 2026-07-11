@@ -1,0 +1,21 @@
+apply plugin: 'com.android.library'
+
+group = 'com.looptodo.lockengine'
+version = '1.0.0'
+
+def expoModulesCorePlugin = new File(project(":expo-modules-core").projectDir.absolutePath, "ExpoModulesCorePlugin.gradle")
+apply from: expoModulesCorePlugin
+applyKotlinExpoModulesCorePlugin()
+useCoreDependencies()
+useDefaultAndroidSdkVersions()
+
+android {
+  namespace "com.looptodo.lockengine"
+}
+
+dependencies {
+  implementation "androidx.activity:activity-ktx:1.10.1"
+  implementation "androidx.camera:camera-camera2:1.4.2"
+  implementation "androidx.camera:camera-lifecycle:1.4.2"
+  implementation "androidx.camera:camera-view:1.4.2"
+}

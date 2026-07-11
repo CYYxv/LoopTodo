@@ -1,0 +1,11 @@
+import type { LockCapabilities, NativeLockSession } from './lock-engine.types';
+
+export interface LockEngine {
+  checkCapabilities(): Promise<LockCapabilities>;
+  confirmRisk(): Promise<void>;
+  getActiveSession(): Promise<NativeLockSession | null>;
+  startLockSession(input: NativeLockSession): Promise<void>;
+  endLockSession(id: string): Promise<void>;
+  emergencyExit(id: string, reason: string): Promise<void>;
+  openPermissionSettings(kind: 'notifications' | 'notificationListener' | 'accessibility' | 'battery'): Promise<void>;
+}

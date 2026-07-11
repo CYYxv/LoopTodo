@@ -3,6 +3,7 @@ import type { ActiveSession, FocusSessionRecord } from '@/modules/focus-session/
 import { createTaskStore } from '../task.store';
 import type { TaskRepository } from '../task.repository';
 import type { CreateTaskInput, Task } from '../task.types';
+import type { LockEngine } from '@/modules/lock-engine/lock-engine.port';
 
 const pomodoroTask: Task = {
   id: 'task-one',
@@ -77,6 +78,36 @@ function createRepository(options?: {
 }
 
 describe('task store local loop', () => {
+  test('restores native lock state into SQLite after process restart', async () => {
+    const { repository } = createRepository();
+    const engine: LockEngine = {
+      async checkCapabilities() { throw new Error('unused'); }, async confirmRisk() { return undefined; },
+      async getActiveSession() { return { id: 'native-lock', taskId: 'task-one', taskTitle: '第一项任务', startedAt: 1000, endsAt: 61_000, enhanced: true }; },
+      async startLockSession() { return undefined; }, async endLockSession() { return undefined; }, async emergencyExit() { return undefined; }, async openPermissionSettings() { return undefined; },
+    };
+    const store = createTaskStore(repository, [], () => 2000, engine);
+    await store.getState().hydrate();
+    expect(store.getState().activeSession).toMatchObject({ id: 'native-lock', mode: 'lock', plannedEndAt: 61_000 });
+  });
+
+  test('starts and emergency-exits a native lock session', async () => {
+    const { repository, sessions } = createRepository();
+    const calls: string[] = [];
+    const engine: LockEngine = {
+      async checkCapabilities() { return { supported: true, notificationGranted: true, notificationListenerEnabled: true, accessibilityEnabled: true, batteryOptimizationIgnored: true, riskConfirmed: true, emergencyExitsRemaining: 2 }; },
+      async confirmRisk() { return undefined; }, async getActiveSession() { return null; },
+      async startLockSession(input) { calls.push(`start:${input.taskId}`); }, async endLockSession(id) { calls.push(`end:${id}`); },
+      async emergencyExit(_id, reason) { calls.push(`emergency:${reason}`); }, async openPermissionSettings() { return undefined; },
+    };
+    const store = createTaskStore(repository, [pomodoroTask], () => 1000, engine);
+
+    await store.getState().startSession('task-one', 'lock');
+    await store.getState().finishSession('exited', undefined, '临时就医');
+
+    expect(calls).toEqual(['start:task-one', 'emergency:临时就医']);
+    expect(sessions[0]).toMatchObject({ mode: 'lock', failureReason: '临时就医' });
+  });
+
   test('hydrates the active session for restart recovery', async () => {
     const recovered: ActiveSession = {
       id: 'session-recovered', taskId: 'task-one', mode: 'focus', timerMode: 'countdown',

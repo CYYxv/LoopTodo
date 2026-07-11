@@ -11,6 +11,7 @@ import { ActiveSessionScreen } from '@/modules/focus-session/components/ActiveSe
 import { HabitsPanel } from '@/modules/habits/components/HabitsPanel';
 import { NotificationSettingsCard } from '@/modules/notifications/components/NotificationSettingsCard';
 import { useNotificationStore } from '@/modules/notifications/notification.store';
+import { useLockEngineStore } from '@/modules/lock-engine/lock-engine.store';
 import { useHabitStore } from '@/modules/habits/habit.store';
 import { FocusPanel } from '@/modules/focus-session/components/FocusPanel';
 import { FamilyPanel, SocialPanel } from '@/modules/social/components/SocialPanels';
@@ -66,13 +67,18 @@ export function HomeScreen() {
   const enableNotifications = useNotificationStore((state) => state.enableNotifications);
   const sendTestReminder = useNotificationStore((state) => state.sendTestReminder);
   const setTaskRemindersEnabled = useNotificationStore((state) => state.setTaskRemindersEnabled);
+  const lockCapabilities = useLockEngineStore((state) => state.capabilities);
+  const refreshLockCapabilities = useLockEngineStore((state) => state.refresh);
+  const confirmLockRisk = useLockEngineStore((state) => state.confirmRisk);
+  const openLockPermission = useLockEngineStore((state) => state.open);
 
   useEffect(() => {
     void hydrate();
     void hydrateHabits();
     void hydrateSync();
     void hydrateNotifications();
-  }, [hydrate, hydrateHabits, hydrateNotifications, hydrateSync]);
+    void refreshLockCapabilities();
+  }, [hydrate, hydrateHabits, hydrateNotifications, hydrateSync, refreshLockCapabilities]);
 
   const todayMinutes = useMemo(
     () =>
@@ -103,7 +109,7 @@ export function HomeScreen() {
           session={activeSession}
           task={activeTask}
           onComplete={(completedAmount) => finishSession('completed', completedAmount)}
-          onExit={() => finishSession('exited')}
+          onExit={(reason) => finishSession('exited', undefined, reason)}
           onFinishRest={finishRest}
         />
       ) : (
@@ -152,6 +158,10 @@ export function HomeScreen() {
               selectedTask={selectedTask}
               onModeChange={selectMode}
               onStrictOptionToggle={toggleStrictOption}
+              lockCapabilities={lockCapabilities}
+              onRefreshLockCapabilities={() => void refreshLockCapabilities()}
+              onConfirmLockRisk={() => void confirmLockRisk()}
+              onOpenLockPermission={(kind) => void openLockPermission(kind)}
               onStart={() => {
                 if (selectedTask) {
                   void startSession(selectedTask.id, selectedMode);

@@ -7,6 +7,7 @@ import { Text } from 'heroui-native/text';
 
 import type { SessionMode, StrictOption } from '@/modules/focus-session/focus-session.types';
 import type { Task } from '@/modules/tasks/task.types';
+import type { LockCapabilities } from '@/modules/lock-engine/lock-engine.types';
 
 export function FocusPanel({
   selectedMode,
@@ -15,6 +16,10 @@ export function FocusPanel({
   onModeChange,
   onStrictOptionToggle,
   onStart,
+  lockCapabilities,
+  onRefreshLockCapabilities,
+  onConfirmLockRisk,
+  onOpenLockPermission,
 }: {
   selectedMode: SessionMode;
   strictOptions: StrictOption[];
@@ -22,6 +27,10 @@ export function FocusPanel({
   onModeChange: (mode: SessionMode) => void;
   onStrictOptionToggle: (optionId: string) => void;
   onStart: () => void;
+  lockCapabilities: LockCapabilities | null;
+  onRefreshLockCapabilities: () => void;
+  onConfirmLockRisk: () => void;
+  onOpenLockPermission: (kind: 'notifications' | 'notificationListener' | 'accessibility' | 'battery') => void;
 }) {
   return (
     <View className="gap-4">
@@ -30,7 +39,7 @@ export function FocusPanel({
           <View>
             <Card.Title>选择执行强度</Card.Title>
             <Card.Description>
-              专注模式可配置白名单；锁机原生引擎尚未接入，当前不可启动。
+              专注模式可灵活退出；锁机模式最长 3 小时，并在原生层恢复状态。
             </Card.Description>
           </View>
           <View className="rounded-panel-inner bg-surface-secondary p-3">
@@ -86,13 +95,28 @@ export function FocusPanel({
 
       <ResourcePassPanel />
 
+      {selectedMode === 'lock' ? <Card variant="secondary"><Card.Body className="gap-3"><Card.Title>锁机权限检查</Card.Title>
+        <Text type="body-xs">通知权限：{lockCapabilities?.notificationGranted ? '已开启' : '未开启'}</Text>
+        <Text type="body-xs">通知屏蔽：{lockCapabilities?.notificationListenerEnabled ? '已开启' : '未开启'}</Text>
+        <Text type="body-xs">增强约束：{lockCapabilities?.accessibilityEnabled ? '已开启' : '未开启（可选）'}</Text>
+        <Text type="body-xs">电池优化：{lockCapabilities?.batteryOptimizationIgnored ? '已忽略' : '建议忽略'}</Text>
+        <Text type="body-xs">风险确认：{lockCapabilities?.riskConfirmed ? '已确认' : '未确认'}</Text>
+        <Text type="body-xs">本月紧急退出：剩余 {lockCapabilities?.emergencyExitsRemaining ?? 0} 次</Text>
+        <View className="flex-row flex-wrap gap-2"><Button size="sm" variant="secondary" onPress={onRefreshLockCapabilities}>重新检查</Button>
+          {!lockCapabilities?.riskConfirmed ? <Button size="sm" variant="danger" onPress={onConfirmLockRisk}>确认锁机风险</Button> : null}
+          {!lockCapabilities?.notificationGranted ? <Button size="sm" variant="secondary" onPress={() => onOpenLockPermission('notifications')}>通知设置</Button> : null}
+          {!lockCapabilities?.notificationListenerEnabled ? <Button size="sm" variant="secondary" onPress={() => onOpenLockPermission('notificationListener')}>通知屏蔽</Button> : null}
+          {!lockCapabilities?.accessibilityEnabled ? <Button size="sm" variant="secondary" onPress={() => onOpenLockPermission('accessibility')}>增强约束</Button> : null}
+          {!lockCapabilities?.batteryOptimizationIgnored ? <Button size="sm" variant="secondary" onPress={() => onOpenLockPermission('battery')}>电池设置</Button> : null}</View>
+      </Card.Body></Card> : null}
+
       <Button
         size="lg"
         variant={selectedMode === 'lock' ? 'danger' : 'primary'}
-        isDisabled={!selectedTask || selectedMode === 'lock'}
+        isDisabled={!selectedTask || (selectedMode === 'lock' && (!lockCapabilities?.notificationGranted || !lockCapabilities.notificationListenerEnabled || !lockCapabilities.riskConfirmed))}
         onPress={onStart}
       >
-        {selectedMode === 'lock' ? '锁机原生能力开发中' : '开始可信专注'}
+        {selectedMode === 'lock' ? '开始锁机' : '开始可信专注'}
       </Button>
     </View>
   );

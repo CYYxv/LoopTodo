@@ -1,0 +1,27 @@
+feature: 2026-07-11-android-lock-engine
+created: 2026-07-11
+steps:
+  - id: S1
+    action: "实现 Expo Kotlin 原生桥"
+    status: done
+  - id: S2
+    action: "实现前台服务和重启恢复"
+    status: done
+  - id: S3
+    action: "实现权限引导和通知屏蔽"
+    status: done
+  - id: S4
+    action: "实现三小时与紧急退出限制"
+    status: done
+  - id: S5
+    action: "验证原生构建并审查"
+    status: done
+checks:
+  - item: "原生与 SQLite 状态可恢复"
+    status: passed
+  - item: "必要权限缺失时禁止启动"
+    status: passed
+  - item: "每月两次紧急退出"
+    status: passed
+  - item: "普通设备不承诺绝对不可绕过"
+    status: passed
