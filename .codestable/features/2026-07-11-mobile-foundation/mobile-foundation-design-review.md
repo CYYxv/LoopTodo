@@ -3,7 +3,7 @@ doc_type: feature-design-review
 feature: 2026-07-11-mobile-foundation
 status: passed
 reviewed: 2026-07-11
-round: 1
+round: 2
 ---
 
 # Mobile Foundation 方案审查报告
@@ -42,6 +42,8 @@ round: 1
 
 - [x] FDR-001 design 初稿把异步 repository 与同步 `void` store action 混用，无法表达错误路径；已改为 `Promise<void>` 并增加显式 error state。
 - [x] FDR-002 design 初稿沿用原型 number ID，违反 roadmap string ID 契约；已统一为 string。
+- [x] FDR-003 实现前反射检查发现 `appendSession` 与 `save` 分离可能部分成功，已把契约收敛为原子 `finishSession(task, record)`。
+- [x] FDR-004 重复点击开始可能并发写 active 状态，已把单次开始 guard 纳入 store 不变量和测试。
 
 ### nit
 
@@ -85,5 +87,5 @@ Summary: E=5, C=1, H=0, H-only core checks=none。
 
 ## 7. Verdict
 
-- Status: passed
+- Status: passed（round 2，接口实质变化已复审）
 - Next: design 标记 approved，进入实现 worktree。

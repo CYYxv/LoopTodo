@@ -1,12 +1,14 @@
 {
   "name": "looptodo-mobile",
   "version": "1.0.0",
-  "main": "index.ts",
+  "main": "expo-router/entry",
   "dependencies": {
     "@tanstack/react-query": "5.101.2",
     "expo": "~57.0.4",
     "expo-constants": "57.0.3",
     "expo-linking": "57.0.2",
+    "expo-modules-core": "~57.0.3",
+    "expo-router": "~57.0.4",
     "expo-sqlite": "57.0.0",
     "expo-status-bar": "~57.0.0",
     "heroui-native": "1.0.3",
@@ -15,6 +17,7 @@
     "react-native-gesture-handler": "~2.32.0",
     "react-native-reanimated": "4.5.0",
     "react-native-safe-area-context": "~5.7.0",
+    "react-native-screens": "4.25.2",
     "react-native-svg": "15.15.4",
     "react-native-worklets": "0.10.0",
     "tailwind-merge": "3.4.0",
@@ -24,8 +27,13 @@
     "zustand": "5.0.14"
   },
   "devDependencies": {
+    "@testing-library/react-native": "^14.0.1",
+    "@types/jest": "^29.5.14",
     "@types/react": "~19.2.2",
     "babel-preset-expo": "57.0.2",
+    "jest": "~29.7.0",
+    "jest-expo": "~57.0.1",
+    "react-dom": "19.2.3",
     "typescript": "~6.0.3"
   },
   "scripts": {
@@ -33,7 +41,20 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "jest"
+  },
+  "jest": {
+    "preset": "jest-expo",
+    "setupFiles": [
+      "react-native-gesture-handler/jestSetup"
+    ],
+    "setupFilesAfterEnv": [
+      "<rootDir>/jest.setup.ts"
+    ],
+    "transformIgnorePatterns": [
+      "node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|expo-router|@react-navigation/.*|heroui-native|uniwind|react-native-svg|react-native-reanimated|react-native-worklets)"
+    ]
   },
   "private": true
 }

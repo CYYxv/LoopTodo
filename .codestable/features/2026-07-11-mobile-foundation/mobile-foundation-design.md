@@ -84,7 +84,7 @@ interface TaskRepository {
   list(): Promise<Task[]>;
   create(input: CreateTaskInput): Promise<Task>;
   save(task: Task): Promise<void>;
-  appendSession(record: FocusSessionRecord): Promise<void>;
+  finishSession(task: Task, record: FocusSessionRecord): Promise<void>;
 }
 
 type TaskStoreActions = {
@@ -97,7 +97,7 @@ type TaskStoreActions = {
 
 `Task.id` 和 `FocusSessionRecord.taskId` 从原型 `number` 统一为 roadmap 契约的 `string`；`TaskStoreState.error` 使用明确字符串或 `null` 表达 repository 错误。
 
-Interface 检查：UI 只依赖异步 store actions；repository seam 位于模块 application 层。内存与未来 SQLite 是两个真实 adapter，测试可替换 repository，接口不是 pass-through。
+Interface 检查：UI 只依赖异步 store actions；repository seam 位于模块 application 层。`finishSession` 必须原子保存任务终态和追加记录，避免部分成功后重试产生重复流水。内存与未来 SQLite 是两个真实 adapter，测试可替换 repository，接口不是 pass-through。
 
 ### 2.2 编排层
 

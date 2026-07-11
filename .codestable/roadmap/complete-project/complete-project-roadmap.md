@@ -190,7 +190,7 @@ interface EntitlementService {
 
 ## 5. 子 feature 清单
 
-1. **mobile-foundation** — 拆分单文件原型，建立导航、领域类型、store/repository、测试与开发构建基线。
+1. **mobile-foundation**（done）— 拆分单文件原型，建立导航、领域类型、store/repository、测试与开发构建基线。
 2. **local-task-focus-loop** — 使用 Zustand + SQLite 实现任务创建、三种计时、休息、完成/退出记录和重启恢复。
 3. **api-foundation-auth** — 建立 NestJS/Prisma/PostgreSQL/Redis、邮箱密码认证、刷新 token 和设备会话。
 4. **task-focus-api** — 实现任务、分类、专注/锁机会话、幂等、乐观锁和同步 API。
