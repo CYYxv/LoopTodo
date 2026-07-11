@@ -1,0 +1,38 @@
+feature: 2026-07-11-task-sync
+created: 2026-07-11
+
+steps:
+  - id: S1
+    action: "建立 outbox、映射、冲突和 cursor 表"
+    exit_signal: "迁移与重启读取通过"
+    status: done
+  - id: S2
+    action: "任务和会话写入原子追加 outbox"
+    exit_signal: "本地事实与待上传操作不分离"
+    status: done
+  - id: S3
+    action: "实现顺序推送、退避和 session 映射"
+    exit_signal: "断网恢复后按依赖顺序完成"
+    status: done
+  - id: S4
+    action: "实现增量拉取、冲突与远端活跃锁"
+    exit_signal: "不覆盖 pending 本地修改且冲突可见"
+    status: done
+  - id: S5
+    action: "测试审查提交推送"
+    exit_signal: "mobile 验证通过"
+    status: done
+
+checks:
+  - item: "本地写入与 outbox 同事务"
+    status: passed
+  - item: "会话 start/finish 使用稳定映射"
+    status: passed
+  - item: "网络错误指数退避"
+    status: passed
+  - item: "version 冲突不覆盖本地数据"
+    status: passed
+  - item: "远端 active task 禁止编辑和开始"
+    status: passed
+  - item: "cursor 仅在完整合并后推进"
+    status: passed

@@ -1,10 +1,11 @@
-import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Post, Req, UseGuards } from '@nestjs/common';
 
 import { AccessTokenGuard, type AuthenticatedRequest } from './access-token.guard';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { RegisterDto } from './dto/register.dto';
+import { UpdateSettingsDto } from './dto/update-settings.dto';
 
 @Controller()
 export class AuthController {
@@ -28,4 +29,10 @@ export class AuthController {
   @Get('me')
   @UseGuards(AccessTokenGuard)
   me(@Req() request: AuthenticatedRequest) { return this.auth.me(request.auth.sub); }
+
+  @Patch('me/settings')
+  @UseGuards(AccessTokenGuard)
+  updateSettings(@Req() request: AuthenticatedRequest, @Body() input: UpdateSettingsDto) {
+    return this.auth.updateSettings(request.auth.sub, input);
+  }
 }

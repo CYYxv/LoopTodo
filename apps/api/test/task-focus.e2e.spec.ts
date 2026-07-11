@@ -12,7 +12,7 @@ import { AUTH_REPOSITORY, type AuthRepository } from '../src/auth/auth.repositor
 import { TokenService } from '../src/auth/token.service';
 import { ApiExceptionFilter } from '../src/common/api-exception.filter';
 import { ApiResponseInterceptor } from '../src/common/api-response.interceptor';
-import { DuplicateCategoryError, TASK_FOCUS_REPOSITORY, type MutationResult, type TaskFocusRepository } from '../src/task-focus/task-focus.repository';
+import { DuplicateCategoryError, TASK_FOCUS_REPOSITORY, TaskIdentityConflictError, type MutationResult, type TaskFocusRepository } from '../src/task-focus/task-focus.repository';
 import { TaskFocusModule } from '../src/task-focus/task-focus.module';
 import type { CategoryView, SessionView, TaskCreate, TaskPatch, TaskView } from '../src/task-focus/task-focus.types';
 
@@ -32,7 +32,12 @@ class MemoryTaskFocusRepository implements TaskFocusRepository {
   async listTasks(userId: string) { return this.tasks.filter((item) => item.userId === userId && item.status !== 'archived'); }
   async getTask(userId: string, id: string) { return this.tasks.find((item) => item.userId === userId && item.id === id && item.status !== 'archived') ?? null; }
   async createTask(userId: string, input: TaskCreate) {
-    const value: TaskView & { userId: string } = { ...input, id: randomUUID(), userId, completedAmount: 0, status: 'pending', activeSessionId: null, version: 1, updatedAt: new Date() };
+    const existing = input.id ? this.tasks.find((item) => item.userId === userId && item.id === input.id) : null;
+    if (existing) {
+      if (existing.title === input.title) return existing;
+      throw new TaskIdentityConflictError();
+    }
+    const value: TaskView & { userId: string } = { ...input, id: input.id ?? randomUUID(), userId, completedAmount: 0, status: 'pending', activeSessionId: null, version: 1, updatedAt: new Date() };
     this.tasks.push(value);
     return value;
   }
@@ -116,6 +121,7 @@ describe('task focus API', () => {
     findUserByEmail: async () => null, findUserById: async () => null,
     createUserWithSession: async () => { throw new Error('unused'); }, createSession: async () => undefined,
     findSession: async () => null, rotateSession: async () => false, revokeSession: async () => undefined,
+    updateSettings: async () => null,
   } satisfies AuthRepository;
 
   beforeAll(async () => {
@@ -148,10 +154,18 @@ describe('task focus API', () => {
     const duplicateCategory = await app.inject({ method: 'POST', url: '/task-categories', headers: authOne, payload: { name: '学习' } });
     expect(duplicateCategory.statusCode).toBe(409);
     const taskResponse = await app.inject({ method: 'POST', url: '/tasks', headers: authOne, payload: {
-      categoryId: category.id, title: '完成套卷', taskType: 'pomodoro', timerMode: 'countdown', estimatedMinutes: 25, restMinutes: 5,
+      id: '11111111-1111-4111-8111-111111111111', categoryId: category.id, title: '完成套卷', taskType: 'pomodoro', timerMode: 'countdown', estimatedMinutes: 25, restMinutes: 5,
     } });
     expect(taskResponse.statusCode).toBe(201);
     const task = taskResponse.json().data;
+    const createReplay = await app.inject({ method: 'POST', url: '/tasks', headers: authOne, payload: {
+      id: task.id, categoryId: category.id, title: '完成套卷', taskType: 'pomodoro', timerMode: 'countdown', estimatedMinutes: 25, restMinutes: 5,
+    } });
+    expect(createReplay.json().data.id).toBe(task.id);
+    const identityConflict = await app.inject({ method: 'POST', url: '/tasks', headers: authOne, payload: {
+      id: task.id, categoryId: category.id, title: '不同内容', taskType: 'pomodoro', timerMode: 'countdown', estimatedMinutes: 25, restMinutes: 5,
+    } });
+    expect(identityConflict.statusCode).toBe(409);
     const secondTask = (await app.inject({ method: 'POST', url: '/tasks', headers: authOne, payload: {
       title: '整理笔记', taskType: 'pomodoro', timerMode: 'untimed', estimatedMinutes: 25, restMinutes: 0,
     } })).json().data;

@@ -20,6 +20,9 @@ const pomodoroTask: Task = {
   mustDo: true,
   trustLevel: 'high',
   status: 'pending',
+  version: 1,
+  syncStatus: 'pending',
+  remoteActive: false,
 };
 
 const goalTask: Task = {
@@ -122,7 +125,16 @@ describe('task store local loop', () => {
 
     await store.getState().addGoalProgress('task-goal', 10);
 
-    expect(store.getState().tasks[0]).toMatchObject({ completedAmount: 10, status: 'completed' });
+    expect(store.getState().tasks[0]).toMatchObject({ completedAmount: 10, status: 'completed', version: 2, syncStatus: 'pending' });
+  });
+
+  test('blocks a task that is active on another device', async () => {
+    const { repository } = createRepository();
+    const store = createTaskStore(repository, [{ ...pomodoroTask, remoteActive: true }]);
+
+    await store.getState().startSession('task-one', 'focus');
+
+    expect(store.getState().activeSession).toBeNull();
   });
 
   test('enters rest and writes only one record when finish actions race', async () => {

@@ -6,6 +6,7 @@ node_modules/
 dist/
 web-build/
 .expo-export-check/
+.expo-export-check*/
 expo-env.d.ts
 *.tsbuildinfo
 

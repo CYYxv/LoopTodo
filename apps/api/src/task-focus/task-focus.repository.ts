@@ -3,6 +3,7 @@ import type { CategoryView, SessionView, TaskCreate, TaskPatch, TaskView } from 
 export const TASK_FOCUS_REPOSITORY = Symbol('TASK_FOCUS_REPOSITORY');
 
 export class DuplicateCategoryError extends Error {}
+export class TaskIdentityConflictError extends Error {}
 
 export type MutationResult<T> =
   | { status: 'ok'; value: T; replayed?: boolean }
@@ -28,6 +29,9 @@ export interface TaskFocusRepository {
     mode: 'focus' | 'lock';
     idempotencyKey: string;
     trustLevel: SessionView['trustLevel'];
+    sessionId?: string;
+    startedAt?: Date;
+    plannedMinutes?: number;
   }): Promise<MutationResult<SessionView>>;
   finishSession(input: {
     userId: string;
@@ -37,6 +41,8 @@ export interface TaskFocusRepository {
     completionNote: string | null;
     failureReasonType: string | null;
     failureReasonText: string | null;
+    endedAt?: Date;
+    actualMinutes?: number;
   }): Promise<MutationResult<SessionView>>;
   listSessions(userId: string): Promise<SessionView[]>;
   sync(userId: string, since: Date): Promise<{

@@ -4,7 +4,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma, type FocusSession, type Task, type TaskCategory } from '@prisma/client';
 
 import { PrismaService } from '../infrastructure/prisma/prisma.service';
-import { DuplicateCategoryError, type MutationResult, type TaskFocusRepository } from './task-focus.repository';
+import { DuplicateCategoryError, TaskIdentityConflictError, type MutationResult, type TaskFocusRepository } from './task-focus.repository';
 import type { CategoryView, SessionView, TaskCreate, TaskPatch, TaskView } from './task-focus.types';
 
 @Injectable()
@@ -39,21 +39,33 @@ export class PrismaTaskFocusRepository implements TaskFocusRepository {
   }
 
   async createTask(userId: string, input: TaskCreate) {
-    return taskView(await this.prisma.task.create({
-      data: {
-        userId,
-        categoryId: input.categoryId,
-        title: input.title,
-        taskType: input.taskType,
-        timerMode: input.timerMode,
-        estimatedMinutes: input.estimatedMinutes,
-        restMinutes: input.restMinutes,
-        deadlineAt: input.deadlineAt,
-        targetAmount: input.targetAmount,
-        targetUnit: input.targetUnit,
-        isTodayRequired: input.isTodayRequired,
-      },
-    }));
+    try {
+      return taskView(await this.prisma.task.create({
+        data: {
+          id: input.id,
+          userId,
+          categoryId: input.categoryId,
+          title: input.title,
+          taskType: input.taskType,
+          timerMode: input.timerMode,
+          estimatedMinutes: input.estimatedMinutes,
+          restMinutes: input.restMinutes,
+          deadlineAt: input.deadlineAt,
+          targetAmount: input.targetAmount,
+          targetUnit: input.targetUnit,
+          isTodayRequired: input.isTodayRequired,
+        },
+      }));
+    } catch (error) {
+      if (input.id && isUniqueConflict(error)) {
+        const existing = await this.prisma.task.findFirst({ where: { id: input.id, userId } });
+        if (existing) {
+          if (sameTask(existing, input)) return taskView(existing);
+          throw new TaskIdentityConflictError();
+        }
+      }
+      throw error;
+    }
   }
 
   async updateTask(userId: string, id: string, version: number, patch: TaskPatch): Promise<MutationResult<TaskView>> {
@@ -123,7 +135,7 @@ export class PrismaTaskFocusRepository implements TaskFocusRepository {
         const task = await transaction.task.findFirst({ where: { id: input.taskId, userId: input.userId, status: { notIn: ['archived', 'completed'] } } });
         if (!task) return { status: 'not-found' } as const;
         if (task.activeSessionId) return { status: 'already-active' } as const;
-        const sessionId = randomUUID();
+        const sessionId = input.sessionId ?? randomUUID();
         const claimed = await transaction.task.updateMany({
           where: { id: task.id, userId: input.userId, version: task.version, activeSessionId: null },
           data: { status: 'active', activeSessionId: sessionId, version: { increment: 1 } },
@@ -137,8 +149,8 @@ export class PrismaTaskFocusRepository implements TaskFocusRepository {
             mode: input.mode,
             timerMode: task.timerMode,
             trustLevel: input.trustLevel,
-            startedAt: new Date(),
-            plannedMinutes: task.estimatedMinutes,
+            startedAt: input.startedAt ?? new Date(),
+            plannedMinutes: input.plannedMinutes ?? task.estimatedMinutes,
             startIdempotencyKey: input.idempotencyKey,
           },
         });
@@ -167,8 +179,8 @@ export class PrismaTaskFocusRepository implements TaskFocusRepository {
         if (session.endedAt) return { status: 'not-active' } as const;
         const task = await transaction.task.findFirst({ where: { id: session.taskId, userId: input.userId, activeSessionId: session.id } });
         if (!task) return { status: 'not-active' } as const;
-        const endedAt = new Date();
-        const actualMinutes = Math.max(0, Math.ceil((endedAt.getTime() - session.startedAt.getTime()) / 60_000));
+        const endedAt = input.endedAt ?? new Date();
+        const actualMinutes = input.actualMinutes ?? Math.max(0, Math.ceil((endedAt.getTime() - session.startedAt.getTime()) / 60_000));
         const updated = await transaction.focusSession.updateMany({
           where: { id: session.id, userId: input.userId, endedAt: null },
           data: { endedAt, actualMinutes, outcome: input.outcome, completionNote: input.completionNote,
@@ -236,4 +248,12 @@ function taskStatus(outcome: NonNullable<SessionView['outcome']>) {
 
 function isUniqueConflict(error: unknown) {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+}
+
+function sameTask(task: Task, input: TaskCreate) {
+  return task.title === input.title && task.taskType === input.taskType && task.timerMode === input.timerMode &&
+    task.estimatedMinutes === input.estimatedMinutes && task.restMinutes === input.restMinutes &&
+    task.categoryId === input.categoryId && (task.deadlineAt?.getTime() ?? null) === (input.deadlineAt?.getTime() ?? null) &&
+    (task.targetAmount?.toNumber() ?? null) === input.targetAmount && task.targetUnit === input.targetUnit &&
+    task.isTodayRequired === input.isTodayRequired;
 }

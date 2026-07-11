@@ -24,6 +24,9 @@ export function taskFromInput(id: string, input: CreateTaskInput): Task {
     id,
     status: 'pending',
     completedAmount: 0,
+    version: 1,
+    syncStatus: 'pending',
+    remoteActive: false,
     progressLabel: '',
   };
   return { ...task, progressLabel: taskProgressLabel(task) };

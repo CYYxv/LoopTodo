@@ -3,6 +3,8 @@ import type { SQLiteBindValue, SQLiteDatabase } from 'expo-sqlite';
 import type { ActiveSession, FocusSessionRecord } from '@/modules/focus-session/focus-session.types';
 
 import { getLoopTodoDatabase } from './database';
+import { enqueueSyncOperation } from '@/modules/sync/sqlite-sync.repository';
+import { createUuid } from '@/shared/uuid';
 import { taskFromInput, taskProgressLabel } from './task.presentation';
 import type { TaskRepository } from './task.repository';
 import type { CreateTaskInput, Task } from './task.types';
@@ -22,6 +24,9 @@ type TaskRow = {
   must_do: number;
   trust_level: Task['trustLevel'];
   status: Task['status'];
+  version: number;
+  sync_status: Task['syncStatus'];
+  remote_active: number;
 };
 
 type SessionRow = {
@@ -41,7 +46,8 @@ type SessionRow = {
 };
 
 const taskColumns = `id, title, category, kind, timer_mode, estimate_minutes, rest_minutes,
-  deadline_at, target_amount, target_unit, completed_amount, must_do, trust_level, status`;
+  deadline_at, target_amount, target_unit, completed_amount, must_do, trust_level, status,
+  version, sync_status, remote_active`;
 
 export function createSQLiteTaskRepository(
   getDatabase: () => Promise<SQLiteDatabase> = getLoopTodoDatabase,
@@ -51,7 +57,7 @@ export function createSQLiteTaskRepository(
     async hydrate() {
       const database = await getDatabase();
       const [taskRows, recordRows, activeRow] = await Promise.all([
-        database.getAllAsync<TaskRow>(`SELECT ${taskColumns} FROM tasks ORDER BY created_at DESC`),
+        database.getAllAsync<TaskRow>(`SELECT ${taskColumns} FROM tasks WHERE status != 'archived' ORDER BY created_at DESC`),
         database.getAllAsync<SessionRow>('SELECT * FROM focus_sessions ORDER BY ended_at DESC'),
         database.getFirstAsync<SessionRow>('SELECT * FROM active_sessions WHERE singleton_id = 1'),
       ]);
@@ -63,45 +69,48 @@ export function createSQLiteTaskRepository(
     },
     async create(input) {
       validateInput(input);
-      const task = taskFromInput(`task-${now()}-${Math.random().toString(36).slice(2, 8)}`, input);
+      const task = taskFromInput(createUuid(), input);
       const database = await getDatabase();
-      await database.runAsync(
-        `INSERT INTO tasks (${taskColumns}, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        ...taskValues(task),
-        now(),
-        now()
-      );
+      await database.withTransactionAsync(async () => {
+        await database.runAsync(`INSERT INTO tasks (${taskColumns}, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, ...taskValues(task), now(), now());
+        await enqueueSyncOperation(database, { type: 'task.create', task }, task.id, `task-create-${task.id}`, now());
+      });
       return task;
     },
     async startSession(task, session) {
       const database = await getDatabase();
       await database.withTransactionAsync(async () => {
         await database.runAsync(
-          'UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?',
+          "UPDATE tasks SET status = ?, version = ?, sync_status = 'pending', updated_at = ? WHERE id = ?",
           task.status,
+          task.version,
           now(),
           task.id
         );
         await database.runAsync('DELETE FROM active_sessions');
         await insertActive(database, session);
+        await enqueueSyncOperation(database, { type: 'session.start', taskId: task.id,
+          localSessionId: session.id, mode: session.mode, startedAt: session.startedAt,
+          plannedMinutes: task.estimateMinutes }, task.id, `session-start-${session.id}`, now());
       });
     },
     async finishSession(task, record, restSession) {
       const database = await getDatabase();
       await database.withTransactionAsync(async () => {
         await database.runAsync(
-          'UPDATE tasks SET status = ?, completed_amount = ?, updated_at = ? WHERE id = ?',
+          "UPDATE tasks SET status = ?, completed_amount = ?, version = ?, sync_status = 'pending', updated_at = ? WHERE id = ?",
           task.status,
           task.completedAmount,
+          task.version,
           now(),
           task.id
         );
         await database.runAsync(
           `INSERT INTO focus_sessions
            (id, task_id, mode, timer_mode, started_at, planned_end_at, ended_at, outcome,
-            failure_reason, duration_seconds, completed_amount)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            failure_reason, duration_seconds, completed_amount, synced_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
           record.id,
           record.taskId,
           record.mode,
@@ -114,6 +123,9 @@ export function createSQLiteTaskRepository(
           record.durationSeconds,
           record.completedAmount
         );
+        await enqueueSyncOperation(database, { type: 'session.finish', taskId: task.id,
+          localSessionId: record.id, outcome: record.outcome, record }, task.id,
+          `session-finish-${record.id}`, now());
         await database.runAsync('DELETE FROM active_sessions');
         if (restSession) await insertActive(database, restSession);
       });
@@ -125,11 +137,13 @@ export function createSQLiteTaskRepository(
     async addGoalProgress(task, amount, idempotencyKey) {
       const database = await getDatabase();
       await database.withTransactionAsync(async () => {
-        await database.runAsync('UPDATE tasks SET completed_amount = ?, status = ?, updated_at = ? WHERE id = ?',
-          task.completedAmount, task.status, now(), task.id);
+        await database.runAsync("UPDATE tasks SET completed_amount = ?, status = ?, version = ?, sync_status = 'pending', updated_at = ? WHERE id = ?",
+          task.completedAmount, task.status, task.version, now(), task.id);
         await database.runAsync(`INSERT INTO task_progress_entries
           (id, task_id, amount, idempotency_key, created_at) VALUES (?, ?, ?, ?, ?)`,
           `task-progress-${now()}-${Math.random().toString(36).slice(2, 8)}`, task.id, amount, idempotencyKey, now());
+        await enqueueSyncOperation(database, { type: 'task.goal-progress', taskId: task.id,
+          version: task.version - 1, amount }, task.id, idempotencyKey, now());
       });
     },
   };
@@ -151,6 +165,9 @@ function mapTask(row: TaskRow): Task {
     mustDo: Boolean(row.must_do),
     trustLevel: row.trust_level,
     status: row.status,
+    version: row.version,
+    syncStatus: row.sync_status,
+    remoteActive: Boolean(row.remote_active),
     progressLabel: '',
   };
   return { ...task, progressLabel: taskProgressLabel(task) };
@@ -196,6 +213,9 @@ function taskValues(task: Task): SQLiteBindValue[] {
     task.mustDo ? 1 : 0,
     task.trustLevel,
     task.status,
+    task.version,
+    task.syncStatus,
+    task.remoteActive ? 1 : 0,
   ];
 }
 

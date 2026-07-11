@@ -57,4 +57,13 @@ export class PrismaAuthRepository implements AuthRepository {
       data: { revokedAt: new Date() },
     });
   }
+
+  async updateSettings(userId: string, input: { multiDeviceFocusSync?: boolean; privacySettings?: Record<string, unknown> }) {
+    const existing = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!existing) return null;
+    return this.prisma.user.update({ where: { id: userId }, data: {
+      multiDeviceFocusSync: input.multiDeviceFocusSync,
+      privacySettings: input.privacySettings as Prisma.InputJsonValue | undefined,
+    } }) as Promise<AuthUser>;
+  }
 }

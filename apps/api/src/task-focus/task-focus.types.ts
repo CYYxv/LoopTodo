@@ -45,7 +45,7 @@ export type SessionView = {
 export type TaskCreate = Omit<
   TaskView,
   'id' | 'completedAmount' | 'status' | 'activeSessionId' | 'version' | 'updatedAt'
->;
+> & { id?: string };
 
 export type TaskPatch = Partial<Pick<
   TaskView,

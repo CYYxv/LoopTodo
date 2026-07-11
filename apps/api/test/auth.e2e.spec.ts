@@ -40,6 +40,13 @@ class MemoryAuthRepository implements AuthRepository {
     const session = this.sessions.get(id);
     if (session?.userId === userId) this.sessions.set(id, { ...session, revokedAt: new Date() });
   }
+  async updateSettings(userId: string, input: { multiDeviceFocusSync?: boolean; privacySettings?: Record<string, unknown> }) {
+    const user = this.users.get(userId);
+    if (!user) return null;
+    const updated = { ...user, ...input };
+    this.users.set(userId, updated);
+    return updated;
+  }
 }
 
 describe('auth API', () => {
@@ -97,6 +104,9 @@ describe('auth API', () => {
     const me = await app.inject({ method: 'GET', url: '/me', headers: { authorization: `Bearer ${registered.tokens.accessToken}` } });
     expect(me.statusCode).toBe(200);
     expect(me.json().data.email).toBe('user@example.com');
+    const settings = await app.inject({ method: 'PATCH', url: '/me/settings',
+      headers: { authorization: `Bearer ${registered.tokens.accessToken}` }, payload: { multiDeviceFocusSync: true } });
+    expect(settings.json().data.multiDeviceFocusSync).toBe(true);
 
     const refresh = await app.inject({ method: 'POST', url: '/auth/refresh', payload: { refreshToken: registered.tokens.refreshToken } });
     expect(refresh.statusCode).toBe(201);

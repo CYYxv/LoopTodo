@@ -40,8 +40,8 @@ items:
   - slug: task-sync
     description: 实现离线变更队列、多设备活跃任务锁、冲突展示与恢复同步
     depends_on: [local-task-focus-loop, task-focus-api]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-07-11-task-sync
     minimal_loop: false
     notes: 服务端为跨设备权威
   - slug: notification-delivery

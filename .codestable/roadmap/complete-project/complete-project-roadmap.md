@@ -195,7 +195,7 @@ interface EntitlementService {
 3. **api-foundation-auth**（done）— 建立 NestJS/Prisma/PostgreSQL/Redis、邮箱密码认证、刷新 token 和设备会话。
 4. **task-focus-api**（done）— 实现任务、分类、专注/锁机会话、幂等、乐观锁和同步 API。
 5. **habit-goal-management**（done）— 实现习惯、定目标、完成量、单位、截止日期和强制约束配置。
-6. **task-sync** — 实现移动端离线队列、冲突展示、多设备活跃任务锁和恢复同步。
+6. **task-sync**（done）— 实现移动端离线队列、冲突展示、多设备活跃任务锁和恢复同步。
 7. **notification-delivery** — 实现本地提醒、FCM/厂商推送 adapter、重试和统一通知事件。
 8. **lock-engine-spike** — 在主流 Android 机制上验证权限、前台服务、重启恢复和审核风险，输出兼容矩阵。
 9. **android-lock-engine** — 实现 Kotlin 原生锁机 bridge、权限引导、最大时长、紧急入口和恢复状态。

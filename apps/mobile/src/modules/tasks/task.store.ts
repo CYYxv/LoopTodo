@@ -12,6 +12,7 @@ import type {
 import { prototypeStrictOptions } from './prototype.data';
 import { createSQLiteTaskRepository } from './sqlite-task.repository';
 import { taskProgressLabel } from './task.presentation';
+import { createUuid } from '@/shared/uuid';
 import type { TaskRepository } from './task.repository';
 import type { CreateTaskInput, Task } from './task.types';
 
@@ -46,8 +47,6 @@ export function createTaskStore(
   initialTasks: Task[] = [],
   now: () => number = Date.now
 ) {
-  let sessionSequence = 0;
-
   return createStore<TaskStore>((set, get) => ({
     tasks: initialTasks,
     activeSession: null,
@@ -94,12 +93,12 @@ export function createTaskStore(
     async startSession(taskId, mode) {
       const state = get();
       const task = state.tasks.find((candidate) => candidate.id === taskId);
-      if (!task || task.status === 'completed' || mode === 'lock' || state.isHydrating ||
+      if (!task || task.status === 'completed' || task.remoteActive || mode === 'lock' || state.isHydrating ||
           state.isStartingSession || state.activeSession) return;
 
       const startedAt = now();
       const session: ActiveSession = {
-        id: `session-${startedAt}-${++sessionSequence}`,
+        id: createUuid(),
         taskId,
         mode,
         timerMode: task.timerMode,
@@ -108,7 +107,7 @@ export function createTaskStore(
         plannedEndAt: task.timerMode === 'countdown' ? startedAt + task.estimateMinutes * 60_000 : null,
         restEndsAt: null,
       };
-      const activeTask: Task = { ...task, status: 'active' };
+      const activeTask: Task = { ...task, status: 'active', version: task.version + 1, syncStatus: 'pending' };
       set({ error: null, isStartingSession: true });
       try {
         await repository.startSession(activeTask, session);
@@ -144,6 +143,8 @@ export function createTaskStore(
         ...task,
         completedAmount: nextCompletedAmount,
         status: completed ? 'completed' : 'pending',
+        version: task.version + 1,
+        syncStatus: 'pending',
         progressLabel: '',
       };
       nextTask.progressLabel = taskProgressLabel(nextTask);
@@ -184,12 +185,14 @@ export function createTaskStore(
     },
     async addGoalProgress(taskId, amount) {
       const task = get().tasks.find((candidate) => candidate.id === taskId);
-      if (!task || task.kind !== 'goal' || !['pending', 'failed'].includes(task.status) || amount <= 0) {
+      if (!task || task.kind !== 'goal' || task.remoteActive || !['pending', 'failed'].includes(task.status) || amount <= 0) {
         return set({ error: '目标进度无效或任务正在执行' });
       }
       const completedAmount = Math.min(task.targetAmount ?? 0, task.completedAmount + amount);
       const nextTask = { ...task, completedAmount,
         status: completedAmount >= (task.targetAmount ?? Number.POSITIVE_INFINITY) ? 'completed' as const : 'pending' as const,
+        version: task.version + 1,
+        syncStatus: 'pending' as const,
         progressLabel: '' };
       nextTask.progressLabel = taskProgressLabel(nextTask);
       try {

@@ -24,12 +24,14 @@ async function openAndMigrate() {
       kind TEXT NOT NULL, timer_mode TEXT NOT NULL, estimate_minutes INTEGER NOT NULL,
       rest_minutes INTEGER NOT NULL, deadline_at INTEGER, target_amount REAL, target_unit TEXT,
       completed_amount REAL NOT NULL DEFAULT 0, must_do INTEGER NOT NULL DEFAULT 0,
-      trust_level TEXT NOT NULL, status TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+      trust_level TEXT NOT NULL, status TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 1,
+      sync_status TEXT NOT NULL DEFAULT 'pending', remote_active INTEGER NOT NULL DEFAULT 0,
+      server_updated_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
     );
     CREATE TABLE IF NOT EXISTS focus_sessions (
       id TEXT PRIMARY KEY NOT NULL, task_id TEXT NOT NULL, mode TEXT NOT NULL, timer_mode TEXT NOT NULL,
       started_at INTEGER NOT NULL, planned_end_at INTEGER, ended_at INTEGER NOT NULL, outcome TEXT NOT NULL,
-      failure_reason TEXT, duration_seconds INTEGER NOT NULL, completed_amount REAL,
+      failure_reason TEXT, duration_seconds INTEGER NOT NULL, completed_amount REAL, synced_at INTEGER,
       FOREIGN KEY(task_id) REFERENCES tasks(id)
     );
     CREATE TABLE IF NOT EXISTS active_sessions (
@@ -57,5 +59,40 @@ async function openAndMigrate() {
     INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (1, unixepoch() * 1000);
     INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (2, unixepoch() * 1000);
   `);
+  await ensureColumn(database, 'tasks', 'version', 'INTEGER NOT NULL DEFAULT 1');
+  await ensureColumn(database, 'tasks', 'sync_status', "TEXT NOT NULL DEFAULT 'pending'");
+  await ensureColumn(database, 'tasks', 'remote_active', 'INTEGER NOT NULL DEFAULT 0');
+  await ensureColumn(database, 'tasks', 'server_updated_at', 'INTEGER');
+  await ensureColumn(database, 'focus_sessions', 'synced_at', 'INTEGER');
+  await database.execAsync(`
+    CREATE TABLE IF NOT EXISTS sync_outbox (
+      id TEXT PRIMARY KEY NOT NULL, operation TEXT NOT NULL, entity_id TEXT NOT NULL,
+      payload TEXT NOT NULL, idempotency_key TEXT NOT NULL UNIQUE, attempts INTEGER NOT NULL DEFAULT 0,
+      next_attempt_at INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'pending', last_error TEXT,
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS sync_outbox_ready_idx ON sync_outbox(status, next_attempt_at, created_at);
+    CREATE TABLE IF NOT EXISTS sync_entity_map (
+      entity_type TEXT NOT NULL, local_id TEXT NOT NULL, server_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL, PRIMARY KEY(entity_type, local_id)
+    );
+    CREATE TABLE IF NOT EXISTS sync_conflicts (
+      id TEXT PRIMARY KEY NOT NULL, entity_type TEXT NOT NULL, entity_id TEXT NOT NULL,
+      outbox_id TEXT,
+      code TEXT NOT NULL, local_snapshot TEXT, server_snapshot TEXT, created_at INTEGER NOT NULL,
+      resolved_at INTEGER
+    );
+    CREATE TABLE IF NOT EXISTS sync_state (
+      scope TEXT PRIMARY KEY NOT NULL, cursor TEXT, last_success_at INTEGER, last_error_at INTEGER,
+      last_error TEXT
+    );
+    INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (3, unixepoch() * 1000);
+  `);
+  await ensureColumn(database, 'sync_conflicts', 'outbox_id', 'TEXT');
   return database;
+}
+
+async function ensureColumn(database: SQLiteDatabase, table: string, column: string, definition: string) {
+  const columns = await database.getAllAsync<{ name: string }>(`PRAGMA table_info(${table})`);
+  if (!columns.some((item) => item.name === column)) await database.execAsync(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
 }

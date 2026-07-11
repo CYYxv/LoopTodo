@@ -7,6 +7,7 @@ import { AUTH_REPOSITORY, EmailAlreadyExistsError, type AuthRepository } from '.
 import type { LoginDto } from './dto/login.dto';
 import type { RefreshDto } from './dto/refresh.dto';
 import type { RegisterDto } from './dto/register.dto';
+import type { UpdateSettingsDto } from './dto/update-settings.dto';
 import { PasswordService } from './password.service';
 import { TokenService } from './token.service';
 import { publicUser } from './auth.types';
@@ -96,6 +97,12 @@ export class AuthService {
 
   async me(userId: string) {
     const user = await this.repository.findUserById(userId);
+    if (!user) throw invalidCredentials();
+    return publicUser(user);
+  }
+
+  async updateSettings(userId: string, input: UpdateSettingsDto) {
+    const user = await this.repository.updateSettings(userId, input);
     if (!user) throw invalidCredentials();
     return publicUser(user);
   }

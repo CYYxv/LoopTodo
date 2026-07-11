@@ -19,6 +19,9 @@ export const prototypeTasks: Task[] = [
     mustDo: true,
     trustLevel: 'high',
     status: 'pending',
+    version: 1,
+    syncStatus: 'synced',
+    remoteActive: false,
   },
   {
     id: 'task-weekly-report',
@@ -36,6 +39,9 @@ export const prototypeTasks: Task[] = [
     mustDo: false,
     trustLevel: 'medium',
     status: 'pending',
+    version: 1,
+    syncStatus: 'synced',
+    remoteActive: false,
   },
   {
     id: 'task-english-listening',
@@ -53,6 +59,9 @@ export const prototypeTasks: Task[] = [
     mustDo: true,
     trustLevel: 'high',
     status: 'pending',
+    version: 1,
+    syncStatus: 'synced',
+    remoteActive: false,
   },
 ];
 

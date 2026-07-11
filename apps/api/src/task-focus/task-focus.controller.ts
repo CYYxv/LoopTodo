@@ -59,12 +59,12 @@ export class TaskFocusController {
 
   @Post('tasks/:id/start-focus')
   startFocus(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Headers('idempotency-key') key: string, @Body() input: StartSessionDto) {
-    return this.service.startSession(request.auth.sub, id, 'focus', key, input.trustLevel);
+    return this.service.startSession(request.auth.sub, id, 'focus', key, input.trustLevel, input.sessionId, input.startedAt, input.plannedMinutes);
   }
 
   @Post('tasks/:id/start-lock')
   startLock(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Headers('idempotency-key') key: string, @Body() input: StartSessionDto) {
-    return this.service.startSession(request.auth.sub, id, 'lock', key, input.trustLevel);
+    return this.service.startSession(request.auth.sub, id, 'lock', key, input.trustLevel, input.sessionId, input.startedAt, input.plannedMinutes);
   }
 
   @Post('focus-sessions/:id/finish')

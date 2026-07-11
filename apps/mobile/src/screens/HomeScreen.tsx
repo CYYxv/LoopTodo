@@ -12,6 +12,8 @@ import { HabitsPanel } from '@/modules/habits/components/HabitsPanel';
 import { useHabitStore } from '@/modules/habits/habit.store';
 import { FocusPanel } from '@/modules/focus-session/components/FocusPanel';
 import { FamilyPanel, SocialPanel } from '@/modules/social/components/SocialPanels';
+import { SyncStatusCard } from '@/modules/sync/components/SyncStatusCard';
+import { useSyncStore } from '@/modules/sync/sync.store';
 import { TasksPanel } from '@/modules/tasks/components/TasksPanel';
 import { useTaskStore } from '@/modules/tasks/task.store';
 import type { CreateTaskInput } from '@/modules/tasks/task.types';
@@ -47,11 +49,20 @@ export function HomeScreen() {
   const archiveHabit = useHabitStore((state) => state.archiveHabit);
   const habitError = useHabitStore((state) => state.error);
   const clearHabitError = useHabitStore((state) => state.clearError);
+  const syncConfigured = useSyncStore((state) => state.configured);
+  const syncPending = useSyncStore((state) => state.pending);
+  const syncConflicts = useSyncStore((state) => state.conflicts);
+  const isSyncing = useSyncStore((state) => state.isSyncing);
+  const syncError = useSyncStore((state) => state.error);
+  const hydrateSync = useSyncStore((state) => state.hydrate);
+  const syncNow = useSyncStore((state) => state.syncNow);
+  const resolveSyncConflict = useSyncStore((state) => state.resolveConflict);
 
   useEffect(() => {
     void hydrate();
     void hydrateHabits();
-  }, [hydrate, hydrateHabits]);
+    void hydrateSync();
+  }, [hydrate, hydrateHabits, hydrateSync]);
 
   const todayMinutes = useMemo(
     () =>
@@ -96,6 +107,9 @@ export function HomeScreen() {
             todayMinutes={todayMinutes}
             completedSessions={sessionRecords.filter((record) => record.outcome === 'completed').length}
           />
+          <SyncStatusCard configured={syncConfigured} pending={syncPending} conflicts={syncConflicts}
+            isSyncing={isSyncing} error={syncError} onSync={() => void syncNow()}
+            onResolve={(id, strategy) => void resolveSyncConflict(id, strategy)} />
           {error || habitError ? (
             <Card variant="secondary">
               <Card.Body className="gap-2">

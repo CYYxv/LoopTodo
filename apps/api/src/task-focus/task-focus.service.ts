@@ -3,7 +3,7 @@ import { ConflictException, Inject, Injectable, NotFoundException, BadRequestExc
 import type { CreateTaskDto } from './dto/create-task.dto';
 import type { FinishSessionDto } from './dto/finish-session.dto';
 import type { UpdateTaskDto } from './dto/update-task.dto';
-import { DuplicateCategoryError, TASK_FOCUS_REPOSITORY, type MutationResult, type TaskFocusRepository } from './task-focus.repository';
+import { DuplicateCategoryError, TASK_FOCUS_REPOSITORY, TaskIdentityConflictError, type MutationResult, type TaskFocusRepository } from './task-focus.repository';
 import type { SessionView, TaskView } from './task-focus.types';
 
 @Injectable()
@@ -32,18 +32,24 @@ export class TaskFocusService {
       throw new BadRequestException({ code: 'GOAL_FIELDS_REQUIRED', message: '定目标任务需要截止日期、目标量和单位' });
     }
     if (input.categoryId && !(await this.repository.getCategory(userId, input.categoryId))) throw notFound();
-    return this.repository.createTask(userId, {
-      categoryId: input.categoryId ?? null,
-      title: input.title.trim(),
-      taskType: input.taskType,
-      timerMode: input.timerMode,
-      estimatedMinutes: input.estimatedMinutes,
-      restMinutes: input.restMinutes,
-      deadlineAt: input.deadlineAt ? new Date(input.deadlineAt) : null,
-      targetAmount: input.targetAmount ?? null,
-      targetUnit: input.targetUnit?.trim() || null,
-      isTodayRequired: input.isTodayRequired,
-    });
+    try {
+      return await this.repository.createTask(userId, {
+        id: input.id,
+        categoryId: input.categoryId ?? null,
+        title: input.title.trim(),
+        taskType: input.taskType,
+        timerMode: input.timerMode,
+        estimatedMinutes: input.estimatedMinutes,
+        restMinutes: input.restMinutes,
+        deadlineAt: input.deadlineAt ? new Date(input.deadlineAt) : null,
+        targetAmount: input.targetAmount ?? null,
+        targetUnit: input.targetUnit?.trim() || null,
+        isTodayRequired: input.isTodayRequired,
+      });
+    } catch (error) {
+      if (error instanceof TaskIdentityConflictError) throw new ConflictException({ code: 'TASK_IDENTITY_CONFLICT', message: '客户端任务 ID 已用于其他内容' });
+      throw error;
+    }
   }
 
   async updateTask(userId: string, id: string, input: UpdateTaskDto) {
@@ -72,9 +78,10 @@ export class TaskFocusService {
     return unwrap(await this.repository.addGoalProgress({ userId, taskId: id, version, amount, idempotencyKey: key }));
   }
 
-  async startSession(userId: string, taskId: string, mode: 'focus' | 'lock', key: string, trustLevel: SessionView['trustLevel']) {
+  async startSession(userId: string, taskId: string, mode: 'focus' | 'lock', key: string, trustLevel: SessionView['trustLevel'], sessionId?: string, startedAt?: string, plannedMinutes?: number) {
     validateKey(key);
-    return unwrap(await this.repository.startSession({ userId, taskId, mode, idempotencyKey: key, trustLevel }));
+    return unwrap(await this.repository.startSession({ userId, taskId, mode, idempotencyKey: key, trustLevel,
+      sessionId, startedAt: startedAt ? new Date(startedAt) : undefined, plannedMinutes }));
   }
 
   async finishSession(userId: string, sessionId: string, key: string, input: FinishSessionDto) {
@@ -87,6 +94,8 @@ export class TaskFocusService {
       completionNote: input.completionNote?.trim() || null,
       failureReasonType: input.failureReasonType?.trim() || null,
       failureReasonText: input.failureReasonText?.trim() || null,
+      endedAt: input.endedAt ? new Date(input.endedAt) : undefined,
+      actualMinutes: input.actualMinutes,
     }));
   }
 
