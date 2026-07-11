@@ -5,8 +5,8 @@ items:
   - slug: mobile-foundation
     description: 拆分移动端单文件原型并建立导航、领域层、测试和开发构建基线
     depends_on: []
-    status: planned
-    feature: null
+    status: in-progress
+    feature: 2026-07-11-mobile-foundation
     minimal_loop: false
     notes: 为后续客户端功能提供稳定挂载点
   - slug: local-task-focus-loop

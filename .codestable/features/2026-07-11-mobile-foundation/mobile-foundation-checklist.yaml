@@ -1,0 +1,74 @@
+feature: 2026-07-11-mobile-foundation
+created: 2026-07-11
+
+steps:
+  - id: S1
+    action: "按设计 2.5 做行为不变的 App.tsx 拆文件微重构"
+    exit_signal: "TypeScript 与 Android export 通过，现有可见文案和交互入口未减少"
+    status: pending
+  - id: S2
+    action: "建立 Expo Router App Shell 和首页 Route Screen"
+    exit_signal: "expo-router/entry 可构建，首页路由测试与 Android export 通过"
+    status: pending
+  - id: S3
+    action: "将任务和会话状态迁移到 Zustand store 与 TaskRepository port"
+    exit_signal: "页面不再直接维护任务数组，会话不变量由 store 单测证明"
+    status: pending
+  - id: S4
+    action: "补齐 characterization、store 和关键组件测试"
+    exit_signal: "创建、选中任务、完成退出竞态和锁机禁用场景全部通过"
+    status: pending
+  - id: S5
+    action: "清理旧入口和死代码并运行全量验证"
+    exit_signal: "typecheck、测试、Android export、diff check 全部通过且无范围外实现"
+    status: pending
+
+checks:
+  - item: "Route Screen 只编排模块，不直接维护领域状态"
+    source: 编排骨架
+    status: pending
+  - item: "TaskRepository 包含 list/create/save/appendSession 契约"
+    source: 名词契约
+    status: pending
+  - item: "Task 与 FocusSessionRecord 使用 string ID，store actions 明确返回 Promise"
+    source: 名词契约
+    status: pending
+  - item: "完成和退出同一会话最多写一条记录"
+    source: 流程级约束
+    status: pending
+  - item: "锁机能力未实现时仍拒绝启动"
+    source: 范围守护
+    status: pending
+  - item: "不实现 SQLite schema、同步和后端请求"
+    source: 范围守护
+    status: pending
+  - item: "Router 冷启动进入首页"
+    source: 验收场景
+    status: pending
+  - item: "空标题不创建任务"
+    source: 验收场景
+    status: pending
+  - item: "点击任务后会话绑定该任务"
+    source: 验收场景
+    status: pending
+  - item: "repository 错误进入显式 error state"
+    source: 验收场景
+    status: pending
+
+dod:
+  commands:
+    - id: CMD-001
+      command: "npm run typecheck"
+      core: true
+      failure_handling: fix-or-block
+    - id: CMD-002
+      command: "npm test -- --runInBand"
+      core: true
+      failure_handling: fix-or-block
+    - id: CMD-003
+      command: "npx expo export --platform android --output-dir .expo-export-check --clear"
+      core: true
+      failure_handling: fix-or-block
+  evidence_required: [command_output, diff_summary, test_results]
+  cleanliness:
+    debug_output: forbidden
