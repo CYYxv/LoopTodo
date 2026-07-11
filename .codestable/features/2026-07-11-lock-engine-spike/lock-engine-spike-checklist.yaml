@@ -1,0 +1,24 @@
+feature: 2026-07-11-lock-engine-spike
+created: 2026-07-11
+steps:
+  - id: S1
+    action: "评估 Android 系统能力边界"
+    status: done
+  - id: S2
+    action: "评估商店审核与隐私风险"
+    status: done
+  - id: S3
+    action: "输出厂商兼容矩阵"
+    status: done
+  - id: S4
+    action: "确定原生模块实现边界"
+    status: done
+checks:
+  - item: "不承诺普通设备绝对不可绕过"
+    status: passed
+  - item: "Device Owner 与消费版能力分离"
+    status: passed
+  - item: "重启和厂商后台限制有降级路径"
+    status: passed
+  - item: "无障碍审核风险有明确披露"
+    status: passed

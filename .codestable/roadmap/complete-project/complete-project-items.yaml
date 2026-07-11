@@ -54,8 +54,8 @@ items:
   - slug: lock-engine-spike
     description: 验证 Android 权限、前台服务、重启恢复、无障碍和审核风险并输出兼容矩阵
     depends_on: [mobile-foundation]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-07-11-lock-engine-spike
     minimal_loop: false
     notes: 高风险能力先预研
   - slug: android-lock-engine
