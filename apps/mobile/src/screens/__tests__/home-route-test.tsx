@@ -3,8 +3,15 @@ import { render, waitFor } from '@testing-library/react-native';
 import HomeRoute from '../../../app/index';
 import { AppProviders } from '@/providers/AppProviders';
 
+jest.mock('@/modules/tasks/database', () => ({
+  getLoopTodoDatabase: async () => ({
+    getAllAsync: async () => [],
+    getFirstAsync: async () => null,
+  }),
+}));
+
 describe('home route', () => {
-  test('renders the LoopTodo prototype through the route screen', async () => {
+  test('renders the persistent local task entry through the route screen', async () => {
     const screen = await render(
       <AppProviders>
         <HomeRoute />
@@ -13,8 +20,8 @@ describe('home route', () => {
 
     await waitFor(() => {
       expect(screen.getByText('LoopTodo')).toBeTruthy();
-      expect(screen.getByText('数学套卷错题复盘')).toBeTruthy();
-      expect(screen.getAllByText('锁机开发中')).toHaveLength(3);
+      expect(screen.getByText('创建任务')).toBeTruthy();
+      expect(screen.getByText('还没有任务')).toBeTruthy();
     });
   });
 });

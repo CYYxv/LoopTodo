@@ -9,10 +9,11 @@ import type {
   StrictOption,
 } from '@/modules/focus-session/focus-session.types';
 
-import { createMemoryTaskRepository } from './memory-task.repository';
-import { prototypeStrictOptions, prototypeTasks } from './prototype.data';
+import { prototypeStrictOptions } from './prototype.data';
+import { createSQLiteTaskRepository } from './sqlite-task.repository';
+import { taskProgressLabel } from './task.presentation';
 import type { TaskRepository } from './task.repository';
-import type { Task } from './task.types';
+import type { CreateTaskInput, Task } from './task.types';
 
 export type TaskStore = {
   tasks: Task[];
@@ -26,9 +27,10 @@ export type TaskStore = {
   isFinishingSession: boolean;
   error: string | null;
   hydrate(): Promise<void>;
-  createTask(title: string): Promise<void>;
+  createTask(input: CreateTaskInput): Promise<void>;
   startSession(taskId: string, mode: SessionMode): Promise<void>;
-  finishSession(outcome: SessionOutcome): Promise<void>;
+  finishSession(outcome: SessionOutcome, completedAmount?: number): Promise<void>;
+  finishRest(): Promise<void>;
   selectMode(mode: SessionMode): void;
   toggleStrictOption(optionId: string): void;
   clearError(): void;
@@ -59,34 +61,30 @@ export function createTaskStore(
     async hydrate() {
       set({ isHydrating: true, error: null });
       try {
-        const tasks = await repository.list();
+        const snapshot = await repository.hydrate();
         set((state) => ({
-          tasks,
-          selectedTaskId:
-            tasks.some((task) => task.id === state.selectedTaskId) ? state.selectedTaskId : tasks[0]?.id ?? null,
+          ...snapshot,
+          selectedTaskId: snapshot.tasks.some((task) => task.id === state.selectedTaskId)
+            ? state.selectedTaskId
+            : snapshot.tasks.find((task) => task.status !== 'completed')?.id ?? null,
           isHydrating: false,
         }));
+        if (
+          snapshot.activeSession?.phase === 'rest' &&
+          snapshot.activeSession.restEndsAt &&
+          snapshot.activeSession.restEndsAt <= now()
+        ) {
+          await get().finishRest();
+        }
       } catch (error) {
         set({ isHydrating: false, error: errorMessage(error) });
       }
     },
-    async createTask(title) {
-      const normalizedTitle = title.trim();
-      if (!normalizedTitle || get().isHydrating) {
-        return;
-      }
-
+    async createTask(input) {
+      if (get().isHydrating) return;
       set({ error: null });
       try {
-        const task = await repository.create({
-          title: normalizedTitle,
-          category: '收集箱',
-          kind: 'pomodoro',
-          estimateMinutes: 25,
-          progressLabel: '普通番茄钟 · 默认 25 分钟',
-          mustDo: false,
-          trustLevel: 'medium',
-        });
+        const task = await repository.create(input);
         set((state) => ({ tasks: [task, ...state.tasks], selectedTaskId: task.id }));
       } catch (error) {
         set({ error: errorMessage(error) });
@@ -95,26 +93,29 @@ export function createTaskStore(
     async startSession(taskId, mode) {
       const state = get();
       const task = state.tasks.find((candidate) => candidate.id === taskId);
-      if (
-        !task ||
-        task.status === 'completed' ||
-        mode === 'lock' ||
-        state.isHydrating ||
-        state.isStartingSession ||
-        state.activeSession
-      ) {
-        return;
-      }
+      if (!task || task.status === 'completed' || mode === 'lock' || state.isHydrating ||
+          state.isStartingSession || state.activeSession) return;
 
+      const startedAt = now();
+      const session: ActiveSession = {
+        id: `session-${startedAt}-${++sessionSequence}`,
+        taskId,
+        mode,
+        timerMode: task.timerMode,
+        phase: 'focus',
+        startedAt,
+        plannedEndAt: task.timerMode === 'countdown' ? startedAt + task.estimateMinutes * 60_000 : null,
+        restEndsAt: null,
+      };
       const activeTask: Task = { ...task, status: 'active' };
       set({ error: null, isStartingSession: true });
       try {
-        await repository.save(activeTask);
-        set((state) => ({
-          tasks: state.tasks.map((candidate) => (candidate.id === taskId ? activeTask : candidate)),
+        await repository.startSession(activeTask, session);
+        set((current) => ({
+          tasks: current.tasks.map((candidate) => candidate.id === taskId ? activeTask : candidate),
           selectedTaskId: taskId,
           selectedMode: mode,
-          activeSession: { taskId, mode, startedAt: now() },
+          activeSession: session,
           isStartingSession: false,
           isFinishingSession: false,
         }));
@@ -122,64 +123,72 @@ export function createTaskStore(
         set({ error: errorMessage(error), isStartingSession: false });
       }
     },
-    async finishSession(outcome) {
+    async finishSession(outcome, completedAmount) {
       const { activeSession, isFinishingSession, tasks } = get();
-      if (!activeSession || isFinishingSession) {
-        return;
-      }
-
+      if (!activeSession || activeSession.phase !== 'focus' || isFinishingSession) return;
       const task = tasks.find((candidate) => candidate.id === activeSession.taskId);
-      if (!task) {
-        set({ error: '当前专注任务不存在' });
-        return;
+      if (!task) return set({ error: '当前专注任务不存在' });
+      if (outcome === 'completed' && task.kind === 'goal' && (!completedAmount || completedAmount <= 0)) {
+        return set({ error: '请输入本次完成量' });
       }
 
       set({ isFinishingSession: true, error: null });
       const endedAt = now();
+      const nextCompletedAmount = task.completedAmount + (outcome === 'completed' ? completedAmount ?? 0 : 0);
+      const completed = outcome === 'completed' &&
+        (task.kind === 'pomodoro' || nextCompletedAmount >= (task.targetAmount ?? Number.POSITIVE_INFINITY));
+      const nextTask: Task = {
+        ...task,
+        completedAmount: nextCompletedAmount,
+        status: completed ? 'completed' : 'pending',
+        progressLabel: '',
+      };
+      nextTask.progressLabel = taskProgressLabel(nextTask);
       const record: FocusSessionRecord = {
         ...activeSession,
-        id: `session-${endedAt}-${++sessionSequence}`,
         endedAt,
         outcome,
         failureReason: outcome === 'exited' ? '用户主动退出专注' : null,
+        durationSeconds: Math.max(0, Math.floor((endedAt - activeSession.startedAt) / 1000)),
+        completedAmount: task.kind === 'goal' && outcome === 'completed' ? completedAmount ?? null : null,
       };
-      const nextTask: Task = {
-        ...task,
-        status: outcome === 'completed' ? 'completed' : 'pending',
-      };
+      const restSession = outcome === 'completed' && task.timerMode === 'countdown' && task.restMinutes > 0
+        ? { ...activeSession, phase: 'rest' as const, startedAt: endedAt, plannedEndAt: null,
+            restEndsAt: endedAt + task.restMinutes * 60_000 }
+        : null;
 
       try {
-        await repository.finishSession(nextTask, record);
+        await repository.finishSession(nextTask, record, restSession);
         set((state) => ({
-          tasks: state.tasks.map((candidate) =>
-            candidate.id === nextTask.id ? nextTask : candidate
-          ),
+          tasks: state.tasks.map((candidate) => candidate.id === nextTask.id ? nextTask : candidate),
           sessionRecords: [record, ...state.sessionRecords],
-          activeSession: null,
+          activeSession: restSession,
           isFinishingSession: false,
         }));
       } catch (error) {
         set({ isFinishingSession: false, error: errorMessage(error) });
       }
     },
-    selectMode(mode) {
-      set({ selectedMode: mode });
+    async finishRest() {
+      if (get().activeSession?.phase !== 'rest' || get().isFinishingSession) return;
+      set({ isFinishingSession: true, error: null });
+      try {
+        await repository.finishRest();
+        set({ activeSession: null, isFinishingSession: false });
+      } catch (error) {
+        set({ isFinishingSession: false, error: errorMessage(error) });
+      }
     },
+    selectMode(mode) { set({ selectedMode: mode }); },
     toggleStrictOption(optionId) {
-      set((state) => ({
-        strictOptions: state.strictOptions.map((option) =>
-          option.id === optionId ? { ...option, enabled: !option.enabled } : option
-        ),
-      }));
+      set((state) => ({ strictOptions: state.strictOptions.map((option) =>
+        option.id === optionId ? { ...option, enabled: !option.enabled } : option) }));
     },
-    clearError() {
-      set({ error: null });
-    },
+    clearError() { set({ error: null }); },
   }));
 }
 
-const memoryTaskRepository = createMemoryTaskRepository(prototypeTasks);
-export const taskStore = createTaskStore(memoryTaskRepository, prototypeTasks);
+export const taskStore = createTaskStore(createSQLiteTaskRepository());
 
 export function useTaskStore<T>(selector: (state: TaskStore) => T) {
   return useStore(taskStore, selector);

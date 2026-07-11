@@ -12,6 +12,7 @@ import { FocusPanel } from '@/modules/focus-session/components/FocusPanel';
 import { FamilyPanel, SocialPanel } from '@/modules/social/components/SocialPanels';
 import { TasksPanel } from '@/modules/tasks/components/TasksPanel';
 import { useTaskStore } from '@/modules/tasks/task.store';
+import type { CreateTaskInput } from '@/modules/tasks/task.types';
 import {
   DashboardSummary,
   Header,
@@ -21,7 +22,6 @@ import {
 
 export function HomeScreen() {
   const [activePanel, setActivePanel] = useState<PanelKey>('tasks');
-  const [draftTitle, setDraftTitle] = useState('');
   const tasks = useTaskStore((state) => state.tasks);
   const activeSession = useTaskStore((state) => state.activeSession);
   const sessionRecords = useTaskStore((state) => state.sessionRecords);
@@ -33,6 +33,7 @@ export function HomeScreen() {
   const createTask = useTaskStore((state) => state.createTask);
   const startSession = useTaskStore((state) => state.startSession);
   const finishSession = useTaskStore((state) => state.finishSession);
+  const finishRest = useTaskStore((state) => state.finishRest);
   const selectMode = useTaskStore((state) => state.selectMode);
   const toggleStrictOption = useTaskStore((state) => state.toggleStrictOption);
   const clearError = useTaskStore((state) => state.clearError);
@@ -57,12 +58,8 @@ export function HomeScreen() {
     ? tasks.find((task) => task.id === activeSession.taskId) ?? null
     : null;
 
-  const handleCreateTask = async () => {
-    if (!draftTitle.trim()) {
-      return;
-    }
-    await createTask(draftTitle);
-    setDraftTitle('');
+  const handleCreateTask = async (input: CreateTaskInput) => {
+    await createTask(input);
     setActivePanel('tasks');
   };
 
@@ -71,10 +68,11 @@ export function HomeScreen() {
       <StatusBar style="dark" />
       {activeSession && activeTask ? (
         <ActiveSessionScreen
-          mode={activeSession.mode}
+          session={activeSession}
           task={activeTask}
-          onComplete={() => finishSession('completed')}
+          onComplete={(completedAmount) => finishSession('completed', completedAmount)}
           onExit={() => finishSession('exited')}
+          onFinishRest={finishRest}
         />
       ) : (
         <ScrollView
@@ -104,9 +102,7 @@ export function HomeScreen() {
           {activePanel === 'tasks' ? (
             <TasksPanel
               tasks={tasks}
-              draftTitle={draftTitle}
-              onDraftTitleChange={setDraftTitle}
-              onCreateTask={() => void handleCreateTask()}
+              onCreateTask={handleCreateTask}
               onStart={(taskId, mode) => void startSession(taskId, mode)}
             />
           ) : null}

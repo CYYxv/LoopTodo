@@ -1,0 +1,38 @@
+feature: 2026-07-11-local-task-focus-loop
+created: 2026-07-11
+
+steps:
+  - id: S1
+    action: "建立 SQLite schema、migration 与 repository adapter"
+    exit_signal: "任务、记录和唯一活跃会话可事务读写"
+    status: done
+  - id: S2
+    action: "扩展任务模型与创建表单"
+    exit_signal: "三种计时和定目标字段可创建并持久化"
+    status: done
+  - id: S3
+    action: "实现 focus/rest 状态与重启恢复"
+    exit_signal: "时间戳驱动计时，hydrate 可恢复进行中会话"
+    status: done
+  - id: S4
+    action: "实现目标完成量确认和原子结束"
+    exit_signal: "完成量校验、累计和单记录不变量通过测试"
+    status: done
+  - id: S5
+    action: "完成针对性测试、审查和 Android 构建"
+    exit_signal: "typecheck、测试和 Android export 通过"
+    status: done
+
+checks:
+  - item: "SQLite 是持久化事实来源，Zustand 只保存运行时快照"
+    status: passed
+  - item: "倒计时、正计时和不计时均可执行"
+    status: passed
+  - item: "定目标完成量由用户填写确认"
+    status: passed
+  - item: "倒计时完成后按配置进入休息"
+    status: passed
+  - item: "重启后恢复唯一活跃会话"
+    status: passed
+  - item: "结束事务最多追加一条记录"
+    status: passed

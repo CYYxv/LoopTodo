@@ -1,4 +1,5 @@
 export type TaskKind = 'pomodoro' | 'goal';
+export type TimerMode = 'countdown' | 'countup' | 'untimed';
 export type TrustLevel = 'high' | 'medium' | 'low';
 export type TaskStatus = 'pending' | 'active' | 'completed';
 
@@ -7,11 +8,17 @@ export type Task = {
   title: string;
   category: string;
   kind: TaskKind;
+  timerMode: TimerMode;
   estimateMinutes: number;
+  restMinutes: number;
+  deadlineAt: number | null;
+  targetAmount: number | null;
+  targetUnit: string | null;
+  completedAmount: number;
   progressLabel: string;
   mustDo: boolean;
   trustLevel: TrustLevel;
   status: TaskStatus;
 };
 
-export type CreateTaskInput = Omit<Task, 'id' | 'status'>;
+export type CreateTaskInput = Omit<Task, 'id' | 'status' | 'completedAmount' | 'progressLabel'>;

@@ -1,10 +1,15 @@
-import type { FocusSessionRecord } from '@/modules/focus-session/focus-session.types';
+import type { ActiveSession, FocusSessionRecord } from '@/modules/focus-session/focus-session.types';
 
 import type { CreateTaskInput, Task } from './task.types';
 
 export interface TaskRepository {
-  list(): Promise<Task[]>;
+  hydrate(): Promise<{
+    tasks: Task[];
+    sessionRecords: FocusSessionRecord[];
+    activeSession: ActiveSession | null;
+  }>;
   create(input: CreateTaskInput): Promise<Task>;
-  save(task: Task): Promise<void>;
-  finishSession(task: Task, record: FocusSessionRecord): Promise<void>;
+  startSession(task: Task, session: ActiveSession): Promise<void>;
+  finishSession(task: Task, record: FocusSessionRecord, restSession: ActiveSession | null): Promise<void>;
+  finishRest(): Promise<void>;
 }

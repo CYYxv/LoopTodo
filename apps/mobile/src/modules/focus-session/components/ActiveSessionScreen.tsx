@@ -4,96 +4,70 @@ import { View } from 'react-native';
 import { Button } from 'heroui-native/button';
 import { Card } from 'heroui-native/card';
 import { Chip } from 'heroui-native/chip';
+import { Input } from 'heroui-native/input';
+import { Label } from 'heroui-native/label';
 import { Text } from 'heroui-native/text';
+import { TextField } from 'heroui-native/text-field';
 
-import type { SessionMode } from '@/modules/focus-session/focus-session.types';
+import type { ActiveSession } from '@/modules/focus-session/focus-session.types';
 import { formatDuration } from '@/modules/focus-session/focus-session.utils';
 import type { Task } from '@/modules/tasks/task.types';
 
 export function ActiveSessionScreen({
-  mode,
+  session,
   task,
   onComplete,
   onExit,
+  onFinishRest,
 }: {
-  mode: SessionMode;
+  session: ActiveSession;
   task: Task;
-  onComplete: () => Promise<void>;
+  onComplete: (completedAmount?: number) => Promise<void>;
   onExit: () => Promise<void>;
+  onFinishRest: () => Promise<void>;
 }) {
-  const isLockMode = mode === 'lock';
-  const [remainingSeconds, setRemainingSeconds] = useState(task.estimateMinutes * 60);
+  const [currentTime, setCurrentTime] = useState(Date.now());
+  const [completedAmount, setCompletedAmount] = useState('');
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setRemainingSeconds((currentSeconds) => Math.max(0, currentSeconds - 1));
-    }, 1000);
-
+    const timer = setInterval(() => setCurrentTime(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
 
+  const display = timerDisplay(session, currentTime);
   useEffect(() => {
-    if (remainingSeconds === 0) {
-      void onComplete();
+    if (session.phase === 'rest' && session.restEndsAt && session.restEndsAt <= currentTime) {
+      void onFinishRest();
     }
-  }, [onComplete, remainingSeconds]);
+  }, [currentTime, onFinishRest, session.phase, session.restEndsAt]);
+
+  if (session.phase === 'rest') {
+    return <RestScreen task={task} display={display} onFinishRest={onFinishRest} />;
+  }
 
   return (
     <View className="flex-1 justify-between bg-background px-5 py-8">
       <View className="gap-5">
-        <View className="items-center gap-2">
-          <Chip color={isLockMode ? 'danger' : 'accent'} variant="secondary">
-            {isLockMode ? '锁机演示 · 原生能力未接入' : '专注模式 · 可配白名单'}
-          </Chip>
-          <Text type="h2" weight="bold" align="center">
-            {task.title}
-          </Text>
-          <Text type="body-sm" color="muted" align="center">
-            {isLockMode ? '当前版本不会执行系统级锁机' : '开放白名单会降低竞技可信分'}
-          </Text>
-        </View>
-
-        <Card>
-          <Card.Body className="items-center gap-4 py-8">
-            <Text type="h1" weight="bold">
-              {formatDuration(remainingSeconds)}
-            </Text>
-            <Text type="body" color="muted" align="center">
-              先完成一个小闭环，再讨论完美不完美。
-            </Text>
-          </Card.Body>
-        </Card>
-
-        <View className="gap-3">
-          <SessionRule text="显示任务、剩余时间和励志语" />
-          <SessionRule
-            text={isLockMode ? '只允许 110 / 120 / 119 与拍照' : '严格选项可自由开关'}
-          />
-          <SessionRule
-            text={isLockMode ? '提前退出占用本月紧急机会' : '退出后记录原因并降低可信等级'}
-          />
-        </View>
+        <View className="items-center gap-2"><Chip color="accent" variant="secondary">专注模式 · {modeLabel(session.timerMode)}</Chip><Text type="h2" weight="bold" align="center">{task.title}</Text><Text type="body-sm" color="muted" align="center">进行中状态已写入本机，重启后继续恢复</Text></View>
+        <Card><Card.Body className="items-center gap-4 py-8"><Text type="h1" weight="bold">{display}</Text><Text type="body" color="muted" align="center">先完成一个小闭环，再讨论完美不完美。</Text></Card.Body></Card>
+        {task.kind === 'goal' ? <TextField><Label>本次完成量（{task.targetUnit}）</Label><Input value={completedAmount} onChangeText={setCompletedAmount} keyboardType="numeric" placeholder="由你填写确认" /></TextField> : null}
       </View>
-
-      <View className="gap-3">
-        <Button variant="primary" size="lg" onPress={() => void onComplete()}>
-          完成本次闭环
-        </Button>
-        <Button variant={isLockMode ? 'danger-soft' : 'secondary'} onPress={() => void onExit()}>
-          {isLockMode ? '紧急退出（扣分）' : '退出专注'}
-        </Button>
-      </View>
+      <View className="gap-3"><Button variant="primary" size="lg" onPress={() => void onComplete(task.kind === 'goal' ? Number(completedAmount) : undefined)}>完成本次闭环</Button><Button variant="secondary" onPress={() => void onExit()}>退出专注</Button></View>
     </View>
   );
 }
 
-function SessionRule({ text }: { text: string }) {
-  return (
-    <View className="flex-row items-center gap-3 rounded-panel-inner bg-surface p-3">
-      <View className="size-2 rounded-full bg-accent" />
-      <Text type="body-sm" className="flex-1">
-        {text}
-      </Text>
-    </View>
-  );
+function RestScreen({ task, display, onFinishRest }: { task: Task; display: string; onFinishRest: () => Promise<void> }) {
+  return <View className="flex-1 justify-between bg-background px-5 py-8"><View className="items-center gap-5"><Chip color="success" variant="soft">自由休息</Chip><Text type="h2" weight="bold" align="center">{task.title} 已记录</Text><Card><Card.Body className="items-center gap-3 py-8"><Text type="h1" weight="bold">{display}</Text><Text type="body-sm" color="muted">休息结束后自动回到待办首页</Text></Card.Body></Card></View><Button onPress={() => void onFinishRest()}>结束休息</Button></View>;
+}
+
+function timerDisplay(session: ActiveSession, now: number) {
+  if (session.phase === 'rest') return formatDuration(Math.max(0, Math.ceil(((session.restEndsAt ?? now) - now) / 1000)));
+  if (session.timerMode === 'untimed') return '不计时';
+  if (session.timerMode === 'countup') return formatDuration(Math.max(0, Math.floor((now - session.startedAt) / 1000)));
+  return formatDuration(Math.max(0, Math.ceil(((session.plannedEndAt ?? now) - now) / 1000)));
+}
+
+function modeLabel(mode: ActiveSession['timerMode']) {
+  return { countdown: '倒计时', countup: '正计时', untimed: '不计时' }[mode];
 }

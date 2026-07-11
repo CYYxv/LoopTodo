@@ -1,39 +1,52 @@
-import type { FocusSessionRecord } from '@/modules/focus-session/focus-session.types';
+import type { ActiveSession, FocusSessionRecord } from '@/modules/focus-session/focus-session.types';
 
+import { taskFromInput } from './task.presentation';
 import type { TaskRepository } from './task.repository';
-import type { CreateTaskInput, Task } from './task.types';
+import type { Task } from './task.types';
 
 export type MemoryTaskRepository = TaskRepository & {
   readSessions(): FocusSessionRecord[];
+  readActiveSession(): ActiveSession | null;
 };
 
 export function createMemoryTaskRepository(
-  seedTasks: Task[],
-  createId?: () => string
+  seedTasks: Task[] = [],
+  createId: () => string = () => `task-${Date.now()}`
 ): MemoryTaskRepository {
   let tasks = seedTasks.map((task) => ({ ...task }));
-  const sessions: FocusSessionRecord[] = [];
-  let taskSequence = 0;
-  const nextTaskId = createId ?? (() => `task-${Date.now()}-${++taskSequence}`);
+  let sessions: FocusSessionRecord[] = [];
+  let activeSession: ActiveSession | null = null;
 
   return {
-    async list() {
-      return tasks.map((task) => ({ ...task }));
+    async hydrate() {
+      return {
+        tasks: tasks.map((task) => ({ ...task })),
+        sessionRecords: sessions.map((record) => ({ ...record })),
+        activeSession: activeSession ? { ...activeSession } : null,
+      };
     },
-    async create(input: CreateTaskInput) {
-      const task: Task = { ...input, id: nextTaskId(), status: 'pending' };
+    async create(input) {
+      const task = taskFromInput(createId(), input);
       tasks = [task, ...tasks];
       return { ...task };
     },
-    async save(task: Task) {
-      tasks = tasks.map((currentTask) => (currentTask.id === task.id ? { ...task } : currentTask));
+    async startSession(task, session) {
+      tasks = tasks.map((current) => (current.id === task.id ? { ...task } : current));
+      activeSession = { ...session };
     },
-    async finishSession(task: Task, record: FocusSessionRecord) {
-      tasks = tasks.map((currentTask) => (currentTask.id === task.id ? { ...task } : currentTask));
-      sessions.unshift({ ...record });
+    async finishSession(task, record, restSession) {
+      tasks = tasks.map((current) => (current.id === task.id ? { ...task } : current));
+      sessions = [{ ...record }, ...sessions];
+      activeSession = restSession ? { ...restSession } : null;
+    },
+    async finishRest() {
+      activeSession = null;
     },
     readSessions() {
       return sessions.map((record) => ({ ...record }));
+    },
+    readActiveSession() {
+      return activeSession ? { ...activeSession } : null;
     },
   };
 }

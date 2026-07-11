@@ -1,125 +1,123 @@
-import type { FocusSessionRecord } from '@/modules/focus-session/focus-session.types';
+import type { ActiveSession, FocusSessionRecord } from '@/modules/focus-session/focus-session.types';
 
 import { createTaskStore } from '../task.store';
 import type { TaskRepository } from '../task.repository';
 import type { CreateTaskInput, Task } from '../task.types';
 
-const seedTasks: Task[] = [
-  {
-    id: 'task-one',
-    title: '第一项任务',
-    category: '测试',
-    kind: 'pomodoro',
-    estimateMinutes: 25,
-    progressLabel: '倒计时',
-    mustDo: true,
-    trustLevel: 'high',
-    status: 'pending',
-  },
-  {
-    id: 'task-two',
-    title: '第二项任务',
-    category: '测试',
-    kind: 'pomodoro',
-    estimateMinutes: 35,
-    progressLabel: '倒计时',
-    mustDo: false,
-    trustLevel: 'medium',
-    status: 'pending',
-  },
-];
+const pomodoroTask: Task = {
+  id: 'task-one',
+  title: '第一项任务',
+  category: '测试',
+  kind: 'pomodoro',
+  timerMode: 'countdown',
+  estimateMinutes: 25,
+  restMinutes: 5,
+  deadlineAt: null,
+  targetAmount: null,
+  targetUnit: null,
+  completedAmount: 0,
+  progressLabel: '倒计时 25 分钟 · 休息 5 分钟',
+  mustDo: true,
+  trustLevel: 'high',
+  status: 'pending',
+};
+
+const goalTask: Task = {
+  ...pomodoroTask,
+  id: 'task-goal',
+  title: '阅读目标',
+  kind: 'goal',
+  estimateMinutes: 30,
+  deadlineAt: 2_000_000,
+  targetAmount: 10,
+  targetUnit: '页',
+  progressLabel: '目标 0/10 页 · 单次 30 分钟',
+  mustDo: false,
+};
 
 function createRepository(options?: {
+  activeSession?: ActiveSession;
   createError?: Error;
   finishError?: Error;
-  saveGate?: Promise<void>;
 }) {
-  let tasks = seedTasks.map((task) => ({ ...task }));
+  let tasks = [pomodoroTask, goalTask].map((task) => ({ ...task }));
+  let activeSession = options?.activeSession ?? null;
   const sessions: FocusSessionRecord[] = [];
-  let saveCalls = 0;
   const repository: TaskRepository = {
-    async list() {
-      return tasks.map((task) => ({ ...task }));
+    async hydrate() {
+      return { tasks, sessionRecords: sessions, activeSession };
     },
     async create(input: CreateTaskInput) {
-      if (options?.createError) {
-        throw options.createError;
-      }
-      const task: Task = { ...input, id: 'task-created', status: 'pending' };
+      if (options?.createError) throw options.createError;
+      const task: Task = { ...pomodoroTask, ...input, id: 'task-created', completedAmount: 0, progressLabel: '新任务' };
       tasks = [task, ...tasks];
       return task;
     },
-    async save(task: Task) {
-      saveCalls += 1;
-      await options?.saveGate;
-      tasks = tasks.map((candidate) => (candidate.id === task.id ? { ...task } : candidate));
+    async startSession(task, session) {
+      tasks = tasks.map((candidate) => candidate.id === task.id ? task : candidate);
+      activeSession = session;
     },
-    async finishSession(task: Task, record: FocusSessionRecord) {
-      if (options?.finishError) {
-        throw options.finishError;
-      }
-      tasks = tasks.map((candidate) => (candidate.id === task.id ? { ...task } : candidate));
-      sessions.push({ ...record });
+    async finishSession(task, record, restSession) {
+      if (options?.finishError) throw options.finishError;
+      tasks = tasks.map((candidate) => candidate.id === task.id ? task : candidate);
+      sessions.unshift(record);
+      activeSession = restSession;
+    },
+    async finishRest() {
+      activeSession = null;
     },
   };
-  return { repository, sessions, getSaveCalls: () => saveCalls };
+  return { repository, sessions };
 }
 
-describe('task store', () => {
-  test('ignores blank task titles', async () => {
-    const { repository } = createRepository();
-    const store = createTaskStore(repository, seedTasks);
+describe('task store local loop', () => {
+  test('hydrates the active session for restart recovery', async () => {
+    const recovered: ActiveSession = {
+      id: 'session-recovered', taskId: 'task-one', mode: 'focus', timerMode: 'countdown',
+      phase: 'focus', startedAt: 1000, plannedEndAt: 2000, restEndsAt: null,
+    };
+    const { repository } = createRepository({ activeSession: recovered });
+    const store = createTaskStore(repository);
 
-    await store.getState().createTask('   ');
+    await store.getState().hydrate();
 
+    expect(store.getState().activeSession).toEqual(recovered);
     expect(store.getState().tasks).toHaveLength(2);
   });
 
-  test('starts the selected task instead of the first task', async () => {
+  test('starts countdown with a recoverable planned end timestamp', async () => {
     const { repository } = createRepository();
-    const store = createTaskStore(repository, seedTasks, () => 1000);
+    const store = createTaskStore(repository, [pomodoroTask], () => 1000);
 
-    await store.getState().startSession('task-two', 'focus');
+    await store.getState().startSession('task-one', 'focus');
 
-    expect(store.getState().activeSession).toEqual({
-      taskId: 'task-two',
-      mode: 'focus',
-      startedAt: 1000,
+    expect(store.getState().activeSession).toMatchObject({
+      taskId: 'task-one', timerMode: 'countdown', phase: 'focus', startedAt: 1000,
+      plannedEndAt: 1_501_000,
     });
-    expect(store.getState().tasks.find((task) => task.id === 'task-two')?.status).toBe('active');
   });
 
-  test('rejects lock sessions until the native engine exists', async () => {
-    const { repository } = createRepository();
-    const store = createTaskStore(repository, seedTasks);
-
-    await store.getState().startSession('task-one', 'lock');
-
-    expect(store.getState().activeSession).toBeNull();
-  });
-
-  test('starts a task only once when the start action is tapped repeatedly', async () => {
-    let releaseSave: () => void = () => undefined;
-    const saveGate = new Promise<void>((resolve) => {
-      releaseSave = () => resolve();
-    });
-    const { repository, getSaveCalls } = createRepository({ saveGate });
-    const store = createTaskStore(repository, seedTasks);
-
-    const firstStart = store.getState().startSession('task-one', 'focus');
-    const secondStart = store.getState().startSession('task-one', 'focus');
-    expect(getSaveCalls()).toBe(1);
-
-    releaseSave();
-    await Promise.all([firstStart, secondStart]);
-    expect(store.getState().activeSession?.taskId).toBe('task-one');
-  });
-
-  test('writes a session only once when completion and exit race', async () => {
+  test('requires user-confirmed amount for goal completion', async () => {
     const { repository, sessions } = createRepository();
-    let currentTime = 1000;
-    const store = createTaskStore(repository, seedTasks, () => currentTime++);
-    await store.getState().startSession('task-two', 'focus');
+    let time = 1000;
+    const store = createTaskStore(repository, [goalTask], () => time++);
+    await store.getState().startSession('task-goal', 'focus');
+
+    await store.getState().finishSession('completed');
+    expect(store.getState().error).toBe('请输入本次完成量');
+    expect(sessions).toHaveLength(0);
+
+    await store.getState().finishSession('completed', 4);
+    expect(sessions[0]?.completedAmount).toBe(4);
+    expect(store.getState().tasks[0]?.completedAmount).toBe(4);
+    expect(store.getState().tasks[0]?.status).toBe('pending');
+  });
+
+  test('enters rest and writes only one record when finish actions race', async () => {
+    const { repository, sessions } = createRepository();
+    let time = 1000;
+    const store = createTaskStore(repository, [pomodoroTask], () => time++);
+    await store.getState().startSession('task-one', 'focus');
 
     await Promise.all([
       store.getState().finishSession('completed'),
@@ -127,33 +125,35 @@ describe('task store', () => {
     ]);
 
     expect(sessions).toHaveLength(1);
-    expect(sessions[0]?.outcome).toBe('completed');
-    expect(store.getState().sessionRecords).toHaveLength(1);
-    expect(store.getState().tasks.find((task) => task.id === 'task-two')?.status).toBe(
-      'completed'
-    );
+    expect(store.getState().activeSession?.phase).toBe('rest');
+    await store.getState().finishRest();
+    expect(store.getState().activeSession).toBeNull();
   });
 
-  test('exposes repository errors without replacing tasks', async () => {
-    const { repository } = createRepository({ createError: new Error('写入失败') });
-    const store = createTaskStore(repository, seedTasks);
-
-    await store.getState().createTask('新任务');
-
-    expect(store.getState().error).toBe('写入失败');
-    expect(store.getState().tasks).toHaveLength(2);
-  });
-
-  test('keeps the active session retryable when atomic finish fails', async () => {
+  test('keeps the focus session retryable after transaction failure', async () => {
     const { repository, sessions } = createRepository({ finishError: new Error('事务失败') });
-    const store = createTaskStore(repository, seedTasks);
+    const store = createTaskStore(repository, [pomodoroTask]);
     await store.getState().startSession('task-one', 'focus');
 
     await store.getState().finishSession('completed');
 
     expect(sessions).toHaveLength(0);
-    expect(store.getState().activeSession?.taskId).toBe('task-one');
-    expect(store.getState().isFinishingSession).toBe(false);
+    expect(store.getState().activeSession?.phase).toBe('focus');
     expect(store.getState().error).toBe('事务失败');
+  });
+
+  test('exposes create errors without replacing tasks', async () => {
+    const { repository } = createRepository({ createError: new Error('写入失败') });
+    const store = createTaskStore(repository, [pomodoroTask]);
+    const input: CreateTaskInput = {
+      title: '新任务', category: '测试', kind: 'pomodoro', timerMode: 'untimed',
+      estimateMinutes: 25, restMinutes: 0, deadlineAt: null, targetAmount: null,
+      targetUnit: null, mustDo: false, trustLevel: 'medium',
+    };
+
+    await store.getState().createTask(input);
+
+    expect(store.getState().error).toBe('写入失败');
+    expect(store.getState().tasks).toHaveLength(1);
   });
 });

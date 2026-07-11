@@ -12,8 +12,8 @@ items:
   - slug: local-task-focus-loop
     description: 使用 Zustand 和 SQLite 实现可重启恢复的本地任务与专注闭环
     depends_on: [mobile-foundation]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-07-11-local-task-focus-loop
     minimal_loop: true
     notes: 最窄端到端用户闭环
   - slug: api-foundation-auth
