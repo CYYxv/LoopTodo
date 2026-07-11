@@ -26,8 +26,8 @@ items:
   - slug: task-focus-api
     description: 提供任务分类和专注锁机会话的幂等、乐观锁与同步 API
     depends_on: [api-foundation-auth]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-07-11-task-focus-api
     minimal_loop: false
     notes: 追加式会话记录
   - slug: habit-goal-management

@@ -13,6 +13,44 @@ enum VipStatus {
   expired
 }
 
+enum TaskType {
+  pomodoro
+  goal
+}
+
+enum TimerMode {
+  countdown
+  countup
+  untimed
+}
+
+enum TaskStatus {
+  pending
+  active
+  completed
+  failed
+  archived
+}
+
+enum SessionMode {
+  focus
+  lock
+}
+
+enum TrustLevel {
+  high
+  normal
+  open
+  invalid
+}
+
+enum FocusOutcome {
+  completed
+  failed
+  cancelled
+  emergency_exit
+}
+
 model User {
   id                       String          @id @default(uuid()) @db.Uuid
   email                    String          @unique @db.VarChar(320)
@@ -25,8 +63,86 @@ model User {
   createdAt                DateTime        @default(now()) @map("created_at")
   updatedAt                DateTime        @updatedAt @map("updated_at")
   deviceSessions           DeviceSession[]
+  taskCategories           TaskCategory[]
+  tasks                    Task[]
+  focusSessions            FocusSession[]
 
   @@map("users")
+}
+
+model TaskCategory {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  name      String   @db.VarChar(80)
+  color     String?  @db.VarChar(32)
+  version   Int      @default(1)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks     Task[]
+
+  @@unique([userId, name])
+  @@index([userId, updatedAt])
+  @@map("task_categories")
+}
+
+model Task {
+  id                      String         @id @default(uuid()) @db.Uuid
+  userId                  String         @map("user_id") @db.Uuid
+  categoryId              String?        @map("category_id") @db.Uuid
+  title                   String         @db.VarChar(240)
+  taskType                TaskType       @map("task_type")
+  timerMode               TimerMode      @map("timer_mode")
+  estimatedMinutes        Int            @map("estimated_minutes")
+  restMinutes             Int            @default(5) @map("rest_minutes")
+  deadlineAt              DateTime?      @map("deadline_at")
+  targetAmount            Decimal?       @map("target_amount") @db.Decimal(12, 2)
+  targetUnit              String?        @map("target_unit") @db.VarChar(40)
+  completedAmount         Decimal        @default(0) @map("completed_amount") @db.Decimal(12, 2)
+  isTodayRequired         Boolean        @default(false) @map("is_today_required")
+  status                  TaskStatus     @default(pending)
+  activeSessionId         String?        @map("active_session_id") @db.Uuid
+  version                 Int            @default(1)
+  createdByFamilyMemberId String?        @map("created_by_family_member_id") @db.Uuid
+  createdAt               DateTime       @default(now()) @map("created_at")
+  updatedAt               DateTime       @updatedAt @map("updated_at")
+  user                    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category                TaskCategory?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  focusSessions           FocusSession[]
+
+  @@index([userId, status, updatedAt])
+  @@index([userId, activeSessionId])
+  @@map("tasks")
+}
+
+model FocusSession {
+  id                   String        @id @default(uuid()) @db.Uuid
+  userId               String        @map("user_id") @db.Uuid
+  taskId               String        @map("task_id") @db.Uuid
+  mode                 SessionMode
+  timerMode            TimerMode     @map("timer_mode")
+  trustLevel           TrustLevel    @default(normal) @map("trust_level")
+  startedAt            DateTime      @map("started_at")
+  endedAt              DateTime?     @map("ended_at")
+  plannedMinutes       Int           @map("planned_minutes")
+  actualMinutes        Int?          @map("actual_minutes")
+  outcome              FocusOutcome?
+  completionNote       String?       @map("completion_note")
+  failureReasonType    String?       @map("failure_reason_type") @db.VarChar(80)
+  failureReasonText    String?       @map("failure_reason_text")
+  startIdempotencyKey  String        @map("start_idempotency_key") @db.VarChar(160)
+  finishIdempotencyKey String?       @map("finish_idempotency_key") @db.VarChar(160)
+  syncedAt             DateTime?     @map("synced_at")
+  createdAt            DateTime      @default(now()) @map("created_at")
+  updatedAt            DateTime      @updatedAt @map("updated_at")
+  user                 User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task                 Task          @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, startIdempotencyKey])
+  @@unique([userId, finishIdempotencyKey])
+  @@index([userId, updatedAt])
+  @@index([taskId, endedAt])
+  @@map("focus_sessions")
 }
 
 model DeviceSession {

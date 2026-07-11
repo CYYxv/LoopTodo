@@ -5,6 +5,7 @@ import { AuthModule } from './auth/auth.module';
 import { validateEnvironment } from './config/environment';
 import { PrismaModule } from './infrastructure/prisma/prisma.module';
 import { RedisModule } from './infrastructure/redis/redis.module';
+import { TaskFocusModule } from './task-focus/task-focus.module';
 
 @Module({
   imports: [
@@ -12,6 +13,7 @@ import { RedisModule } from './infrastructure/redis/redis.module';
     PrismaModule,
     RedisModule,
     AuthModule,
+    TaskFocusModule,
   ],
 })
 export class AppModule {}

@@ -22,5 +22,6 @@ import { TokenService } from './token.service';
     { provide: AUTH_REPOSITORY, useClass: PrismaAuthRepository },
     { provide: AUTH_RATE_LIMITER, useClass: RedisAuthRateLimiter },
   ],
+  exports: [AccessTokenGuard, TokenService],
 })
 export class AuthModule {}

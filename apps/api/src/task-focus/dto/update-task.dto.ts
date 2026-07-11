@@ -1,0 +1,16 @@
+import { IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, Length, Max, Min } from 'class-validator';
+
+export class UpdateTaskDto {
+  @IsInt() @Min(1) version!: number;
+  @IsOptional() @IsString() categoryId?: string | null;
+  @IsOptional() @IsString() @Length(1, 240) title?: string;
+  @IsOptional() @IsIn(['countdown', 'countup', 'untimed']) timerMode?: 'countdown' | 'countup' | 'untimed';
+  @IsOptional() @IsInt() @Min(1) @Max(180) estimatedMinutes?: number;
+  @IsOptional() @IsInt() @Min(0) @Max(180) restMinutes?: number;
+  @IsOptional() @IsDateString() deadlineAt?: string | null;
+  @IsOptional() @IsNumber() @Min(0.01) targetAmount?: number | null;
+  @IsOptional() @IsString() @Length(1, 40) targetUnit?: string | null;
+  @IsOptional() @IsNumber() @Min(0) completedAmount?: number;
+  @IsOptional() @IsBoolean() isTodayRequired?: boolean;
+  @IsOptional() @IsIn(['pending', 'completed', 'failed']) status?: 'pending' | 'completed' | 'failed';
+}

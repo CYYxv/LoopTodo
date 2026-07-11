@@ -1,0 +1,38 @@
+feature: 2026-07-11-task-focus-api
+created: 2026-07-11
+
+steps:
+  - id: S1
+    action: "扩展 Prisma 分类任务和专注会话模型"
+    exit_signal: "schema 与 migration 校验通过"
+    status: done
+  - id: S2
+    action: "实现任务分类 CRUD 与租户隔离"
+    exit_signal: "越权资源统一不可见"
+    status: done
+  - id: S3
+    action: "实现会话开始结束幂等事务"
+    exit_signal: "重复 key 不产生重复记录"
+    status: done
+  - id: S4
+    action: "实现乐观锁和增量同步"
+    exit_signal: "旧 version 冲突且游标同步正确"
+    status: done
+  - id: S5
+    action: "完成测试审查提交推送"
+    exit_signal: "tests、typecheck、build 通过"
+    status: done
+
+checks:
+  - item: "所有数据按 userId 隔离"
+    status: passed
+  - item: "任务更新使用 version 条件写"
+    status: passed
+  - item: "开始和结束会话支持 Idempotency-Key"
+    status: passed
+  - item: "每个任务最多一个 active session"
+    status: passed
+  - item: "删除以 archived 变化参与同步"
+    status: passed
+  - item: "增量同步使用服务端 UTC 游标"
+    status: passed
