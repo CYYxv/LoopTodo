@@ -1,0 +1,38 @@
+feature: 2026-07-11-api-foundation-auth
+created: 2026-07-11
+
+steps:
+  - id: S1
+    action: "建立 NestJS Fastify、配置与统一错误响应"
+    exit_signal: "API 可构建并输出统一 envelope"
+    status: done
+  - id: S2
+    action: "建立 Prisma 用户和设备会话模型"
+    exit_signal: "schema 校验和 client generation 通过"
+    status: done
+  - id: S3
+    action: "实现注册登录刷新注销和 me"
+    exit_signal: "设备会话可创建、轮换和撤销"
+    status: done
+  - id: S4
+    action: "接入 Redis 认证限流"
+    exit_signal: "认证入口有限流且故障不静默降级"
+    status: done
+  - id: S5
+    action: "完成测试、审查、提交和推送"
+    exit_signal: "typecheck、tests、build 通过"
+    status: done
+
+checks:
+  - item: "密码使用 Argon2id"
+    status: passed
+  - item: "refresh token 摘要存储并原子轮换"
+    status: passed
+  - item: "logout 撤销当前设备会话"
+    status: passed
+  - item: "access 与 refresh token 类型隔离"
+    status: passed
+  - item: "Redis 限流失败不静默绕过"
+    status: passed
+  - item: "响应格式符合技术文档"
+    status: passed

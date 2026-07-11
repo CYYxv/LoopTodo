@@ -19,8 +19,8 @@ items:
   - slug: api-foundation-auth
     description: 建立 NestJS、Prisma、PostgreSQL、Redis 与邮箱密码设备会话认证
     depends_on: []
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-07-11-api-foundation-auth
     minimal_loop: false
     notes: 服务端公共基础
   - slug: task-focus-api
