@@ -1,0 +1,38 @@
+feature: 2026-07-11-notification-delivery
+created: 2026-07-11
+
+steps:
+  - id: S1
+    action: "定义统一通知事件与持久化模型"
+    exit_signal: "mobile/API 契约一致"
+    status: done
+  - id: S2
+    action: "实现 Expo 本地提醒权限和调度"
+    exit_signal: "允许、拒绝、调度、取消场景通过"
+    status: done
+  - id: S3
+    action: "实现设备 token 和 provider adapters"
+    exit_signal: "FCM/vendor/test adapter 边界稳定"
+    status: done
+  - id: S4
+    action: "实现交付 worker、重试和失效 token"
+    exit_signal: "退避、上限和设备禁用通过测试"
+    status: done
+  - id: S5
+    action: "审查提交并推送功能"
+    exit_signal: "mobile/API 验证通过"
+    status: done
+
+checks:
+  - item: "本地与远程共用事件类型"
+    status: passed
+  - item: "权限请求由用户动作触发"
+    status: passed
+  - item: "dedupeKey 防重复事件"
+    status: passed
+  - item: "单设备失败不回滚其他设备"
+    status: passed
+  - item: "临时失败指数退避且有上限"
+    status: passed
+  - item: "无效 token 禁用设备"
+    status: passed

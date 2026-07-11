@@ -7,6 +7,7 @@ import { PrismaModule } from './infrastructure/prisma/prisma.module';
 import { RedisModule } from './infrastructure/redis/redis.module';
 import { HabitModule } from './habits/habit.module';
 import { TaskFocusModule } from './task-focus/task-focus.module';
+import { NotificationModule } from './notifications/notification.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { TaskFocusModule } from './task-focus/task-focus.module';
     AuthModule,
     TaskFocusModule,
     HabitModule,
+    NotificationModule,
   ],
 })
 export class AppModule {}

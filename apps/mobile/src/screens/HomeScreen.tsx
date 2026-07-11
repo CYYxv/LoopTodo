@@ -9,6 +9,8 @@ import { Text } from 'heroui-native/text';
 
 import { ActiveSessionScreen } from '@/modules/focus-session/components/ActiveSessionScreen';
 import { HabitsPanel } from '@/modules/habits/components/HabitsPanel';
+import { NotificationSettingsCard } from '@/modules/notifications/components/NotificationSettingsCard';
+import { useNotificationStore } from '@/modules/notifications/notification.store';
 import { useHabitStore } from '@/modules/habits/habit.store';
 import { FocusPanel } from '@/modules/focus-session/components/FocusPanel';
 import { FamilyPanel, SocialPanel } from '@/modules/social/components/SocialPanels';
@@ -57,12 +59,20 @@ export function HomeScreen() {
   const hydrateSync = useSyncStore((state) => state.hydrate);
   const syncNow = useSyncStore((state) => state.syncNow);
   const resolveSyncConflict = useSyncStore((state) => state.resolveConflict);
+  const notificationPermission = useNotificationStore((state) => state.permission);
+  const taskRemindersEnabled = useNotificationStore((state) => state.taskRemindersEnabled);
+  const notificationError = useNotificationStore((state) => state.error);
+  const hydrateNotifications = useNotificationStore((state) => state.hydrate);
+  const enableNotifications = useNotificationStore((state) => state.enableNotifications);
+  const sendTestReminder = useNotificationStore((state) => state.sendTestReminder);
+  const setTaskRemindersEnabled = useNotificationStore((state) => state.setTaskRemindersEnabled);
 
   useEffect(() => {
     void hydrate();
     void hydrateHabits();
     void hydrateSync();
-  }, [hydrate, hydrateHabits, hydrateSync]);
+    void hydrateNotifications();
+  }, [hydrate, hydrateHabits, hydrateNotifications, hydrateSync]);
 
   const todayMinutes = useMemo(
     () =>
@@ -110,6 +120,9 @@ export function HomeScreen() {
           <SyncStatusCard configured={syncConfigured} pending={syncPending} conflicts={syncConflicts}
             isSyncing={isSyncing} error={syncError} onSync={() => void syncNow()}
             onResolve={(id, strategy) => void resolveSyncConflict(id, strategy)} />
+          <NotificationSettingsCard permission={notificationPermission} taskRemindersEnabled={taskRemindersEnabled}
+            error={notificationError} onEnable={() => void enableNotifications()} onTest={() => void sendTestReminder()}
+            onToggle={(enabled) => void setTaskRemindersEnabled(enabled)} />
           {error || habitError ? (
             <Card variant="secondary">
               <Card.Body className="gap-2">

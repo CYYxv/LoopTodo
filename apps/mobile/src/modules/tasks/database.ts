@@ -87,6 +87,20 @@ async function openAndMigrate() {
       last_error TEXT
     );
     INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (3, unixepoch() * 1000);
+    CREATE TABLE IF NOT EXISTS notification_schedules (
+      id TEXT PRIMARY KEY NOT NULL, event_type TEXT NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL,
+      data TEXT NOT NULL, scheduled_at INTEGER NOT NULL, platform_notification_id TEXT,
+      status TEXT NOT NULL DEFAULT 'scheduled', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS notification_schedules_status_time_idx
+      ON notification_schedules(status, scheduled_at);
+    CREATE TABLE IF NOT EXISTS notification_preferences (
+      singleton_id INTEGER PRIMARY KEY CHECK(singleton_id = 1), task_reminders_enabled INTEGER NOT NULL DEFAULT 1,
+      updated_at INTEGER NOT NULL
+    );
+    INSERT OR IGNORE INTO notification_preferences(singleton_id, task_reminders_enabled, updated_at)
+      VALUES (1, 1, unixepoch() * 1000);
+    INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (4, unixepoch() * 1000);
   `);
   await ensureColumn(database, 'sync_conflicts', 'outbox_id', 'TEXT');
   return database;

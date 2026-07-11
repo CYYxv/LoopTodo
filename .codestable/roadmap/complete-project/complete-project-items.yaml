@@ -47,8 +47,8 @@ items:
   - slug: notification-delivery
     description: 实现本地提醒、FCM或厂商推送 adapter、重试和统一通知事件
     depends_on: [mobile-foundation, api-foundation-auth]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-07-11-notification-delivery
     minimal_loop: false
     notes: 外部推送凭证缺失时使用本地和测试 adapter
   - slug: lock-engine-spike
