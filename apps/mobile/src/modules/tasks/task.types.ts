@@ -18,6 +18,7 @@ export type Task = {
   completedAmount: number;
   progressLabel: string;
   mustDo: boolean;
+  forcedTriggerTime: string | null;
   trustLevel: TrustLevel;
   status: TaskStatus;
   version: number;

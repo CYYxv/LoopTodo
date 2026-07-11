@@ -6,6 +6,7 @@ export type LockCapabilities = {
   batteryOptimizationIgnored: boolean;
   riskConfirmed: boolean;
   emergencyExitsRemaining: number;
+  exactAlarmAllowed: boolean;
 };
 
 export type NativeLockSession = { id: string; taskId: string; taskTitle: string; startedAt: number; endsAt: number; enhanced: boolean };

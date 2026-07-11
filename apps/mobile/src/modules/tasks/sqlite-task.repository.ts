@@ -22,6 +22,7 @@ type TaskRow = {
   target_unit: string | null;
   completed_amount: number;
   must_do: number;
+  forced_trigger_time: string | null;
   trust_level: Task['trustLevel'];
   status: Task['status'];
   version: number;
@@ -46,7 +47,7 @@ type SessionRow = {
 };
 
 const taskColumns = `id, title, category, kind, timer_mode, estimate_minutes, rest_minutes,
-  deadline_at, target_amount, target_unit, completed_amount, must_do, trust_level, status,
+  deadline_at, target_amount, target_unit, completed_amount, must_do, forced_trigger_time, trust_level, status,
   version, sync_status, remote_active`;
 
 export function createSQLiteTaskRepository(
@@ -73,7 +74,7 @@ export function createSQLiteTaskRepository(
       const database = await getDatabase();
       await database.withTransactionAsync(async () => {
         await database.runAsync(`INSERT INTO tasks (${taskColumns}, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, ...taskValues(task), now(), now());
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, ...taskValues(task), now(), now());
         await enqueueSyncOperation(database, { type: 'task.create', task }, task.id, `task-create-${task.id}`, now());
       });
       return task;
@@ -163,6 +164,7 @@ function mapTask(row: TaskRow): Task {
     targetUnit: row.target_unit,
     completedAmount: row.completed_amount,
     mustDo: Boolean(row.must_do),
+    forcedTriggerTime: row.forced_trigger_time,
     trustLevel: row.trust_level,
     status: row.status,
     version: row.version,
@@ -211,6 +213,7 @@ function taskValues(task: Task): SQLiteBindValue[] {
     task.targetUnit,
     task.completedAmount,
     task.mustDo ? 1 : 0,
+    task.forcedTriggerTime,
     task.trustLevel,
     task.status,
     task.version,
@@ -238,6 +241,7 @@ async function insertActive(database: SQLiteDatabase, session: ActiveSession) {
 function validateInput(input: CreateTaskInput) {
   if (!input.title.trim()) throw new Error('请输入任务名');
   if (input.estimateMinutes <= 0 || input.restMinutes < 0) throw new Error('时长设置无效');
+  if (input.mustDo && !/^([01]\d|2[0-3]):[0-5]\d$/.test(input.forcedTriggerTime ?? '')) throw new Error('请输入今日必须任务的触发时间');
   if (
     input.kind === 'goal' &&
     (!input.deadlineAt || !input.targetAmount || !input.targetUnit?.trim())

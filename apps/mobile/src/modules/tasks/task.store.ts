@@ -17,6 +17,8 @@ import type { TaskRepository } from './task.repository';
 import type { CreateTaskInput, Task } from './task.types';
 import { lockEngine } from '@/modules/lock-engine/lock-engine.store';
 import type { LockEngine } from '@/modules/lock-engine/lock-engine.port';
+import { createNativeForcedTriggerScheduler } from '@/modules/forced-trigger/native-forced-trigger.scheduler';
+import type { ForcedTriggerScheduler } from '@/modules/forced-trigger/forced-trigger.scheduler';
 
 export type TaskStore = {
   tasks: Task[];
@@ -48,7 +50,8 @@ export function createTaskStore(
   repository: TaskRepository,
   initialTasks: Task[] = [],
   now: () => number = Date.now,
-  nativeLockEngine: LockEngine = lockEngine
+  nativeLockEngine: LockEngine = lockEngine,
+  forcedScheduler: ForcedTriggerScheduler = createNativeForcedTriggerScheduler()
 ) {
   return createStore<TaskStore>((set, get) => ({
     tasks: initialTasks,
@@ -84,6 +87,8 @@ export function createTaskStore(
             : recoveredTasks.find((task) => task.status !== 'completed')?.id ?? null,
           isHydrating: false,
         }));
+        try { await Promise.all(recoveredTasks.filter((task) => task.mustDo && task.forcedTriggerTime && task.status === 'pending').map((task) => scheduleTask(forcedScheduler, task))); }
+        catch (error) { set({ error: errorMessage(error) }); }
         if (
           recoveredSession?.phase === 'rest' &&
           recoveredSession.restEndsAt &&
@@ -101,6 +106,7 @@ export function createTaskStore(
       try {
         const task = await repository.create(input);
         set((state) => ({ tasks: [task, ...state.tasks], selectedTaskId: task.id }));
+        if (task.mustDo && task.forcedTriggerTime) try { await scheduleTask(forcedScheduler, task); } catch (error) { set({ error: errorMessage(error) }); }
       } catch (error) {
         set({ error: errorMessage(error) });
       }
@@ -134,6 +140,9 @@ export function createTaskStore(
             startedAt, endsAt: session.plannedEndAt!, enhanced: capabilities.accessibilityEnabled });
         }
         await repository.startSession(activeTask, session);
+        let forcedRuleError: string | null = null;
+        if (task.mustDo && task.forcedTriggerTime) try { await forcedScheduler.cancel(taskRuleId(task.id)); }
+        catch (error) { forcedRuleError = errorMessage(error); }
         set((current) => ({
           tasks: current.tasks.map((candidate) => candidate.id === taskId ? activeTask : candidate),
           selectedTaskId: taskId,
@@ -141,6 +150,7 @@ export function createTaskStore(
           activeSession: session,
           isStartingSession: false,
           isFinishingSession: false,
+          error: forcedRuleError,
         }));
       } catch (error) {
         if (mode === 'lock') await nativeLockEngine.endLockSession(session.id).catch(() => undefined);
@@ -242,4 +252,10 @@ export const taskStore = createTaskStore(createSQLiteTaskRepository());
 
 export function useTaskStore<T>(selector: (state: TaskStore) => T) {
   return useStore(taskStore, selector);
+}
+function taskRuleId(taskId: string) { return `task:${taskId}`; }
+function scheduleTask(scheduler: ForcedTriggerScheduler, task: Task) {
+  const [hour, minute] = task.forcedTriggerTime!.split(':').map(Number);
+  return scheduler.schedule({ id: taskRuleId(task.id), sourceId: task.id, title: task.title,
+    durationMinutes: task.estimateMinutes, dailyMinute: hour * 60 + minute, recurring: false });
 }

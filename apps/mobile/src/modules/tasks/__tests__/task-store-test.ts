@@ -19,6 +19,7 @@ const pomodoroTask: Task = {
   completedAmount: 0,
   progressLabel: '倒计时 25 分钟 · 休息 5 分钟',
   mustDo: true,
+  forcedTriggerTime: '20:00',
   trustLevel: 'high',
   status: 'pending',
   version: 1,
@@ -37,6 +38,7 @@ const goalTask: Task = {
   targetUnit: '页',
   progressLabel: '目标 0/10 页 · 单次 30 分钟',
   mustDo: false,
+  forcedTriggerTime: null,
 };
 
 function createRepository(options?: {
@@ -83,7 +85,8 @@ describe('task store local loop', () => {
     const engine: LockEngine = {
       async checkCapabilities() { throw new Error('unused'); }, async confirmRisk() { return undefined; },
       async getActiveSession() { return { id: 'native-lock', taskId: 'task-one', taskTitle: '第一项任务', startedAt: 1000, endsAt: 61_000, enhanced: true }; },
-      async startLockSession() { return undefined; }, async endLockSession() { return undefined; }, async emergencyExit() { return undefined; }, async openPermissionSettings() { return undefined; },
+      async startLockSession() { return undefined; }, async endLockSession() { return undefined; }, async emergencyExit() { return undefined; },
+      async scheduleForcedRule() { return undefined; }, async cancelForcedRule() { return undefined; }, async markForcedRuleSatisfied() { return undefined; }, async openPermissionSettings() { return undefined; },
     };
     const store = createTaskStore(repository, [], () => 2000, engine);
     await store.getState().hydrate();
@@ -94,10 +97,10 @@ describe('task store local loop', () => {
     const { repository, sessions } = createRepository();
     const calls: string[] = [];
     const engine: LockEngine = {
-      async checkCapabilities() { return { supported: true, notificationGranted: true, notificationListenerEnabled: true, accessibilityEnabled: true, batteryOptimizationIgnored: true, riskConfirmed: true, emergencyExitsRemaining: 2 }; },
+      async checkCapabilities() { return { supported: true, notificationGranted: true, notificationListenerEnabled: true, accessibilityEnabled: true, batteryOptimizationIgnored: true, riskConfirmed: true, emergencyExitsRemaining: 2, exactAlarmAllowed: true }; },
       async confirmRisk() { return undefined; }, async getActiveSession() { return null; },
       async startLockSession(input) { calls.push(`start:${input.taskId}`); }, async endLockSession(id) { calls.push(`end:${id}`); },
-      async emergencyExit(_id, reason) { calls.push(`emergency:${reason}`); }, async openPermissionSettings() { return undefined; },
+      async emergencyExit(_id, reason) { calls.push(`emergency:${reason}`); }, async scheduleForcedRule() { return undefined; }, async cancelForcedRule() { return undefined; }, async markForcedRuleSatisfied() { return undefined; }, async openPermissionSettings() { return undefined; },
     };
     const store = createTaskStore(repository, [pomodoroTask], () => 1000, engine);
 
@@ -203,7 +206,7 @@ describe('task store local loop', () => {
     const input: CreateTaskInput = {
       title: '新任务', category: '测试', kind: 'pomodoro', timerMode: 'untimed',
       estimateMinutes: 25, restMinutes: 0, deadlineAt: null, targetAmount: null,
-      targetUnit: null, mustDo: false, trustLevel: 'medium',
+      targetUnit: null, mustDo: false, forcedTriggerTime: null, trustLevel: 'medium',
     };
 
     await store.getState().createTask(input);

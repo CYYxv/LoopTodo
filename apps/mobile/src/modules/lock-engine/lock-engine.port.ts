@@ -7,5 +7,8 @@ export interface LockEngine {
   startLockSession(input: NativeLockSession): Promise<void>;
   endLockSession(id: string): Promise<void>;
   emergencyExit(id: string, reason: string): Promise<void>;
-  openPermissionSettings(kind: 'notifications' | 'notificationListener' | 'accessibility' | 'battery'): Promise<void>;
+  scheduleForcedRule(input: { id: string; sourceId: string; title: string; durationMinutes: number; dailyMinute: number; recurring: boolean }): Promise<void>;
+  cancelForcedRule(id: string): Promise<void>;
+  markForcedRuleSatisfied(id: string): Promise<void>;
+  openPermissionSettings(kind: 'notifications' | 'notificationListener' | 'accessibility' | 'battery' | 'exactAlarm'): Promise<void>;
 }

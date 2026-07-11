@@ -68,8 +68,8 @@ items:
   - slug: forced-trigger-scheduler
     description: 实现提醒、两次延迟、最终锁机和家长规则的本地调度
     depends_on: [android-lock-engine, task-focus-api, notification-delivery]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-07-11-forced-trigger-scheduler
     minimal_loop: false
     notes: 断网时仍按已同步规则执行
   - slug: trusted-resource-container

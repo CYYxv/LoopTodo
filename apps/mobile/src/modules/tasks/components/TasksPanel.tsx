@@ -50,6 +50,8 @@ function TaskCreateForm({ onCreate }: { onCreate: (input: CreateTaskInput) => Pr
   const [deadline, setDeadline] = useState('');
   const [targetAmount, setTargetAmount] = useState('');
   const [targetUnit, setTargetUnit] = useState('页');
+  const [mustDo, setMustDo] = useState(false);
+  const [forcedTriggerTime, setForcedTriggerTime] = useState('20:00');
 
   const submit = async () => {
     const estimateMinutes = Number(minutes);
@@ -64,7 +66,8 @@ function TaskCreateForm({ onCreate }: { onCreate: (input: CreateTaskInput) => Pr
       deadlineAt: Number.isFinite(parsedDeadline) ? parsedDeadline : null,
       targetAmount: kind === 'goal' ? Number(targetAmount) : null,
       targetUnit: kind === 'goal' ? targetUnit : null,
-      mustDo: false,
+      mustDo,
+      forcedTriggerTime: mustDo ? forcedTriggerTime : null,
       trustLevel: 'medium',
     });
     setTitle('');
@@ -84,6 +87,8 @@ function TaskCreateForm({ onCreate }: { onCreate: (input: CreateTaskInput) => Pr
         ) : null}
         {timerMode === 'countdown' || kind === 'goal' ? <Field label={kind === 'goal' ? '单次专注分钟' : '倒计时分钟（25/35/自定义）'} value={minutes} onChange={setMinutes} keyboard="numeric" /> : null}
         <Field label="休息分钟" value={restMinutes} onChange={setRestMinutes} keyboard="numeric" />
+        <Button variant={mustDo ? 'danger-soft' : 'secondary'} onPress={() => setMustDo((value) => !value)}>{mustDo ? '今日必须并启用强制触发' : '普通今日任务'}</Button>
+        {mustDo ? <Field label="强制触发时间" value={forcedTriggerTime} onChange={setForcedTriggerTime} placeholder="HH:mm" /> : null}
         <Button isDisabled={!title.trim()} onPress={() => void submit()}>添加到今日待办</Button>
       </Card.Body>
     </Card>
@@ -103,6 +108,16 @@ function TaskCard({ task, onStart, onGoalProgress }: { task: Task; onStart: (tas
   const trust = trustCopy[task.trustLevel];
   const canStart = task.status === 'pending';
   return (
-    <Card><Card.Body className="gap-4"><View className="gap-2"><View className="flex-row flex-wrap items-center gap-2"><Chip size="sm" color={task.mustDo ? 'danger' : 'default'} variant="secondary">{task.mustDo ? '今日必须' : task.category}</Chip><Chip size="sm" color={trust.color} variant="soft">{trust.label}</Chip>{task.status === 'completed' ? <Chip size="sm" color="success" variant="soft">已完成</Chip> : null}{task.remoteActive ? <Chip size="sm" color="danger" variant="soft">其他设备专注中</Chip> : null}{task.syncStatus === 'conflict' ? <Chip size="sm" color="danger" variant="soft">同步冲突</Chip> : null}</View><Card.Title>{task.title}</Card.Title><Card.Description>{task.progressLabel}</Card.Description></View>{task.kind === 'goal' && task.status !== 'completed' && !task.remoteActive ? <View className="flex-row items-end gap-2"><View className="flex-1"><Field label={`补记完成量（${task.targetUnit}）`} value={progress} onChange={setProgress} keyboard="numeric" /></View><Button size="sm" onPress={() => void onGoalProgress(task.id, Number(progress))}>记录</Button></View> : null}<View className="flex-row items-center justify-between gap-3"><Text type="body-sm" color="muted">{task.timerMode === 'untimed' ? '不计时' : `${task.estimateMinutes} 分钟`}</Text><Button size="sm" variant="secondary" isDisabled={!canStart} accessibilityLabel={`开始${task.title}专注`} onPress={() => onStart(task.id, 'focus')}>专注</Button></View></Card.Body></Card>
+    <Card><Card.Body className="gap-4">
+      <View className="gap-2"><View className="flex-row flex-wrap items-center gap-2">
+        <Chip size="sm" color={task.mustDo ? 'danger' : 'default'} variant="secondary">{task.mustDo ? `今日必须 ${task.forcedTriggerTime ?? ''}` : task.category}</Chip>
+        <Chip size="sm" color={trust.color} variant="soft">{trust.label}</Chip>
+        {task.status === 'completed' ? <Chip size="sm" color="success" variant="soft">已完成</Chip> : null}
+        {task.remoteActive ? <Chip size="sm" color="danger" variant="soft">其他设备专注中</Chip> : null}
+        {task.syncStatus === 'conflict' ? <Chip size="sm" color="danger" variant="soft">同步冲突</Chip> : null}
+      </View><Card.Title>{task.title}</Card.Title><Card.Description>{task.progressLabel}</Card.Description></View>
+      {task.kind === 'goal' && task.status !== 'completed' && !task.remoteActive ? <View className="flex-row items-end gap-2"><View className="flex-1"><Field label={`补记完成量（${task.targetUnit}）`} value={progress} onChange={setProgress} keyboard="numeric" /></View><Button size="sm" onPress={() => void onGoalProgress(task.id, Number(progress))}>记录</Button></View> : null}
+      <View className="flex-row items-center justify-between gap-3"><Text type="body-sm" color="muted">{task.timerMode === 'untimed' ? '不计时' : `${task.estimateMinutes} 分钟`}</Text><Button size="sm" variant="secondary" isDisabled={!canStart} accessibilityLabel={`开始${task.title}专注`} onPress={() => onStart(task.id, 'focus')}>专注</Button></View>
+    </Card.Body></Card>
   );
 }

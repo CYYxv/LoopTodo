@@ -63,6 +63,7 @@ async function openAndMigrate() {
   await ensureColumn(database, 'tasks', 'sync_status', "TEXT NOT NULL DEFAULT 'pending'");
   await ensureColumn(database, 'tasks', 'remote_active', 'INTEGER NOT NULL DEFAULT 0');
   await ensureColumn(database, 'tasks', 'server_updated_at', 'INTEGER');
+  await ensureColumn(database, 'tasks', 'forced_trigger_time', 'TEXT');
   await ensureColumn(database, 'focus_sessions', 'synced_at', 'INTEGER');
   await database.execAsync(`
     CREATE TABLE IF NOT EXISTS sync_outbox (

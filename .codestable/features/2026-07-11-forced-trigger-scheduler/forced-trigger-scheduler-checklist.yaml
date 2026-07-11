@@ -1,0 +1,27 @@
+feature: 2026-07-11-forced-trigger-scheduler
+created: 2026-07-11
+steps:
+  - id: S1
+    action: "实现原生精确闹钟持久化"
+    status: done
+  - id: S2
+    action: "实现缓冲和两次延迟"
+    status: done
+  - id: S3
+    action: "实现最终原生锁机"
+    status: done
+  - id: S4
+    action: "接入任务与习惯规则"
+    status: done
+  - id: S5
+    action: "审查并验证 Android 构建"
+    status: done
+checks:
+  - item: "断网和 JS 退出后仍可触发"
+    status: passed
+  - item: "最多两次二十分钟延迟"
+    status: passed
+  - item: "重启后恢复且不跳过逾期规则"
+    status: passed
+  - item: "习惯重复、任务一次性"
+    status: passed

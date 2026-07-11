@@ -12,6 +12,7 @@ import { HabitsPanel } from '@/modules/habits/components/HabitsPanel';
 import { NotificationSettingsCard } from '@/modules/notifications/components/NotificationSettingsCard';
 import { useNotificationStore } from '@/modules/notifications/notification.store';
 import { useLockEngineStore } from '@/modules/lock-engine/lock-engine.store';
+import { ForcedTriggerStatusCard } from '@/modules/forced-trigger/components/ForcedTriggerStatusCard';
 import { useHabitStore } from '@/modules/habits/habit.store';
 import { FocusPanel } from '@/modules/focus-session/components/FocusPanel';
 import { FamilyPanel, SocialPanel } from '@/modules/social/components/SocialPanels';
@@ -129,6 +130,8 @@ export function HomeScreen() {
           <NotificationSettingsCard permission={notificationPermission} taskRemindersEnabled={taskRemindersEnabled}
             error={notificationError} onEnable={() => void enableNotifications()} onTest={() => void sendTestReminder()}
             onToggle={(enabled) => void setTaskRemindersEnabled(enabled)} />
+          <ForcedTriggerStatusCard capabilities={lockCapabilities} enabledRules={habits.filter((habit) => habit.forceEnabled).length}
+            onRefresh={() => void refreshLockCapabilities()} onOpen={(kind) => void openLockPermission(kind)} />
           {error || habitError ? (
             <Card variant="secondary">
               <Card.Body className="gap-2">
