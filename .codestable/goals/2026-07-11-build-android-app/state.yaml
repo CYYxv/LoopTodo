@@ -14,8 +14,8 @@ non_goals:
 budget:
   kind: none
   limit: null
-current_iteration: 4
-next_action: "提交并推送原型基线，然后根据完整技术文档创建项目 roadmap。"
+current_iteration: 7
+next_action: "为 roadmap 第一项 mobile-foundation 起草并审查 feature design。"
 blocker_signature: null
 blocker_count: 0
 owner_stop: null

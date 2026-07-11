@@ -1,0 +1,172 @@
+roadmap: complete-project
+created: 2026-07-11
+
+items:
+  - slug: mobile-foundation
+    description: 拆分移动端单文件原型并建立导航、领域层、测试和开发构建基线
+    depends_on: []
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 为后续客户端功能提供稳定挂载点
+  - slug: local-task-focus-loop
+    description: 使用 Zustand 和 SQLite 实现可重启恢复的本地任务与专注闭环
+    depends_on: [mobile-foundation]
+    status: planned
+    feature: null
+    minimal_loop: true
+    notes: 最窄端到端用户闭环
+  - slug: api-foundation-auth
+    description: 建立 NestJS、Prisma、PostgreSQL、Redis 与邮箱密码设备会话认证
+    depends_on: []
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 服务端公共基础
+  - slug: task-focus-api
+    description: 提供任务分类和专注锁机会话的幂等、乐观锁与同步 API
+    depends_on: [api-foundation-auth]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 追加式会话记录
+  - slug: habit-goal-management
+    description: 实现习惯、定目标任务、完成量、单位、截止日期和强制约束配置
+    depends_on: [local-task-focus-loop, task-focus-api]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 覆盖 PRD Habit 与 goal task 对象
+  - slug: task-sync
+    description: 实现离线变更队列、多设备活跃任务锁、冲突展示与恢复同步
+    depends_on: [local-task-focus-loop, task-focus-api]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 服务端为跨设备权威
+  - slug: notification-delivery
+    description: 实现本地提醒、FCM或厂商推送 adapter、重试和统一通知事件
+    depends_on: [mobile-foundation, api-foundation-auth]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 外部推送凭证缺失时使用本地和测试 adapter
+  - slug: lock-engine-spike
+    description: 验证 Android 权限、前台服务、重启恢复、无障碍和审核风险并输出兼容矩阵
+    depends_on: [mobile-foundation]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 高风险能力先预研
+  - slug: android-lock-engine
+    description: 实现 Kotlin 锁机 bridge、权限引导、时长限制、紧急入口和状态恢复
+    depends_on: [local-task-focus-loop, lock-engine-spike]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 不承诺所有厂商绝对不可绕过
+  - slug: forced-trigger-scheduler
+    description: 实现提醒、两次延迟、最终锁机和家长规则的本地调度
+    depends_on: [android-lock-engine, task-focus-api, notification-delivery]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 断网时仍按已同步规则执行
+  - slug: trusted-resource-container
+    description: 实现资源通行证、受限 WebView、本地播放器和可信审计
+    depends_on: [local-task-focus-loop]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 不做视频下载和第三方内容识别
+  - slug: task-ai-service
+    description: 实现任务材料限定的 AI 服务、审计和外部数据风险提示
+    depends_on: [api-foundation-auth, trusted-resource-container]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: AI provider 通过 adapter 接入
+  - slug: scoring-statistics
+    description: 实现历史统计、连续天数、可信分和服务端可配置积分流水
+    depends_on: [task-focus-api]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 算法参数不硬编码在客户端
+  - slug: social-realtime
+    description: 实现好友、每日 PK、自习室、状态同步和励志表情
+    depends_on: [api-foundation-auth, scoring-statistics]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 不提供聊天
+  - slug: teams-seasons
+    description: 实现排行榜、段位、赛季结算、战队与规模压力测试
+    depends_on: [social-realtime, scoring-statistics]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 战队公式需 owner 确认默认参数
+  - slug: subscription-entitlements
+    description: 实现 VIP 订阅状态、权益控制、习惯上限和支付 adapter
+    depends_on: [api-foundation-auth]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 真实支付需外部商户凭证，测试使用明确标识的 adapter
+  - slug: family-management
+    description: 实现家庭邀请码、任务下发、修改申请、状态共享、异常提醒和家庭权益规则
+    depends_on: [task-focus-api, android-lock-engine, notification-delivery, subscription-entitlements]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 不提供家长实时远程锁机
+  - slug: reward-backoffice
+    description: 实现奖励配置、中奖确认、通知和地址权限控制后台
+    depends_on: [subscription-entitlements, teams-seasons, notification-delivery]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 地址字段必须最小权限访问
+  - slug: settings-privacy-controls
+    description: 实现多设备同步、社交、权限、通知和任务数据可见性设置
+    depends_on: [task-sync, social-realtime, family-management, subscription-entitlements]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 权限状态进入锁机前仍需实时检查
+  - slug: mobile-polish-accessibility
+    description: 完成全量移动端页面空加载错误态、深色主题、字体放大、小屏和可访问性
+    depends_on: [habit-goal-management, task-sync, trusted-resource-container, settings-privacy-controls]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 不改变业务契约
+  - slug: observability-security
+    description: 实现埋点、审计日志、隐私边界和家庭支付奖励安全测试
+    depends_on: [forced-trigger-scheduler, task-ai-service, teams-seasons, family-management, reward-backoffice]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 覆盖越权和敏感字段
+  - slug: system-hardening
+    description: 汇总并通过客户端、API、原生、实时和压力回归测试
+    depends_on: [forced-trigger-scheduler, task-ai-service, teams-seasons, mobile-polish-accessibility, observability-security]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 修复跨模块 blocking 后才能结束
+  - slug: android-compatibility
+    description: 完成主流厂商真机权限、后台、重启与锁机兼容验证
+    depends_on: [android-lock-engine, system-hardening]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 产出设备兼容矩阵和产品风险提示
+  - slug: release-apk
+    description: 交付 Docker 本地环境、production 配置模板、release APK/AAB 和安装验收
+    depends_on: [android-compatibility, system-hardening]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 生产部署和商店发布需 owner 凭证与批准

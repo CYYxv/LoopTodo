@@ -34,3 +34,5 @@ CodeStable 所有人读报告正文使用中文；YAML、JSON、frontmatter 和�
 
 - 每完成一个重要功能，先进行独立代码审查，再提交并推送到 `https://github.com/CYYxv/LoopTodo`。
 - 遇到复杂能力时优先调研成熟方案或库，不盲目自研。
+- owner 已将常规技术选型、流程确认、独立 reviewer 不可用时的本地审查降级、分支、commit 和 push 授权给 agent，不再逐项询问。
+- secrets、外部购买、破坏性操作、生产部署、应用商店发布和不可逆数据迁移仍必须停下来确认。
