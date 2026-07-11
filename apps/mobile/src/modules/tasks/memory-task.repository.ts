@@ -42,6 +42,9 @@ export function createMemoryTaskRepository(
     async finishRest() {
       activeSession = null;
     },
+    async addGoalProgress(task) {
+      tasks = tasks.map((current) => current.id === task.id ? { ...task } : current);
+    },
     readSessions() {
       return sessions.map((record) => ({ ...record }));
     },

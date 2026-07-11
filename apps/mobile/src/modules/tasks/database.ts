@@ -38,7 +38,24 @@ async function openAndMigrate() {
       started_at INTEGER NOT NULL, planned_end_at INTEGER, rest_ends_at INTEGER,
       FOREIGN KEY(task_id) REFERENCES tasks(id)
     );
+    CREATE TABLE IF NOT EXISTS habits (
+      id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, target_minutes INTEGER NOT NULL,
+      force_enabled INTEGER NOT NULL DEFAULT 0, trigger_time TEXT, status TEXT NOT NULL,
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS habit_progress_entries (
+      id TEXT PRIMARY KEY NOT NULL, habit_id TEXT NOT NULL, minutes INTEGER NOT NULL,
+      progress_date TEXT NOT NULL, idempotency_key TEXT NOT NULL UNIQUE, created_at INTEGER NOT NULL,
+      FOREIGN KEY(habit_id) REFERENCES habits(id)
+    );
+    CREATE TABLE IF NOT EXISTS task_progress_entries (
+      id TEXT PRIMARY KEY NOT NULL, task_id TEXT NOT NULL, amount REAL NOT NULL,
+      idempotency_key TEXT NOT NULL UNIQUE, created_at INTEGER NOT NULL,
+      FOREIGN KEY(task_id) REFERENCES tasks(id)
+    );
+    CREATE INDEX IF NOT EXISTS habit_progress_habit_date_idx ON habit_progress_entries(habit_id, progress_date);
     INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (1, unixepoch() * 1000);
+    INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (2, unixepoch() * 1000);
   `);
   return database;
 }

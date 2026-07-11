@@ -21,6 +21,7 @@ export interface TaskFocusRepository {
   createTask(userId: string, input: TaskCreate): Promise<TaskView>;
   updateTask(userId: string, id: string, version: number, patch: TaskPatch): Promise<MutationResult<TaskView>>;
   archiveTask(userId: string, id: string, version: number): Promise<MutationResult<TaskView>>;
+  addGoalProgress(input: { userId: string; taskId: string; version: number; amount: number; idempotencyKey: string }): Promise<MutationResult<TaskView>>;
   startSession(input: {
     userId: string;
     taskId: string;

@@ -12,4 +12,5 @@ export interface TaskRepository {
   startSession(task: Task, session: ActiveSession): Promise<void>;
   finishSession(task: Task, record: FocusSessionRecord, restSession: ActiveSession | null): Promise<void>;
   finishRest(): Promise<void>;
+  addGoalProgress(task: Task, amount: number, idempotencyKey: string): Promise<void>;
 }

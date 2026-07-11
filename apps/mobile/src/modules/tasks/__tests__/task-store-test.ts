@@ -66,6 +66,9 @@ function createRepository(options?: {
     async finishRest() {
       activeSession = null;
     },
+    async addGoalProgress(task) {
+      tasks = tasks.map((candidate) => candidate.id === task.id ? task : candidate);
+    },
   };
   return { repository, sessions };
 }
@@ -111,6 +114,15 @@ describe('task store local loop', () => {
     expect(sessions[0]?.completedAmount).toBe(4);
     expect(store.getState().tasks[0]?.completedAmount).toBe(4);
     expect(store.getState().tasks[0]?.status).toBe('pending');
+  });
+
+  test('adds manual goal progress and completes at the target', async () => {
+    const { repository } = createRepository();
+    const store = createTaskStore(repository, [goalTask], () => 1000);
+
+    await store.getState().addGoalProgress('task-goal', 10);
+
+    expect(store.getState().tasks[0]).toMatchObject({ completedAmount: 10, status: 'completed' });
   });
 
   test('enters rest and writes only one record when finish actions race', async () => {

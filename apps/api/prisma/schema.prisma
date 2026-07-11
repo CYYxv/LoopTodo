@@ -51,6 +51,11 @@ enum FocusOutcome {
   emergency_exit
 }
 
+enum HabitStatus {
+  active
+  archived
+}
+
 model User {
   id                       String          @id @default(uuid()) @db.Uuid
   email                    String          @unique @db.VarChar(320)
@@ -66,6 +71,10 @@ model User {
   taskCategories           TaskCategory[]
   tasks                    Task[]
   focusSessions            FocusSession[]
+  habits                   Habit[]
+  habitProgressEntries     HabitProgressEntry[]
+  taskProgressEntries      TaskProgressEntry[]
+  forcedLockRules          ForcedLockRule[]
 
   @@map("users")
 }
@@ -109,10 +118,83 @@ model Task {
   user                    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   category                TaskCategory?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   focusSessions           FocusSession[]
+  taskProgressEntries     TaskProgressEntry[]
+  forcedLockRules         ForcedLockRule[]
 
   @@index([userId, status, updatedAt])
   @@index([userId, activeSessionId])
   @@map("tasks")
+}
+
+model TaskProgressEntry {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  taskId         String   @map("task_id") @db.Uuid
+  amount         Decimal  @db.Decimal(12, 2)
+  idempotencyKey String   @map("idempotency_key") @db.VarChar(160)
+  createdAt      DateTime @default(now()) @map("created_at")
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task           Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, idempotencyKey])
+  @@index([taskId, createdAt])
+  @@map("task_progress_entries")
+}
+
+model Habit {
+  id                  String               @id @default(uuid()) @db.Uuid
+  userId              String               @map("user_id") @db.Uuid
+  name                String               @db.VarChar(120)
+  targetMinutes       Int                  @map("target_minutes")
+  forceEnabled        Boolean              @default(false) @map("force_enabled")
+  triggerTime         String?              @map("trigger_time") @db.Char(5)
+  status              HabitStatus          @default(active)
+  version             Int                  @default(1)
+  progressUpdatedAt   DateTime?            @map("progress_updated_at")
+  createdAt           DateTime             @default(now()) @map("created_at")
+  updatedAt           DateTime             @updatedAt @map("updated_at")
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  progressEntries     HabitProgressEntry[]
+  forcedLockRule      ForcedLockRule?
+
+  @@index([userId, status, updatedAt])
+  @@map("habits")
+}
+
+model HabitProgressEntry {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  habitId        String   @map("habit_id") @db.Uuid
+  minutes        Int
+  progressDate   DateTime @map("progress_date") @db.Date
+  idempotencyKey String   @map("idempotency_key") @db.VarChar(160)
+  createdAt      DateTime @default(now()) @map("created_at")
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  habit          Habit    @relation(fields: [habitId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, idempotencyKey])
+  @@index([habitId, progressDate])
+  @@map("habit_progress_entries")
+}
+
+model ForcedLockRule {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  taskId        String?  @map("task_id") @db.Uuid
+  habitId       String?  @unique @map("habit_id") @db.Uuid
+  triggerTime   String   @map("trigger_time") @db.Char(5)
+  bufferMinutes Int      @default(10) @map("buffer_minutes")
+  maxDelayCount Int      @default(2) @map("max_delay_count")
+  delayMinutes  Int      @default(20) @map("delay_minutes")
+  enabled       Boolean  @default(true)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task          Task?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  habit         Habit?   @relation(fields: [habitId], references: [id], onDelete: Cascade)
+
+  @@index([userId, enabled])
+  @@map("forced_lock_rules")
 }
 
 model FocusSession {

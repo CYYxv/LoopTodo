@@ -10,7 +10,6 @@ export class UpdateTaskDto {
   @IsOptional() @IsDateString() deadlineAt?: string | null;
   @IsOptional() @IsNumber() @Min(0.01) targetAmount?: number | null;
   @IsOptional() @IsString() @Length(1, 40) targetUnit?: string | null;
-  @IsOptional() @IsNumber() @Min(0) completedAmount?: number;
   @IsOptional() @IsBoolean() isTodayRequired?: boolean;
   @IsOptional() @IsIn(['pending', 'completed', 'failed']) status?: 'pending' | 'completed' | 'failed';
 }

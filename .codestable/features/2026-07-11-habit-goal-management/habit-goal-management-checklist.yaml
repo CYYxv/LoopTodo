@@ -1,0 +1,38 @@
+feature: 2026-07-11-habit-goal-management
+created: 2026-07-11
+
+steps:
+  - id: S1
+    action: "建立本地和 Prisma 习惯进度模型"
+    exit_signal: "migration 与 schema 校验通过"
+    status: done
+  - id: S2
+    action: "实现习惯和目标进度 API"
+    exit_signal: "隔离、幂等、version 与目标完成规则通过"
+    status: done
+  - id: S3
+    action: "实现 SQLite habit repository 和 store"
+    exit_signal: "创建、进度与重启恢复通过"
+    status: done
+  - id: S4
+    action: "实现移动端习惯目标面板"
+    exit_signal: "用户可创建习惯和记录进度"
+    status: done
+  - id: S5
+    action: "测试审查提交推送"
+    exit_signal: "mobile/API 验证通过"
+    status: done
+
+checks:
+  - item: "习惯数据按 userId 隔离"
+    status: passed
+  - item: "习惯进度写入幂等"
+    status: passed
+  - item: "强制约束必须配置触发时间"
+    status: passed
+  - item: "goal task 进度达到目标后完成"
+    status: passed
+  - item: "本地重启恢复习惯与进度"
+    status: passed
+  - item: "不提前实现调度和锁机"
+    status: passed

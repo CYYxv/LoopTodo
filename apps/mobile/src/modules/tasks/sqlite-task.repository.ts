@@ -122,6 +122,16 @@ export function createSQLiteTaskRepository(
       const database = await getDatabase();
       await database.runAsync('DELETE FROM active_sessions');
     },
+    async addGoalProgress(task, amount, idempotencyKey) {
+      const database = await getDatabase();
+      await database.withTransactionAsync(async () => {
+        await database.runAsync('UPDATE tasks SET completed_amount = ?, status = ?, updated_at = ? WHERE id = ?',
+          task.completedAmount, task.status, now(), task.id);
+        await database.runAsync(`INSERT INTO task_progress_entries
+          (id, task_id, amount, idempotency_key, created_at) VALUES (?, ?, ?, ?, ?)`,
+          `task-progress-${now()}-${Math.random().toString(36).slice(2, 8)}`, task.id, amount, idempotencyKey, now());
+      });
+    },
   };
 }
 

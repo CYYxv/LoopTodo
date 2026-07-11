@@ -22,10 +22,12 @@ export function TasksPanel({
   tasks,
   onCreateTask,
   onStart,
+  onGoalProgress,
 }: {
   tasks: Task[];
   onCreateTask: (input: CreateTaskInput) => Promise<void>;
   onStart: (taskId: string, mode: SessionMode) => void;
+  onGoalProgress: (taskId: string, amount: number) => Promise<void>;
 }) {
   return (
     <View className="gap-4">
@@ -33,7 +35,7 @@ export function TasksPanel({
       <View className="gap-3">
         {tasks.length === 0 ? (
           <Card><Card.Body><Card.Title>还没有任务</Card.Title><Card.Description>先创建一个最小任务闭环。</Card.Description></Card.Body></Card>
-        ) : tasks.map((task) => <TaskCard key={task.id} task={task} onStart={onStart} />)}
+        ) : tasks.map((task) => <TaskCard key={task.id} task={task} onStart={onStart} onGoalProgress={onGoalProgress} />)}
       </View>
     </View>
   );
@@ -96,10 +98,11 @@ function ChoiceRow({ value, options, onChange }: { value: string; options: [stri
   return <View className="flex-row flex-wrap gap-2">{options.map(([id, label]) => <Button key={id} size="sm" variant={value === id ? 'primary' : 'secondary'} onPress={() => onChange(id)}>{label}</Button>)}</View>;
 }
 
-function TaskCard({ task, onStart }: { task: Task; onStart: (taskId: string, mode: SessionMode) => void }) {
+function TaskCard({ task, onStart, onGoalProgress }: { task: Task; onStart: (taskId: string, mode: SessionMode) => void; onGoalProgress: (taskId: string, amount: number) => Promise<void> }) {
+  const [progress, setProgress] = useState('1');
   const trust = trustCopy[task.trustLevel];
   const canStart = task.status === 'pending';
   return (
-    <Card><Card.Body className="gap-4"><View className="gap-2"><View className="flex-row flex-wrap items-center gap-2"><Chip size="sm" color={task.mustDo ? 'danger' : 'default'} variant="secondary">{task.mustDo ? '今日必须' : task.category}</Chip><Chip size="sm" color={trust.color} variant="soft">{trust.label}</Chip>{task.status === 'completed' ? <Chip size="sm" color="success" variant="soft">已完成</Chip> : null}</View><Card.Title>{task.title}</Card.Title><Card.Description>{task.progressLabel}</Card.Description></View><View className="flex-row items-center justify-between gap-3"><Text type="body-sm" color="muted">{task.timerMode === 'untimed' ? '不计时' : `${task.estimateMinutes} 分钟`}</Text><Button size="sm" variant="secondary" isDisabled={!canStart} accessibilityLabel={`开始${task.title}专注`} onPress={() => onStart(task.id, 'focus')}>专注</Button></View></Card.Body></Card>
+    <Card><Card.Body className="gap-4"><View className="gap-2"><View className="flex-row flex-wrap items-center gap-2"><Chip size="sm" color={task.mustDo ? 'danger' : 'default'} variant="secondary">{task.mustDo ? '今日必须' : task.category}</Chip><Chip size="sm" color={trust.color} variant="soft">{trust.label}</Chip>{task.status === 'completed' ? <Chip size="sm" color="success" variant="soft">已完成</Chip> : null}</View><Card.Title>{task.title}</Card.Title><Card.Description>{task.progressLabel}</Card.Description></View>{task.kind === 'goal' && task.status !== 'completed' ? <View className="flex-row items-end gap-2"><View className="flex-1"><Field label={`补记完成量（${task.targetUnit}）`} value={progress} onChange={setProgress} keyboard="numeric" /></View><Button size="sm" onPress={() => void onGoalProgress(task.id, Number(progress))}>记录</Button></View> : null}<View className="flex-row items-center justify-between gap-3"><Text type="body-sm" color="muted">{task.timerMode === 'untimed' ? '不计时' : `${task.estimateMinutes} 分钟`}</Text><Button size="sm" variant="secondary" isDisabled={!canStart} accessibilityLabel={`开始${task.title}专注`} onPress={() => onStart(task.id, 'focus')}>专注</Button></View></Card.Body></Card>
   );
 }

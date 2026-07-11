@@ -31,6 +31,7 @@ export type TaskStore = {
   startSession(taskId: string, mode: SessionMode): Promise<void>;
   finishSession(outcome: SessionOutcome, completedAmount?: number): Promise<void>;
   finishRest(): Promise<void>;
+  addGoalProgress(taskId: string, amount: number): Promise<void>;
   selectMode(mode: SessionMode): void;
   toggleStrictOption(optionId: string): void;
   clearError(): void;
@@ -134,7 +135,9 @@ export function createTaskStore(
 
       set({ isFinishingSession: true, error: null });
       const endedAt = now();
-      const nextCompletedAmount = task.completedAmount + (outcome === 'completed' ? completedAmount ?? 0 : 0);
+      const nextCompletedAmount = task.kind === 'goal'
+        ? Math.min(task.targetAmount ?? 0, task.completedAmount + (outcome === 'completed' ? completedAmount ?? 0 : 0))
+        : task.completedAmount;
       const completed = outcome === 'completed' &&
         (task.kind === 'pomodoro' || nextCompletedAmount >= (task.targetAmount ?? Number.POSITIVE_INFINITY));
       const nextTask: Task = {
@@ -178,6 +181,21 @@ export function createTaskStore(
       } catch (error) {
         set({ isFinishingSession: false, error: errorMessage(error) });
       }
+    },
+    async addGoalProgress(taskId, amount) {
+      const task = get().tasks.find((candidate) => candidate.id === taskId);
+      if (!task || task.kind !== 'goal' || !['pending', 'failed'].includes(task.status) || amount <= 0) {
+        return set({ error: '目标进度无效或任务正在执行' });
+      }
+      const completedAmount = Math.min(task.targetAmount ?? 0, task.completedAmount + amount);
+      const nextTask = { ...task, completedAmount,
+        status: completedAmount >= (task.targetAmount ?? Number.POSITIVE_INFINITY) ? 'completed' as const : 'pending' as const,
+        progressLabel: '' };
+      nextTask.progressLabel = taskProgressLabel(nextTask);
+      try {
+        await repository.addGoalProgress(nextTask, amount, `task-progress-${taskId}-${now()}-${Math.random().toString(36).slice(2, 6)}`);
+        set((state) => ({ tasks: state.tasks.map((candidate) => candidate.id === taskId ? nextTask : candidate), error: null }));
+      } catch (error) { set({ error: errorMessage(error) }); }
     },
     selectMode(mode) { set({ selectedMode: mode }); },
     toggleStrictOption(optionId) {

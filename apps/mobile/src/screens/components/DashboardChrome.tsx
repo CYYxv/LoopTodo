@@ -5,11 +5,12 @@ import { Card } from 'heroui-native/card';
 import { Chip } from 'heroui-native/chip';
 import { Text } from 'heroui-native/text';
 
-export type PanelKey = 'tasks' | 'focus' | 'social' | 'family';
+export type PanelKey = 'tasks' | 'focus' | 'habits' | 'social' | 'family';
 
 const panelLabels: Record<PanelKey, string> = {
   tasks: '待办',
   focus: '专注',
+  habits: '习惯',
   social: '战队',
   family: '家庭',
 };
@@ -76,7 +77,7 @@ export function PanelTabs({
   onPanelChange: (panel: PanelKey) => void;
 }) {
   return (
-    <View className="flex-row gap-2">
+    <View className="flex-row flex-wrap gap-2">
       {(Object.keys(panelLabels) as PanelKey[]).map((panel) => (
         <Button
           key={panel}
@@ -84,7 +85,7 @@ export function PanelTabs({
           variant={activePanel === panel ? 'primary' : 'secondary'}
           accessibilityLabel={`切换到${panelLabels[panel]}`}
           onPress={() => onPanelChange(panel)}
-          className="flex-1"
+          className="min-w-16 flex-1"
         >
           {panelLabels[panel]}
         </Button>

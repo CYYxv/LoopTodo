@@ -80,6 +80,39 @@ export class PrismaTaskFocusRepository implements TaskFocusRepository {
     return { status: 'ok', value: taskView(await this.prisma.task.findUniqueOrThrow({ where: { id } })) };
   }
 
+  async addGoalProgress(input: Parameters<TaskFocusRepository['addGoalProgress']>[0]): Promise<MutationResult<TaskView>> {
+    const replay = await this.prisma.taskProgressEntry.findFirst({ where: { userId: input.userId, idempotencyKey: input.idempotencyKey } });
+    if (replay) {
+      if (replay.taskId !== input.taskId || replay.amount.toNumber() !== input.amount) return { status: 'idempotency-conflict' };
+      const task = await this.prisma.task.findFirst({ where: { id: input.taskId, userId: input.userId } });
+      return task ? { status: 'ok', value: taskView(task), replayed: true } : { status: 'not-found' };
+    }
+    try {
+      return await this.prisma.$transaction(async (transaction) => {
+        const task = await transaction.task.findFirst({ where: { id: input.taskId, userId: input.userId, status: { in: ['pending', 'failed'] } } });
+        if (!task) return { status: 'not-found' } as const;
+        if (task.taskType !== 'goal' || !task.targetAmount) return { status: 'not-found' } as const;
+        if (task.activeSessionId) return { status: 'already-active' } as const;
+        const nextAmount = Math.min(task.targetAmount.toNumber(), task.completedAmount.toNumber() + input.amount);
+        const updated = await transaction.task.updateMany({ where: { id: task.id, userId: input.userId, version: input.version, activeSessionId: null },
+          data: { completedAmount: nextAmount, status: nextAmount >= task.targetAmount.toNumber() ? 'completed' : 'pending', version: { increment: 1 } } });
+        if (updated.count !== 1) return { status: 'conflict' } as const;
+        await transaction.taskProgressEntry.create({ data: { userId: input.userId, taskId: task.id, amount: input.amount, idempotencyKey: input.idempotencyKey } });
+        return { status: 'ok', value: taskView(await transaction.task.findUniqueOrThrow({ where: { id: task.id } })) } as const;
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (error) {
+      if (isUniqueConflict(error)) {
+        const existing = await this.prisma.taskProgressEntry.findFirst({ where: { userId: input.userId, idempotencyKey: input.idempotencyKey } });
+        if (existing && existing.taskId === input.taskId && existing.amount.toNumber() === input.amount) {
+          const task = await this.prisma.task.findFirst({ where: { id: input.taskId, userId: input.userId } });
+          if (task) return { status: 'ok', value: taskView(task), replayed: true };
+        }
+        return { status: 'idempotency-conflict' };
+      }
+      throw error;
+    }
+  }
+
   async startSession(input: Parameters<TaskFocusRepository['startSession']>[0]): Promise<MutationResult<SessionView>> {
     const replay = await this.prisma.focusSession.findFirst({ where: { userId: input.userId, startIdempotencyKey: input.idempotencyKey } });
     if (replay) return replay.taskId === input.taskId && replay.mode === input.mode

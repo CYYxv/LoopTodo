@@ -60,7 +60,16 @@ export class TaskFocusService {
   }
 
   async completeTask(userId: string, id: string, version: number) {
+    const task = await this.getTask(userId, id);
+    if (task.taskType === 'goal' && task.completedAmount < (task.targetAmount ?? Number.POSITIVE_INFINITY)) {
+      throw new BadRequestException({ code: 'GOAL_NOT_REACHED', message: '目标完成量尚未达到' });
+    }
     return unwrap(await this.repository.updateTask(userId, id, version, { status: 'completed' }));
+  }
+
+  async addGoalProgress(userId: string, id: string, version: number, amount: number, key: string) {
+    validateKey(key);
+    return unwrap(await this.repository.addGoalProgress({ userId, taskId: id, version, amount, idempotencyKey: key }));
   }
 
   async startSession(userId: string, taskId: string, mode: 'focus' | 'lock', key: string, trustLevel: SessionView['trustLevel']) {

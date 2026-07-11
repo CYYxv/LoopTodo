@@ -3,6 +3,7 @@ import { Body, Controller, Delete, Get, Headers, Param, ParseIntPipe, Patch, Pos
 import { AccessTokenGuard, type AuthenticatedRequest } from '../auth/access-token.guard';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { CompleteTaskDto } from './dto/complete-task.dto';
+import { AddGoalProgressDto } from './dto/add-goal-progress.dto';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { FinishSessionDto } from './dto/finish-session.dto';
 import { StartSessionDto } from './dto/start-session.dto';
@@ -48,6 +49,12 @@ export class TaskFocusController {
   @Post('tasks/:id/complete')
   completeTask(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() input: CompleteTaskDto) {
     return this.service.completeTask(request.auth.sub, id, input.version);
+  }
+
+  @Post('tasks/:id/progress')
+  addGoalProgress(@Req() request: AuthenticatedRequest, @Param('id') id: string,
+    @Headers('idempotency-key') key: string, @Body() input: AddGoalProgressDto) {
+    return this.service.addGoalProgress(request.auth.sub, id, input.version, input.amount, key);
   }
 
   @Post('tasks/:id/start-focus')

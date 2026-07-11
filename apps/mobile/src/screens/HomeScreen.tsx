@@ -8,6 +8,8 @@ import { Chip } from 'heroui-native/chip';
 import { Text } from 'heroui-native/text';
 
 import { ActiveSessionScreen } from '@/modules/focus-session/components/ActiveSessionScreen';
+import { HabitsPanel } from '@/modules/habits/components/HabitsPanel';
+import { useHabitStore } from '@/modules/habits/habit.store';
 import { FocusPanel } from '@/modules/focus-session/components/FocusPanel';
 import { FamilyPanel, SocialPanel } from '@/modules/social/components/SocialPanels';
 import { TasksPanel } from '@/modules/tasks/components/TasksPanel';
@@ -34,13 +36,22 @@ export function HomeScreen() {
   const startSession = useTaskStore((state) => state.startSession);
   const finishSession = useTaskStore((state) => state.finishSession);
   const finishRest = useTaskStore((state) => state.finishRest);
+  const addGoalProgress = useTaskStore((state) => state.addGoalProgress);
   const selectMode = useTaskStore((state) => state.selectMode);
   const toggleStrictOption = useTaskStore((state) => state.toggleStrictOption);
   const clearError = useTaskStore((state) => state.clearError);
+  const habits = useHabitStore((state) => state.habits);
+  const hydrateHabits = useHabitStore((state) => state.hydrate);
+  const createHabit = useHabitStore((state) => state.createHabit);
+  const addHabitProgress = useHabitStore((state) => state.addProgress);
+  const archiveHabit = useHabitStore((state) => state.archiveHabit);
+  const habitError = useHabitStore((state) => state.error);
+  const clearHabitError = useHabitStore((state) => state.clearError);
 
   useEffect(() => {
     void hydrate();
-  }, [hydrate]);
+    void hydrateHabits();
+  }, [hydrate, hydrateHabits]);
 
   const todayMinutes = useMemo(
     () =>
@@ -85,14 +96,14 @@ export function HomeScreen() {
             todayMinutes={todayMinutes}
             completedSessions={sessionRecords.filter((record) => record.outcome === 'completed').length}
           />
-          {error ? (
+          {error || habitError ? (
             <Card variant="secondary">
               <Card.Body className="gap-2">
                 <Chip size="sm" color="danger" variant="soft">
                   操作失败
                 </Chip>
-                <Text type="body-sm">{error}</Text>
-                <Text type="body-xs" color="muted" onPress={clearError}>
+                <Text type="body-sm">{error ?? habitError}</Text>
+                <Text type="body-xs" color="muted" onPress={() => { clearError(); clearHabitError(); }}>
                   点击关闭
                 </Text>
               </Card.Body>
@@ -104,6 +115,7 @@ export function HomeScreen() {
               tasks={tasks}
               onCreateTask={handleCreateTask}
               onStart={(taskId, mode) => void startSession(taskId, mode)}
+              onGoalProgress={addGoalProgress}
             />
           ) : null}
           {activePanel === 'focus' ? (
@@ -120,6 +132,7 @@ export function HomeScreen() {
               }}
             />
           ) : null}
+          {activePanel === 'habits' ? <HabitsPanel habits={habits} onCreate={createHabit} onProgress={addHabitProgress} onArchive={archiveHabit} /> : null}
           {activePanel === 'social' ? <SocialPanel /> : null}
           {activePanel === 'family' ? <FamilyPanel /> : null}
         </ScrollView>

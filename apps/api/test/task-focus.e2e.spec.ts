@@ -52,6 +52,17 @@ class MemoryTaskFocusRepository implements TaskFocusRepository {
     Object.assign(task, { status: 'archived', version: task.version + 1, updatedAt: new Date() });
     return { status: 'ok', value: task };
   }
+  async addGoalProgress(input: Parameters<TaskFocusRepository['addGoalProgress']>[0]): Promise<MutationResult<TaskView>> {
+    const task = this.tasks.find((item) => item.userId === input.userId && item.id === input.taskId && item.taskType === 'goal');
+    if (!task) return { status: 'not-found' };
+    if (task.activeSessionId) return { status: 'already-active' };
+    if (task.version !== input.version) return { status: 'conflict' };
+    task.completedAmount = Math.min(task.targetAmount ?? 0, task.completedAmount + input.amount);
+    task.status = task.completedAmount >= (task.targetAmount ?? Number.POSITIVE_INFINITY) ? 'completed' : 'pending';
+    task.version += 1;
+    task.updatedAt = new Date();
+    return { status: 'ok', value: task };
+  }
   async startSession(input: Parameters<TaskFocusRepository['startSession']>[0]): Promise<MutationResult<SessionView>> {
     const replay = this.sessions.find((item) => item.userId === input.userId && item.startKey === input.idempotencyKey);
     if (replay) return replay.taskId === input.taskId && replay.mode === input.mode
@@ -144,6 +155,10 @@ describe('task focus API', () => {
     const secondTask = (await app.inject({ method: 'POST', url: '/tasks', headers: authOne, payload: {
       title: '整理笔记', taskType: 'pomodoro', timerMode: 'untimed', estimatedMinutes: 25, restMinutes: 0,
     } })).json().data;
+    const goalTask = (await app.inject({ method: 'POST', url: '/tasks', headers: authOne, payload: {
+      title: '阅读目标', taskType: 'goal', timerMode: 'countdown', estimatedMinutes: 30, restMinutes: 5,
+      deadlineAt: '2026-07-31T23:59:59.000Z', targetAmount: 5, targetUnit: '页',
+    } })).json().data;
     expect((await app.inject({ method: 'GET', url: `/tasks/${task.id}`, headers: authTwo })).statusCode).toBe(404);
 
     const updated = await app.inject({ method: 'PATCH', url: `/tasks/${task.id}`, headers: authOne, payload: { version: 1, title: '完成两套卷' } });
@@ -171,8 +186,13 @@ describe('task focus API', () => {
     const archived = await app.inject({ method: 'DELETE', url: `/tasks/${secondTask.id}?version=2`, headers: authOne });
     expect(archived.json().data.status).toBe('archived');
 
+    const goalProgress = await app.inject({ method: 'POST', url: `/tasks/${goalTask.id}/progress`,
+      headers: { ...authOne, 'idempotency-key': 'goal-progress-key-001' }, payload: { version: 1, amount: 5 } });
+    expect(goalProgress.json().data.completedAmount).toBe(5);
+    expect(goalProgress.json().data.status).toBe('completed');
+
     const sync = await app.inject({ method: 'GET', url: '/sync/task-focus?since=1970-01-01T00:00:00.000Z', headers: authOne });
-    expect(sync.json().data.tasks).toHaveLength(2);
+    expect(sync.json().data.tasks).toHaveLength(3);
     expect(sync.json().data.sessions).toHaveLength(1);
   });
 });
