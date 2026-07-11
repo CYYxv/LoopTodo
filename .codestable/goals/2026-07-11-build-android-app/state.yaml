@@ -1,0 +1,22 @@
+schema_version: 1
+goal: "build-android-app"
+status: active
+objective: "依据 PRD 与技术文档持续构建 LoopTodo Android 应用，并对重要功能完成审查、提交和远端保存。"
+start_point: "H 盘已有 Expo SDK 57 + React Native + TypeScript 的交互原型，但尚未初始化 Git、缺少持久化与正式功能分层。"
+acceptance:
+  - "Android 应用按 PRD 的 MVP 边界实现可运行的任务闭环核心能力。"
+  - "实现遵守技术文档的 React Native、HeroUI Native、Zustand、SQLite 与 Android 原生能力边界。"
+  - "每个重要功能均有代码审查、验证证据、Git commit，并推送到指定 GitHub 仓库。"
+  - "项目文件与主要开发环境位于 H 盘。"
+non_goals:
+  - "在未经专项预研和真实设备验证前承诺 Android 锁机绝对不可绕过。"
+  - "MVP 阶段实现 iOS、完整 Web/桌面端或第三方 App 内容识别。"
+budget:
+  kind: none
+  limit: null
+current_iteration: 4
+next_action: "提交并推送原型基线，然后根据完整技术文档创建项目 roadmap。"
+blocker_signature: null
+blocker_count: 0
+owner_stop: null
+updated_at: "2026-07-11"
