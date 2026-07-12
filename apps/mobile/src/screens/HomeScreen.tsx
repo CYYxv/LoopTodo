@@ -25,6 +25,8 @@ import { SubscriptionPanel } from '@/modules/subscription/components/Subscriptio
 import { RewardPanel } from '@/modules/rewards/components/RewardPanel';
 import { SettingsPanel } from '@/modules/settings/components/SettingsPanel';
 import type { CreateTaskInput } from '@/modules/tasks/task.types';
+import { AccountCard } from '@/modules/auth/components/AccountCard';
+import { useAuthStore } from '@/modules/auth/auth.store';
 import {
   DashboardSummary,
   Header,
@@ -34,6 +36,7 @@ import {
 
 export function HomeScreen() {
   const [activePanel, setActivePanel] = useState<PanelKey>('tasks');
+  const hydrateAuth = useAuthStore((state) => state.hydrate);
   const colorScheme = useColorScheme(); const { width } = useWindowDimensions();
   const tasks = useTaskStore((state) => state.tasks);
   const activeSession = useTaskStore((state) => state.activeSession);
@@ -84,8 +87,9 @@ export function HomeScreen() {
     void hydrateHabits();
     void hydrateSync();
     void hydrateNotifications();
+    void hydrateAuth();
     void refreshLockCapabilities();
-  }, [hydrate, hydrateHabits, hydrateNotifications, hydrateSync, refreshLockCapabilities]);
+  }, [hydrate, hydrateAuth, hydrateHabits, hydrateNotifications, hydrateSync, refreshLockCapabilities]);
 
   const todayMinutes = useMemo(
     () =>
@@ -127,6 +131,7 @@ export function HomeScreen() {
           showsVerticalScrollIndicator={false}
         >
           <Header />
+          <AccountCard />
           {isHydrating ? <Card accessibilityRole="progressbar"><Card.Body className="items-center gap-2"><ActivityIndicator /><Text type="body-sm">正在恢复本地任务与专注状态…</Text></Card.Body></Card> : null}
           <DashboardSummary
             todayMinutes={todayMinutes}

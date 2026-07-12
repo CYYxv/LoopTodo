@@ -1,0 +1,4 @@
+LOOPTODO_RELEASE_STORE_FILE=H:/LoopTodo/keystores/looptodo-release.jks
+LOOPTODO_RELEASE_STORE_PASSWORD=replace-with-strong-password
+LOOPTODO_RELEASE_KEY_ALIAS=looptodo
+LOOPTODO_RELEASE_KEY_PASSWORD=replace-with-strong-password

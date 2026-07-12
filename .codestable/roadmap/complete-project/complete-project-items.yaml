@@ -166,7 +166,7 @@ items:
   - slug: release-apk
     description: 交付 Docker 本地环境、production 配置模板、release APK/AAB 和安装验收
     depends_on: [android-compatibility, system-hardening]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-07-12-release-apk
     minimal_loop: false
     notes: 生产部署和商店发布需 owner 凭证与批准
