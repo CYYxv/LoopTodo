@@ -5,12 +5,13 @@ import { Card } from 'heroui-native/card';
 import { Chip } from 'heroui-native/chip';
 import { Text } from 'heroui-native/text';
 
-export type PanelKey = 'tasks' | 'focus' | 'habits' | 'social' | 'family';
+export type PanelKey = 'tasks' | 'focus' | 'habits' | 'statistics' | 'social' | 'family';
 
 const panelLabels: Record<PanelKey, string> = {
   tasks: '待办',
   focus: '专注',
   habits: '习惯',
+  statistics: '数据',
   social: '战队',
   family: '家庭',
 };

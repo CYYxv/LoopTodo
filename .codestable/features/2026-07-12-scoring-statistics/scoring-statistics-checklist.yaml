@@ -1,0 +1,27 @@
+feature: 2026-07-12-scoring-statistics
+created: 2026-07-12
+steps:
+  - id: S1
+    action: "建立追加式积分流水与迁移"
+    status: done
+  - id: S2
+    action: "实现可配置积分和连续天数算法"
+    status: done
+  - id: S3
+    action: "接入专注结算和统计 API"
+    status: done
+  - id: S4
+    action: "实现移动端数据统计页"
+    status: done
+  - id: S5
+    action: "审查并完成必要验证"
+    status: done
+checks:
+  - item: "重复同步不重复计分"
+    status: passed
+  - item: "同日多次完成只发一次连续分"
+    status: passed
+  - item: "锁机紧急退出保留惩罚语义"
+    status: passed
+  - item: "客户端不自行确认竞技积分"
+    status: passed

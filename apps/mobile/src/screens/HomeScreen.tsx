@@ -20,6 +20,7 @@ import { SyncStatusCard } from '@/modules/sync/components/SyncStatusCard';
 import { useSyncStore } from '@/modules/sync/sync.store';
 import { TasksPanel } from '@/modules/tasks/components/TasksPanel';
 import { useTaskStore } from '@/modules/tasks/task.store';
+import { StatisticsPanel } from '@/modules/scoring/components/StatisticsPanel';
 import type { CreateTaskInput } from '@/modules/tasks/task.types';
 import {
   DashboardSummary,
@@ -173,6 +174,7 @@ export function HomeScreen() {
             />
           ) : null}
           {activePanel === 'habits' ? <HabitsPanel habits={habits} onCreate={createHabit} onProgress={addHabitProgress} onArchive={archiveHabit} /> : null}
+          {activePanel === 'statistics' ? <StatisticsPanel records={sessionRecords} /> : null}
           {activePanel === 'social' ? <SocialPanel /> : null}
           {activePanel === 'family' ? <FamilyPanel /> : null}
         </ScrollView>

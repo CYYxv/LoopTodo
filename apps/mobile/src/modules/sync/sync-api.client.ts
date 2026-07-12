@@ -40,7 +40,7 @@ export function createHttpSyncClient(baseUrl: string, accessToken: string): Sync
       if (operation.type === 'session.finish') {
         if (!mappedSessionId) throw new Error('SESSION_MAPPING_PENDING');
         await request(`/focus-sessions/${mappedSessionId}/finish`, { method: 'POST', headers,
-          body: JSON.stringify({ outcome: operation.outcome === 'completed' ? 'completed' : 'cancelled',
+          body: JSON.stringify({ outcome: serverOutcome(operation.outcome, operation.record.mode),
             endedAt: new Date(operation.record.endedAt).toISOString(),
             actualMinutes: Math.ceil(operation.record.durationSeconds / 60),
             failureReasonText: operation.record.failureReason }) });
@@ -54,4 +54,9 @@ export function createHttpSyncClient(baseUrl: string, accessToken: string): Sync
       return request(`/sync/task-focus${cursor ? `?since=${encodeURIComponent(cursor)}` : ''}`);
     },
   };
+}
+
+export function serverOutcome(outcome: 'completed' | 'exited', mode: 'focus' | 'lock') {
+  if (outcome === 'completed') return 'completed';
+  return mode === 'lock' ? 'emergency_exit' : 'cancelled';
 }

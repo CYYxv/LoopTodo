@@ -5,10 +5,11 @@ import type { FinishSessionDto } from './dto/finish-session.dto';
 import type { UpdateTaskDto } from './dto/update-task.dto';
 import { DuplicateCategoryError, TASK_FOCUS_REPOSITORY, TaskIdentityConflictError, type MutationResult, type TaskFocusRepository } from './task-focus.repository';
 import type { SessionView, TaskView } from './task-focus.types';
+import { ScoringService } from '../scoring/scoring.service';
 
 @Injectable()
 export class TaskFocusService {
-  constructor(@Inject(TASK_FOCUS_REPOSITORY) private readonly repository: TaskFocusRepository) {}
+  constructor(@Inject(TASK_FOCUS_REPOSITORY) private readonly repository: TaskFocusRepository, private readonly scoring: ScoringService) {}
 
   listCategories(userId: string) { return this.repository.listCategories(userId); }
   async createCategory(userId: string, name: string, color?: string) {
@@ -86,7 +87,7 @@ export class TaskFocusService {
 
   async finishSession(userId: string, sessionId: string, key: string, input: FinishSessionDto) {
     validateKey(key);
-    return unwrap(await this.repository.finishSession({
+    const session = unwrap(await this.repository.finishSession({
       userId,
       sessionId,
       idempotencyKey: key,
@@ -97,6 +98,8 @@ export class TaskFocusService {
       endedAt: input.endedAt ? new Date(input.endedAt) : undefined,
       actualMinutes: input.actualMinutes,
     }));
+    await this.scoring.settleSession(userId, session.id);
+    return session;
   }
 
   listSessions(userId: string) { return this.repository.listSessions(userId); }

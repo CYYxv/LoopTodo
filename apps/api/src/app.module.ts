@@ -9,6 +9,7 @@ import { HabitModule } from './habits/habit.module';
 import { TaskFocusModule } from './task-focus/task-focus.module';
 import { NotificationModule } from './notifications/notification.module';
 import { TaskAiModule } from './task-ai/task-ai.module';
+import { ScoringModule } from './scoring/scoring.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { TaskAiModule } from './task-ai/task-ai.module';
     HabitModule,
     NotificationModule,
     TaskAiModule,
+    ScoringModule,
   ],
 })
 export class AppModule {}

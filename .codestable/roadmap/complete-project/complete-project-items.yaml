@@ -89,8 +89,8 @@ items:
   - slug: scoring-statistics
     description: 实现历史统计、连续天数、可信分和服务端可配置积分流水
     depends_on: [task-focus-api]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-07-12-scoring-statistics
     minimal_loop: false
     notes: 算法参数不硬编码在客户端
   - slug: social-realtime

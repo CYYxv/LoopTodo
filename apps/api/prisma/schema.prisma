@@ -107,6 +107,7 @@ model User {
   resourcePasses           ResourcePass[]
   aiMaterials              AiMaterial[]
   aiAudits                 AiAudit[]
+  scoreEvents              ScoreEvent[]
 
   @@map("users")
 }
@@ -362,12 +363,37 @@ model FocusSession {
   updatedAt            DateTime      @updatedAt @map("updated_at")
   user                 User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   task                 Task          @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  scoreEvent           ScoreEvent?
 
   @@unique([userId, startIdempotencyKey])
   @@unique([userId, finishIdempotencyKey])
   @@index([userId, updatedAt])
   @@index([taskId, endedAt])
   @@map("focus_sessions")
+}
+
+model ScoreEvent {
+  id              String       @id @default(uuid()) @db.Uuid
+  userId          String       @map("user_id") @db.Uuid
+  sessionId       String       @unique @map("session_id") @db.Uuid
+  scoreDate       DateTime     @map("score_date") @db.Date
+  outcome         FocusOutcome
+  trustLevel      TrustLevel   @map("trust_level")
+  durationMinutes Int          @map("duration_minutes")
+  streakDays      Int          @map("streak_days")
+  durationScore   Int          @map("duration_score")
+  streakScore     Int          @map("streak_score")
+  trustScore      Int          @map("trust_score")
+  penaltyScore    Int          @default(0) @map("penalty_score")
+  totalScore      Int          @map("total_score")
+  formulaVersion  String       @map("formula_version") @db.VarChar(40)
+  streakAwardKey  String?      @unique @map("streak_award_key") @db.VarChar(80)
+  createdAt       DateTime     @default(now()) @map("created_at")
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session         FocusSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([userId, scoreDate])
+  @@map("score_events")
 }
 
 model DeviceSession {
