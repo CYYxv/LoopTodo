@@ -209,9 +209,23 @@ describe('task store local loop', () => {
       targetUnit: null, mustDo: false, forcedTriggerTime: null, trustLevel: 'medium',
     };
 
-    await store.getState().createTask(input);
+    const result = await store.getState().createTask(input);
 
+    expect(result).toEqual({ ok: false, error: '写入失败' });
     expect(store.getState().error).toBe('写入失败');
     expect(store.getState().tasks).toHaveLength(1);
+  });
+
+  test('returns the created task id after a successful write', async () => {
+    const { repository } = createRepository();
+    const store = createTaskStore(repository, []);
+    const result = await store.getState().createTask({
+      title: 'new task', category: 'inbox', kind: 'pomodoro', timerMode: 'untimed',
+      estimateMinutes: 25, restMinutes: 5, deadlineAt: null, targetAmount: null,
+      targetUnit: null, mustDo: false, forcedTriggerTime: null, trustLevel: 'medium',
+    });
+
+    expect(result).toEqual({ ok: true, taskId: 'task-created' });
+    expect(store.getState().selectedTaskId).toBe('task-created');
   });
 });

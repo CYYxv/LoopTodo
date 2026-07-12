@@ -5,6 +5,7 @@ import { Button, Card, Chip, Input, Label, Text, TextField } from '@/ui/hero-run
 
 import type { SessionMode } from '@/modules/focus-session/focus-session.types';
 import type { CreateTaskInput, Task, TaskKind, TimerMode, TrustLevel } from '@/modules/tasks/task.types';
+import type { CreateTaskResult } from '@/modules/tasks/task.store';
 
 const trustCopy: Record<TrustLevel, { label: string; color: 'success' | 'warning' | 'danger' }> = {
   high: { label: '高可信', color: 'success' },
@@ -19,7 +20,7 @@ export function TasksPanel({
   onGoalProgress,
 }: {
   tasks: Task[];
-  onCreateTask: (input: CreateTaskInput) => Promise<void>;
+  onCreateTask: (input: CreateTaskInput) => Promise<CreateTaskResult>;
   onStart: (taskId: string, mode: SessionMode) => void;
   onGoalProgress: (taskId: string, amount: number) => Promise<void>;
 }) {
@@ -35,7 +36,7 @@ export function TasksPanel({
   );
 }
 
-function TaskCreateForm({ onCreate }: { onCreate: (input: CreateTaskInput) => Promise<void> }) {
+function TaskCreateForm({ onCreate }: { onCreate: (input: CreateTaskInput) => Promise<CreateTaskResult> }) {
   const [title, setTitle] = useState('');
   const [kind, setKind] = useState<TaskKind>('pomodoro');
   const [timerMode, setTimerMode] = useState<TimerMode>('countdown');
@@ -50,7 +51,7 @@ function TaskCreateForm({ onCreate }: { onCreate: (input: CreateTaskInput) => Pr
   const submit = async () => {
     const estimateMinutes = Number(minutes);
     const parsedDeadline = deadline ? Date.parse(`${deadline}T23:59:59`) : null;
-    await onCreate({
+    const result = await onCreate({
       title,
       category: '收集箱',
       kind,
@@ -64,7 +65,7 @@ function TaskCreateForm({ onCreate }: { onCreate: (input: CreateTaskInput) => Pr
       forcedTriggerTime: mustDo ? forcedTriggerTime : null,
       trustLevel: 'medium',
     });
-    setTitle('');
+    if (result.ok) setTitle('');
   };
 
   return (

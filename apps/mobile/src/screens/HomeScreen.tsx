@@ -23,6 +23,7 @@ import { SubscriptionPanel } from '@/modules/subscription/components/Subscriptio
 import { RewardPanel } from '@/modules/rewards/components/RewardPanel';
 import { SettingsPanel } from '@/modules/settings/components/SettingsPanel';
 import type { CreateTaskInput } from '@/modules/tasks/task.types';
+import type { CreateTaskResult } from '@/modules/tasks/task.store';
 import { AccountCard } from '@/modules/auth/components/AccountCard';
 import { useAuthStore } from '@/modules/auth/auth.store';
 import {
@@ -105,9 +106,10 @@ export function HomeScreen() {
     ? tasks.find((task) => task.id === activeSession.taskId) ?? null
     : null;
 
-  const handleCreateTask = async (input: CreateTaskInput) => {
-    await createTask(input);
-    setActivePanel('tasks');
+  const handleCreateTask = async (input: CreateTaskInput): Promise<CreateTaskResult> => {
+    const result = await createTask(input);
+    if (result.ok) setActivePanel('tasks');
+    return result;
   };
 
   return (

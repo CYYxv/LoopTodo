@@ -3,10 +3,13 @@ import { View } from 'react-native';
 import { Button, Card, Chip, Input, Label, Text, TextField } from '@/ui/hero-runtime';
 
 import { useTaskAiStore } from '../task-ai.store';
+import type { AiMaterial } from '../task-ai.types';
+
+const emptyMaterials: AiMaterial[] = [];
 
 export function TaskAiPanel({ taskId, readOnly }: { taskId: string; readOnly: boolean }) {
   const [title, setTitle] = useState(''); const [content, setContent] = useState(''); const [question, setQuestion] = useState('');
-  const configured = useTaskAiStore((state) => state.configured); const materials = useTaskAiStore((state) => state.materials[taskId] ?? []);
+  const configured = useTaskAiStore((state) => state.configured); const materials = useTaskAiStore((state) => state.materials[taskId] ?? emptyMaterials);
   const answer = useTaskAiStore((state) => state.answer); const loading = useTaskAiStore((state) => state.loading); const error = useTaskAiStore((state) => state.error);
   const load = useTaskAiStore((state) => state.load); const addMaterial = useTaskAiStore((state) => state.addMaterial); const ask = useTaskAiStore((state) => state.ask);
   useEffect(() => { if (configured) void load(taskId); }, [configured, load, taskId]);

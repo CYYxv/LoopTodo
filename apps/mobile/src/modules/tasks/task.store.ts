@@ -32,7 +32,7 @@ export type TaskStore = {
   isFinishingSession: boolean;
   error: string | null;
   hydrate(): Promise<void>;
-  createTask(input: CreateTaskInput): Promise<void>;
+  createTask(input: CreateTaskInput): Promise<CreateTaskResult>;
   startSession(taskId: string, mode: SessionMode): Promise<void>;
   finishSession(outcome: SessionOutcome, completedAmount?: number, exitReason?: string): Promise<void>;
   finishRest(): Promise<void>;
@@ -41,6 +41,8 @@ export type TaskStore = {
   toggleStrictOption(optionId: string): void;
   clearError(): void;
 };
+
+export type CreateTaskResult = { ok: true; taskId: string } | { ok: false; error: string };
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : '发生未知错误';
@@ -101,14 +103,17 @@ export function createTaskStore(
       }
     },
     async createTask(input) {
-      if (get().isHydrating) return;
+      if (get().isHydrating) return { ok: false, error: '任务数据仍在恢复，请稍后重试' };
       set({ error: null });
       try {
         const task = await repository.create(input);
         set((state) => ({ tasks: [task, ...state.tasks], selectedTaskId: task.id }));
         if (task.mustDo && task.forcedTriggerTime) try { await scheduleTask(forcedScheduler, task); } catch (error) { set({ error: errorMessage(error) }); }
+        return { ok: true, taskId: task.id };
       } catch (error) {
-        set({ error: errorMessage(error) });
+        const nextError = errorMessage(error);
+        set({ error: nextError });
+        return { ok: false, error: nextError };
       }
     },
     async startSession(taskId, mode) {

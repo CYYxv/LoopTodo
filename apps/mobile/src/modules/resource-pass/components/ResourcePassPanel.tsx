@@ -9,9 +9,12 @@ import { LocalVideoPlayer } from './LocalVideoPlayer';
 import { RestrictedWebView } from './RestrictedWebView';
 import { TaskAiPanel } from '@/modules/task-ai/components/TaskAiPanel';
 
+const emptyResources: ResourcePass[] = [];
+
 export function ResourcePassPanel({ taskId, readOnly = false }: { taskId: string | null; readOnly?: boolean }) {
   const [webType, setWebType] = useState<'url' | 'domain'>('url'); const [value, setValue] = useState(''); const [active, setActive] = useState<ResourcePass | null>(null);
-  const resources = useResourcePassStore((state) => taskId ? state.byTask[taskId] ?? [] : []);
+  const resources = useResourcePassStore((state) => taskId ? state.byTask[taskId] ?? emptyResources : emptyResources);
+  const loadState = useResourcePassStore((state) => taskId ? state.loadStateByTask[taskId] ?? 'idle' : 'idle');
   const error = useResourcePassStore((state) => state.error); const load = useResourcePassStore((state) => state.load);
   const add = useResourcePassStore((state) => state.add); const remove = useResourcePassStore((state) => state.remove);
   useEffect(() => { if (taskId) void load(taskId); }, [load, taskId]);
@@ -20,6 +23,7 @@ export function ResourcePassPanel({ taskId, readOnly = false }: { taskId: string
   const pick = async (type: 'local_video' | 'local_file') => { const asset = await pickLocalResource(type); if (asset) await add({ taskId, type, ...asset }); };
   return <Card variant="secondary"><Card.Body className="gap-3"><View><Card.Title>任务资源通行证</Card.Title><Card.Description>{readOnly ? '专注中只读，不能临时扩展白名单' : '开始前批准资源；专注中无法修改'}</Card.Description></View>
     {!readOnly ? <><View className="flex-row gap-2"><Button size="sm" variant={webType === 'url' ? 'primary' : 'secondary'} onPress={() => setWebType('url')}>精确页面</Button><Button size="sm" variant={webType === 'domain' ? 'primary' : 'secondary'} onPress={() => setWebType('domain')}>整个域名</Button></View><TextField><Label>HTTPS 地址</Label><Input value={value} onChangeText={setValue} placeholder="https://example.com/material" /></TextField><View className="flex-row flex-wrap gap-2"><Button size="sm" isDisabled={!value.trim()} onPress={() => void addWeb()}>批准网页</Button><Button size="sm" variant="secondary" onPress={() => void pick('local_video')}>选择本地视频</Button><Button size="sm" variant="secondary" onPress={() => void pick('local_file')}>选择本地文件</Button></View></> : null}
+    {loadState === 'loading' ? <Text type="body-xs" color="muted">正在加载任务资源…</Text> : null}
     {error ? <Text type="body-xs">{error}</Text> : null}
     {resources.map((resource) => <View key={resource.id} className="flex-row items-center justify-between gap-2"><View className="flex-1"><Text type="body-sm">{resource.displayName}</Text><Text type="body-xs" color="muted">{label(resource.type)} · {resource.valueHash}</Text></View><Button size="sm" variant="secondary" onPress={() => setActive(resource)}>打开</Button>{!readOnly ? <Text type="body-xs" onPress={() => void remove(taskId, resource.id)}>删除</Text> : null}</View>)}
     {resources.length === 0 ? <Text type="body-xs" color="muted">尚未批准资源</Text> : null}
