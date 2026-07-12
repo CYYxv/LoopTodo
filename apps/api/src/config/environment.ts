@@ -14,6 +14,9 @@ export type Environment = {
   SCORING_NORMAL_TRUST_POINTS: number;
   SCORING_UNTIMED_POINTS: number;
   SCORING_EMERGENCY_EXIT_PENALTY: number;
+  RANK_THRESHOLDS_JSON: string;
+  TEAM_AVERAGE_WEIGHT: number;
+  TEAM_TOTAL_BONUS_WEIGHT: number;
 };
 
 export function validateEnvironment(input: Record<string, unknown>): Environment {
@@ -33,6 +36,9 @@ export function validateEnvironment(input: Record<string, unknown>): Environment
     SCORING_NORMAL_TRUST_POINTS: finiteNumber(input.SCORING_NORMAL_TRUST_POINTS ?? 7, 'SCORING_NORMAL_TRUST_POINTS'),
     SCORING_UNTIMED_POINTS: finiteNumber(input.SCORING_UNTIMED_POINTS ?? 5, 'SCORING_UNTIMED_POINTS'),
     SCORING_EMERGENCY_EXIT_PENALTY: finiteNumber(input.SCORING_EMERGENCY_EXIT_PENALTY ?? -30, 'SCORING_EMERGENCY_EXIT_PENALTY'),
+    RANK_THRESHOLDS_JSON: rankThresholds(input.RANK_THRESHOLDS_JSON ?? '[0,500,1500,3000,5000,8000]'),
+    TEAM_AVERAGE_WEIGHT: finiteNumber(input.TEAM_AVERAGE_WEIGHT ?? 0.7, 'TEAM_AVERAGE_WEIGHT'),
+    TEAM_TOTAL_BONUS_WEIGHT: finiteNumber(input.TEAM_TOTAL_BONUS_WEIGHT ?? 0.3, 'TEAM_TOTAL_BONUS_WEIGHT'),
   };
   return environment;
 }
@@ -58,5 +64,14 @@ function positiveInteger(value: unknown, name: string) {
 function finiteNumber(value: unknown, name: string) {
   const normalized = Number(value);
   if (!Number.isFinite(normalized)) throw new Error(`${name} must be a finite number`);
+  return normalized;
+}
+
+function rankThresholds(value: unknown) {
+  const normalized = String(value);
+  let parsed: unknown;
+  try { parsed = JSON.parse(normalized); } catch { throw new Error('RANK_THRESHOLDS_JSON must be valid JSON'); }
+  if (!Array.isArray(parsed) || parsed.length !== 6 || !parsed.every((item) => Number.isFinite(item))) throw new Error('RANK_THRESHOLDS_JSON must contain six numeric thresholds');
+  if (parsed.some((item, index) => index > 0 && item <= parsed[index - 1])) throw new Error('RANK_THRESHOLDS_JSON thresholds must be strictly increasing');
   return normalized;
 }

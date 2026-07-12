@@ -1,6 +1,7 @@
 import { ConnectedSocket, MessageBody, SubscribeMessage, WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
 import type { OnGatewayConnection } from '@nestjs/websockets';
 import type { OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import type { Server, Socket } from 'socket.io';
 
 import { TokenService } from '../auth/token.service';
@@ -12,7 +13,8 @@ import { EventBusService } from '../common/event-bus.module';
 export class SocialGateway implements OnGatewayConnection, OnModuleInit, OnModuleDestroy {
   @WebSocketServer() server!: Server;
   constructor(private readonly tokens: TokenService, private readonly social: SocialService, private readonly events: EventBusService) {}
-  private readonly scoreListener = (userId: string) => { void this.broadcastPk(userId); };
+  private readonly logger = new Logger(SocialGateway.name);
+  private readonly scoreListener = (userId: string) => { void this.broadcastPk(userId).catch((error) => this.logger.error('Failed to broadcast PK progress', error)); };
   onModuleInit() { this.events.on('score.settled', this.scoreListener); }
   onModuleDestroy() { this.events.off('score.settled', this.scoreListener); }
 

@@ -11,6 +11,7 @@ import { TextField } from 'heroui-native/text-field';
 
 import { MetricCard } from '@/screens/components/DashboardChrome';
 import { useSocialStore } from '../social.store';
+import { CompetitionPanel } from '@/modules/competition/components/CompetitionPanel';
 
 export function SocialPanel() {
   const [email, setEmail] = useState(''); const [roomName, setRoomName] = useState(''); const [inviteCode, setInviteCode] = useState('');
@@ -22,6 +23,7 @@ export function SocialPanel() {
   useEffect(() => { if (configured) void load(); }, [configured, load]);
   return (
     <View className="gap-4">
+      <CompetitionPanel />
       <Card>
         <Card.Body className="gap-3">
           <View className="flex-row items-center justify-between"><Chip size="sm" color="accent" variant="soft">好友 PK</Chip><Chip size="sm" color={configured ? 'success' : 'warning'} variant="soft">{configured ? '实时已连接' : '登录后启用'}</Chip></View>

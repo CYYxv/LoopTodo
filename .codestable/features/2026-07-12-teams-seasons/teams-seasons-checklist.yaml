@@ -1,0 +1,27 @@
+feature: 2026-07-12-teams-seasons
+created: 2026-07-12
+steps:
+  - id: S1
+    action: "实现半年赛季和结算快照"
+    status: done
+  - id: S2
+    action: "实现段位阈值与降段规则"
+    status: done
+  - id: S3
+    action: "实现四类个人排行榜"
+    status: done
+  - id: S4
+    action: "实现万人战队和战队榜"
+    status: done
+  - id: S5
+    action: "实现移动端竞技界面并审查"
+    status: done
+checks:
+  - item: "赛季积分与历史快照可审计"
+    status: passed
+  - item: "新赛季下降三个大段"
+    status: passed
+  - item: "并发加入不突破 10000 人"
+    status: passed
+  - item: "战队公式服务端可配置"
+    status: passed

@@ -12,6 +12,7 @@ import { TaskAiModule } from './task-ai/task-ai.module';
 import { ScoringModule } from './scoring/scoring.module';
 import { SocialModule } from './social/social.module';
 import { EventBusModule } from './common/event-bus.module';
+import { TeamsSeasonsModule } from './teams-seasons/teams-seasons.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { EventBusModule } from './common/event-bus.module';
     TaskAiModule,
     ScoringModule,
     SocialModule,
+    TeamsSeasonsModule,
   ],
 })
 export class AppModule {}

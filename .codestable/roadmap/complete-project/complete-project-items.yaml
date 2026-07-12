@@ -103,8 +103,8 @@ items:
   - slug: teams-seasons
     description: 实现排行榜、段位、赛季结算、战队与规模压力测试
     depends_on: [social-realtime, scoring-statistics]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-07-12-teams-seasons
     minimal_loop: false
     notes: 战队公式需 owner 确认默认参数
   - slug: subscription-entitlements
