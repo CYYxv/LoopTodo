@@ -152,8 +152,8 @@ items:
   - slug: system-hardening
     description: 汇总并通过客户端、API、原生、实时和压力回归测试
     depends_on: [forced-trigger-scheduler, task-ai-service, teams-seasons, mobile-polish-accessibility, observability-security]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-07-12-system-hardening
     minimal_loop: false
     notes: 修复跨模块 blocking 后才能结束
   - slug: android-compatibility

@@ -30,7 +30,10 @@ services:
 
   api:
     build: ./apps/api
+    command: ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]
+    restart: unless-stopped
     environment:
+      NODE_ENV: development
       PORT: 3000
       DATABASE_URL: postgresql://looptodo:looptodo@postgres:5432/looptodo
       REDIS_URL: redis://redis:6379
@@ -38,6 +41,7 @@ services:
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-local-development-refresh-secret-change-me}
       JWT_ACCESS_TTL_SECONDS: 900
       JWT_REFRESH_TTL_SECONDS: 2592000
+      PAYMENT_PROVIDER: test
     ports:
       - "3000:3000"
     depends_on:

@@ -1,0 +1,8 @@
+feature: 2026-07-12-system-hardening
+steps:
+  - { id: S1, action: "完成 API 全量回归", status: done }
+  - { id: S2, action: "完成移动端全量回归", status: done }
+  - { id: S3, action: "完成 arm64 原生编译", status: done }
+  - { id: S4, action: "加固 Docker 和迁移启动链路", status: done }
+  - { id: S5, action: "完成审查和验收记录", status: done }
+
