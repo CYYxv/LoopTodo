@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 
 import { Button } from 'heroui-native/button';
 import { Card } from 'heroui-native/card';
@@ -12,6 +12,7 @@ import { TextField } from 'heroui-native/text-field';
 import type { ActiveSession } from '@/modules/focus-session/focus-session.types';
 import { formatDuration } from '@/modules/focus-session/focus-session.utils';
 import type { Task } from '@/modules/tasks/task.types';
+import { ResourcePassPanel } from '@/modules/resource-pass/components/ResourcePassPanel';
 
 export function ActiveSessionScreen({
   session,
@@ -47,14 +48,15 @@ export function ActiveSessionScreen({
   }
 
   return (
-    <View className="flex-1 justify-between bg-background px-5 py-8">
+    <ScrollView className="flex-1 bg-background" contentContainerClassName="gap-6 px-5 py-8">
       <View className="gap-5">
         <View className="items-center gap-2"><Chip color="accent" variant="secondary">专注模式 · {modeLabel(session.timerMode)}</Chip><Text type="h2" weight="bold" align="center">{task.title}</Text><Text type="body-sm" color="muted" align="center">进行中状态已写入本机，重启后继续恢复</Text></View>
         <Card><Card.Body className="items-center gap-4 py-8"><Text type="h1" weight="bold">{display}</Text><Text type="body" color="muted" align="center">先完成一个小闭环，再讨论完美不完美。</Text></Card.Body></Card>
         {task.kind === 'goal' ? <TextField><Label>本次完成量（{task.targetUnit}）</Label><Input value={completedAmount} onChangeText={setCompletedAmount} keyboardType="numeric" placeholder="由你填写确认" /></TextField> : null}
       </View>
+      <ResourcePassPanel taskId={task.id} readOnly />
       <View className="gap-3">{session.mode === 'lock' ? <TextField><Label>紧急退出原因</Label><Input value={exitReason} onChangeText={setExitReason} placeholder="本月紧急次数有限，请说明原因" /></TextField> : null}<Button variant="primary" size="lg" onPress={() => void onComplete(task.kind === 'goal' ? Number(completedAmount) : undefined)}>完成本次闭环</Button><Button variant="secondary" onPress={() => void onExit(exitReason)}>{session.mode === 'lock' ? '紧急退出锁机' : '退出专注'}</Button></View>
-    </View>
+    </ScrollView>
   );
 }
 

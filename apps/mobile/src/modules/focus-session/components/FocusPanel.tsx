@@ -8,6 +8,7 @@ import { Text } from 'heroui-native/text';
 import type { SessionMode, StrictOption } from '@/modules/focus-session/focus-session.types';
 import type { Task } from '@/modules/tasks/task.types';
 import type { LockCapabilities } from '@/modules/lock-engine/lock-engine.types';
+import { ResourcePassPanel } from '@/modules/resource-pass/components/ResourcePassPanel';
 
 export function FocusPanel({
   selectedMode,
@@ -93,7 +94,7 @@ export function FocusPanel({
         </Card.Body>
       </Card>
 
-      <ResourcePassPanel />
+      <ResourcePassPanel taskId={selectedTask?.id ?? null} />
 
       {selectedMode === 'lock' ? <Card variant="secondary"><Card.Body className="gap-3"><Card.Title>锁机权限检查</Card.Title>
         <Text type="body-xs">通知权限：{lockCapabilities?.notificationGranted ? '已开启' : '未开启'}</Text>
@@ -121,7 +122,6 @@ export function FocusPanel({
     </View>
   );
 }
-
 function ModeButton({
   isActive,
   label,
@@ -144,34 +144,5 @@ function ModeButton({
         </Text>
       </View>
     </Button>
-  );
-}
-
-function ResourcePassPanel() {
-  const resources = [
-    ['受限浏览器', '只允许任务内链接和域名，阻断推荐流与新标签页'],
-    ['本地视频播放器', '播放用户事先选择的本地网课文件'],
-    ['任务型 AI', '围绕任务材料回答，降低闲聊和发散'],
-  ];
-
-  return (
-    <Card>
-      <Card.Body className="gap-3">
-        <View>
-          <Card.Title>任务资源通行证</Card.Title>
-          <Card.Description>解决“查资料顺手娱乐”的白名单漏洞。</Card.Description>
-        </View>
-        {resources.map(([title, description]) => (
-          <View key={title} className="rounded-panel-inner bg-surface-secondary p-3">
-            <Text type="body-sm" weight="semibold">
-              {title}
-            </Text>
-            <Text type="body-xs" color="muted">
-              {description}
-            </Text>
-          </View>
-        ))}
-      </Card.Body>
-    </Card>
   );
 }

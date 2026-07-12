@@ -102,6 +102,13 @@ async function openAndMigrate() {
     INSERT OR IGNORE INTO notification_preferences(singleton_id, task_reminders_enabled, updated_at)
       VALUES (1, 1, unixepoch() * 1000);
     INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (4, unixepoch() * 1000);
+    CREATE TABLE IF NOT EXISTS resource_passes (
+      id TEXT PRIMARY KEY NOT NULL, task_id TEXT NOT NULL, type TEXT NOT NULL, value TEXT NOT NULL,
+      display_name TEXT NOT NULL, value_hash TEXT NOT NULL, created_at INTEGER NOT NULL,
+      FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS resource_passes_task_idx ON resource_passes(task_id, created_at);
+    INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (5, unixepoch() * 1000);
   `);
   await ensureColumn(database, 'sync_conflicts', 'outbox_id', 'TEXT');
   return database;

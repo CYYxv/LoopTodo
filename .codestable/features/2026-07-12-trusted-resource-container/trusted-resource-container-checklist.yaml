@@ -1,0 +1,27 @@
+feature: 2026-07-12-trusted-resource-container
+created: 2026-07-12
+steps:
+  - id: S1
+    action: "实现资源通行证持久化"
+    status: done
+  - id: S2
+    action: "实现受限 WebView 策略"
+    status: done
+  - id: S3
+    action: "实现本地视频播放器"
+    status: done
+  - id: S4
+    action: "实现专注中只读保护"
+    status: done
+  - id: S5
+    action: "审查并验证 Android 构建"
+    status: done
+checks:
+  - item: "HTTPS、深链、新窗口和下载受控"
+    status: passed
+  - item: "专注中无法修改白名单"
+    status: passed
+  - item: "本地视频不允许全屏或画中画"
+    status: passed
+  - item: "文件指纹和删除清理完整"
+    status: passed

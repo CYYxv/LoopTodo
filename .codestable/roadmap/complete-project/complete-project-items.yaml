@@ -75,8 +75,8 @@ items:
   - slug: trusted-resource-container
     description: 实现资源通行证、受限 WebView、本地播放器和可信审计
     depends_on: [local-task-focus-loop]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-07-12-trusted-resource-container
     minimal_loop: false
     notes: 不做视频下载和第三方内容识别
   - slug: task-ai-service
