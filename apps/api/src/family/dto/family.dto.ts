@@ -1,0 +1,8 @@
+import { IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, IsUUID, Length, Matches, Max, Min } from 'class-validator';
+export class CreateFamilyDto { @IsString() @Length(2, 120) name!: string; }
+export class CreateFamilyInviteDto { @IsIn(['parent', 'child']) role!: 'parent' | 'child'; }
+export class JoinFamilyDto { @IsString() @Length(8, 32) code!: string; }
+export class AssignFamilyTaskDto { @IsUUID('4') childUserId!: string; @IsString() @Length(1, 240) title!: string; @IsIn(['pomodoro', 'goal']) taskType!: 'pomodoro' | 'goal'; @IsIn(['countdown', 'countup', 'untimed']) timerMode!: 'countdown' | 'countup' | 'untimed'; @IsInt() @Min(1) @Max(180) estimatedMinutes!: number; @IsInt() @Min(0) @Max(180) restMinutes = 5; @IsOptional() @IsDateString() deadlineAt?: string; @IsOptional() @IsNumber() @Min(0.01) targetAmount?: number; @IsOptional() @IsString() @Length(1, 40) targetUnit?: string; @IsOptional() @IsBoolean() isTodayRequired = false; @IsOptional() @Matches(/^([01]\d|2[0-3]):[0-5]\d$/) triggerTime?: string; }
+export class CreateTaskChangeRequestDto { @IsIn(['update', 'delete']) requestType!: 'update' | 'delete'; @IsString() @Length(2, 1000) reason!: string; @IsOptional() @IsObject() proposedPatch?: Record<string, unknown>; }
+export class ReviewTaskChangeRequestDto { @IsIn(['approved', 'rejected']) decision!: 'approved' | 'rejected'; }
+export class FamilyAnomalyDto { @IsIn(['permission_disabled', 'reboot_detected', 'task_overdue']) type!: 'permission_disabled' | 'reboot_detected' | 'task_overdue'; @IsOptional() @IsUUID('4') taskId?: string; }

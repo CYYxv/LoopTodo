@@ -1,0 +1,2 @@
+export const familyTaskPatchFields = ['title', 'estimatedMinutes', 'restMinutes', 'deadlineAt', 'targetAmount', 'targetUnit', 'isTodayRequired'] as const;
+export function sanitizeFamilyTaskPatch(value: Record<string, unknown> | undefined) { if (!value) return {}; const patch: Record<string, unknown> = {}; for (const field of familyTaskPatchFields) if (field in value) patch[field] = value[field]; return patch; }

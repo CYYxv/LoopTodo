@@ -117,8 +117,8 @@ items:
   - slug: family-management
     description: 实现家庭邀请码、任务下发、修改申请、状态共享、异常提醒和家庭权益规则
     depends_on: [task-focus-api, android-lock-engine, notification-delivery, subscription-entitlements]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-07-12-family-management
     minimal_loop: false
     notes: 不提供家长实时远程锁机
   - slug: reward-backoffice

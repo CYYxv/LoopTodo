@@ -6,10 +6,11 @@ import type { UpdateTaskDto } from './dto/update-task.dto';
 import { DuplicateCategoryError, TASK_FOCUS_REPOSITORY, TaskIdentityConflictError, type MutationResult, type TaskFocusRepository } from './task-focus.repository';
 import type { SessionView, TaskView } from './task-focus.types';
 import { ScoringService } from '../scoring/scoring.service';
+import { FamilyService } from '../family/family.service';
 
 @Injectable()
 export class TaskFocusService {
-  constructor(@Inject(TASK_FOCUS_REPOSITORY) private readonly repository: TaskFocusRepository, private readonly scoring: ScoringService) {}
+  constructor(@Inject(TASK_FOCUS_REPOSITORY) private readonly repository: TaskFocusRepository, private readonly scoring: ScoringService, private readonly family: FamilyService) {}
 
   listCategories(userId: string) { return this.repository.listCategories(userId); }
   async createCategory(userId: string, name: string, color?: string) {
@@ -54,6 +55,7 @@ export class TaskFocusService {
   }
 
   async updateTask(userId: string, id: string, input: UpdateTaskDto) {
+    if ((await this.getTask(userId, id)).createdByFamilyMemberId) throw new ConflictException({ code: 'FAMILY_TASK_CHANGE_REQUEST_REQUIRED', message: '家长下发任务只能提交修改申请' });
     const { version, ...patch } = input;
     if (patch.categoryId && !(await this.repository.getCategory(userId, patch.categoryId))) throw notFound();
     return unwrap(await this.repository.updateTask(userId, id, version, {
@@ -63,6 +65,7 @@ export class TaskFocusService {
   }
 
   async archiveTask(userId: string, id: string, version: number) {
+    if ((await this.getTask(userId, id)).createdByFamilyMemberId) throw new ConflictException({ code: 'FAMILY_TASK_CHANGE_REQUEST_REQUIRED', message: '家长下发任务只能提交删除申请' });
     return unwrap(await this.repository.archiveTask(userId, id, version));
   }
 
@@ -99,6 +102,7 @@ export class TaskFocusService {
       actualMinutes: input.actualMinutes,
     }));
     await this.scoring.settleSession(userId, session.id);
+    await this.family.handleSessionFinished(userId, session);
     return session;
   }
 

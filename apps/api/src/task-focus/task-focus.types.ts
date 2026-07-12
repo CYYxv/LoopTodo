@@ -21,6 +21,7 @@ export type TaskView = {
   isTodayRequired: boolean;
   status: 'pending' | 'active' | 'completed' | 'failed' | 'archived';
   activeSessionId: string | null;
+  createdByFamilyMemberId: string | null;
   version: number;
   updatedAt: Date;
 };
@@ -44,7 +45,7 @@ export type SessionView = {
 
 export type TaskCreate = Omit<
   TaskView,
-  'id' | 'completedAmount' | 'status' | 'activeSessionId' | 'version' | 'updatedAt'
+  'id' | 'completedAmount' | 'status' | 'activeSessionId' | 'createdByFamilyMemberId' | 'version' | 'updatedAt'
 > & { id?: string };
 
 export type TaskPatch = Partial<Pick<

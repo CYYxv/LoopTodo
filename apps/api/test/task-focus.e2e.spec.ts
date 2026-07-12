@@ -37,7 +37,7 @@ class MemoryTaskFocusRepository implements TaskFocusRepository {
       if (existing.title === input.title) return existing;
       throw new TaskIdentityConflictError();
     }
-    const value: TaskView & { userId: string } = { ...input, id: input.id ?? randomUUID(), userId, completedAmount: 0, status: 'pending', activeSessionId: null, version: 1, updatedAt: new Date() };
+    const value: TaskView & { userId: string } = { ...input, id: input.id ?? randomUUID(), userId, completedAmount: 0, status: 'pending', activeSessionId: null, createdByFamilyMemberId: null, version: 1, updatedAt: new Date() };
     this.tasks.push(value);
     return value;
   }

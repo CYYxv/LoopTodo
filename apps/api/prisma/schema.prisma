@@ -127,6 +127,28 @@ enum PaymentProvider {
   test
 }
 
+enum FamilyRole {
+  parent
+  child
+}
+
+enum FamilyAssignmentStatus {
+  active
+  completed
+  cancelled
+}
+
+enum TaskChangeRequestType {
+  update
+  delete
+}
+
+enum TaskChangeRequestStatus {
+  pending
+  approved
+  rejected
+}
+
 model User {
   id                       String          @id @default(uuid()) @db.Uuid
   email                    String          @unique @db.VarChar(320)
@@ -168,6 +190,10 @@ model User {
   subscriptions            Subscription[]
   subscriptionOrders       SubscriptionOrder[]
   paymentAudits            PaymentAudit[]
+  familyMemberships        FamilyMember[]
+  familyGroupsCreated      FamilyGroup[]      @relation("FamilyGroupCreator")
+  familyInvitesUsed        FamilyInvite[]     @relation("FamilyInviteUser")
+  familyChangeReviews      TaskChangeRequest[] @relation("FamilyChangeReviewer")
 
   @@map("users")
 }
@@ -274,6 +300,8 @@ model Task {
   resourcePasses          ResourcePass[]
   aiMaterials             AiMaterial[]
   aiAudits                AiAudit[]
+  familyAssignment        FamilyTaskAssignment?
+  createdByFamilyMember   FamilyMember? @relation("FamilyTaskCreator", fields: [createdByFamilyMemberId], references: [id], onDelete: SetNull)
 
   @@index([userId, status, updatedAt])
   @@index([userId, activeSessionId])
@@ -566,6 +594,93 @@ model PaymentAudit {
 
   @@index([orderId, createdAt])
   @@map("payment_audits")
+}
+
+model FamilyGroup {
+  id          String                 @id @default(uuid()) @db.Uuid
+  name        String                 @db.VarChar(120)
+  createdById String                 @map("created_by_id") @db.Uuid
+  createdAt   DateTime               @default(now()) @map("created_at")
+  updatedAt   DateTime               @updatedAt @map("updated_at")
+  createdBy   User                   @relation("FamilyGroupCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  members     FamilyMember[]
+  invites     FamilyInvite[]
+  assignments FamilyTaskAssignment[]
+
+  @@map("family_groups")
+}
+
+model FamilyMember {
+  id                 String                 @id @default(uuid()) @db.Uuid
+  familyGroupId      String                 @map("family_group_id") @db.Uuid
+  userId             String                 @map("user_id") @db.Uuid
+  role               FamilyRole
+  joinedAt           DateTime               @default(now()) @map("joined_at")
+  leftAt             DateTime?              @map("left_at")
+  familyGroup        FamilyGroup            @relation(fields: [familyGroupId], references: [id], onDelete: Cascade)
+  user               User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignedAsParent   FamilyTaskAssignment[] @relation("FamilyAssignmentParent")
+  assignedAsChild    FamilyTaskAssignment[] @relation("FamilyAssignmentChild")
+  tasksCreated       Task[]                 @relation("FamilyTaskCreator")
+  changeRequests     TaskChangeRequest[]    @relation("FamilyChangeChild")
+
+  @@unique([familyGroupId, userId])
+  @@index([userId, leftAt])
+  @@map("family_members")
+}
+
+model FamilyInvite {
+  id            String      @id @default(uuid()) @db.Uuid
+  familyGroupId String      @map("family_group_id") @db.Uuid
+  role          FamilyRole
+  codeHash      String      @unique @map("code_hash") @db.Char(64)
+  expiresAt     DateTime    @map("expires_at")
+  usedById      String?     @map("used_by_id") @db.Uuid
+  usedAt        DateTime?   @map("used_at")
+  createdAt     DateTime    @default(now()) @map("created_at")
+  familyGroup   FamilyGroup @relation(fields: [familyGroupId], references: [id], onDelete: Cascade)
+  usedBy        User?       @relation("FamilyInviteUser", fields: [usedById], references: [id], onDelete: SetNull)
+
+  @@index([familyGroupId, expiresAt])
+  @@map("family_invites")
+}
+
+model FamilyTaskAssignment {
+  id             String                 @id @default(uuid()) @db.Uuid
+  familyGroupId  String                 @map("family_group_id") @db.Uuid
+  taskId         String                 @unique @map("task_id") @db.Uuid
+  parentMemberId String                 @map("parent_member_id") @db.Uuid
+  childMemberId  String                 @map("child_member_id") @db.Uuid
+  status         FamilyAssignmentStatus @default(active)
+  createdAt      DateTime               @default(now()) @map("created_at")
+  updatedAt      DateTime               @updatedAt @map("updated_at")
+  familyGroup    FamilyGroup            @relation(fields: [familyGroupId], references: [id], onDelete: Cascade)
+  task           Task                   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  parentMember   FamilyMember           @relation("FamilyAssignmentParent", fields: [parentMemberId], references: [id], onDelete: Restrict)
+  childMember    FamilyMember           @relation("FamilyAssignmentChild", fields: [childMemberId], references: [id], onDelete: Restrict)
+  changeRequests TaskChangeRequest[]
+
+  @@index([childMemberId, status])
+  @@map("family_task_assignments")
+}
+
+model TaskChangeRequest {
+  id               String                  @id @default(uuid()) @db.Uuid
+  assignmentId     String                  @map("assignment_id") @db.Uuid
+  childMemberId    String                  @map("child_member_id") @db.Uuid
+  requestType      TaskChangeRequestType   @map("request_type")
+  reason           String
+  proposedPatch    Json?                   @map("proposed_patch")
+  status           TaskChangeRequestStatus @default(pending)
+  reviewedByUserId String?                 @map("reviewed_by_user_id") @db.Uuid
+  reviewedAt       DateTime?               @map("reviewed_at")
+  createdAt        DateTime                @default(now()) @map("created_at")
+  assignment       FamilyTaskAssignment    @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  childMember      FamilyMember            @relation("FamilyChangeChild", fields: [childMemberId], references: [id], onDelete: Restrict)
+  reviewedBy       User?                   @relation("FamilyChangeReviewer", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([assignmentId, status])
+  @@map("task_change_requests")
 }
 
 model Friendship {

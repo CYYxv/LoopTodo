@@ -1,0 +1,3 @@
+export type FamilyGroupMembership = { id: string; role: 'parent' | 'child'; familyGroup: { id: string; name: string; members: Array<{ id: string; role: 'parent' | 'child'; user: { id: string; nickname: string } }> } };
+export type FamilyAssignment = { id: string; task: { id: string; title: string; estimatedMinutes: number; status: string }; parentMember: { user: { nickname: string } }; changeRequests: Array<{ id: string; status: string }> };
+export type FamilyChangeRequest = { id: string; requestType: 'update' | 'delete'; reason: string; status: string; assignment: { task: { title: string } }; childMember: { user: { nickname: string } } };

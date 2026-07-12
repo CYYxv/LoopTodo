@@ -1,0 +1,7 @@
+feature: 2026-07-12-family-management
+steps:
+  - { id: S1, action: "实现家庭成员与邀请码", status: done }
+  - { id: S2, action: "实现家长任务下发", status: done }
+  - { id: S3, action: "实现孩子修改申请审批", status: done }
+  - { id: S4, action: "实现状态共享和异常提醒", status: done }
+  - { id: S5, action: "完成移动端与审查", status: done }

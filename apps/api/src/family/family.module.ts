@@ -1,0 +1,2 @@
+import { Module } from '@nestjs/common'; import { AuthModule } from '../auth/auth.module'; import { NotificationModule } from '../notifications/notification.module'; import { SubscriptionModule } from '../subscription/subscription.module'; import { FamilyController } from './family.controller'; import { FamilyService } from './family.service';
+@Module({ imports: [AuthModule, NotificationModule, SubscriptionModule], controllers: [FamilyController], providers: [FamilyService], exports: [FamilyService] }) export class FamilyModule {}

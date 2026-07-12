@@ -14,6 +14,7 @@ import { SocialModule } from './social/social.module';
 import { EventBusModule } from './common/event-bus.module';
 import { TeamsSeasonsModule } from './teams-seasons/teams-seasons.module';
 import { SubscriptionModule } from './subscription/subscription.module';
+import { FamilyModule } from './family/family.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { SubscriptionModule } from './subscription/subscription.module';
     SocialModule,
     TeamsSeasonsModule,
     SubscriptionModule,
+    FamilyModule,
   ],
 })
 export class AppModule {}
