@@ -1,0 +1,27 @@
+feature: 2026-07-12-social-realtime
+created: 2026-07-12
+steps:
+  - id: S1
+    action: "实现好友邀请和接受关系"
+    status: done
+  - id: S2
+    action: "实现每日 PK 与分钟进度"
+    status: done
+  - id: S3
+    action: "实现公开和私密自习室"
+    status: done
+  - id: S4
+    action: "接入 Socket.IO 实时推送"
+    status: done
+  - id: S5
+    action: "完成移动端社交界面和审查"
+    status: done
+checks:
+  - item: "无聊天接口或消息事件"
+    status: passed
+  - item: "好友和每日 PK 防重复"
+    status: passed
+  - item: "私密房仅邀请码可加入"
+    status: passed
+  - item: "PK 进度由服务端积分结算驱动"
+    status: passed

@@ -96,8 +96,8 @@ items:
   - slug: social-realtime
     description: 实现好友、每日 PK、自习室、状态同步和励志表情
     depends_on: [api-foundation-auth, scoring-statistics]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-07-12-social-realtime
     minimal_loop: false
     notes: 不提供聊天
   - slug: teams-seasons

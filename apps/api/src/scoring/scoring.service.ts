@@ -3,10 +3,11 @@ import { ConfigService } from '@nestjs/config';
 
 import { SCORING_REPOSITORY, type ScoringRepository } from './scoring.repository';
 import type { ScoringSession } from './scoring.types';
+import { EventBusService } from '../common/event-bus.module';
 
 @Injectable()
 export class ScoringService {
-  constructor(@Inject(SCORING_REPOSITORY) private readonly repository: ScoringRepository, private readonly config: ConfigService) {}
+  constructor(@Inject(SCORING_REPOSITORY) private readonly repository: ScoringRepository, private readonly config: ConfigService, private readonly events: EventBusService) {}
 
   async settleSession(userId: string, sessionId: string) {
     const session = await this.repository.getSession(userId, sessionId);
@@ -15,8 +16,10 @@ export class ScoringService {
     const streakDays = session.outcome === 'completed' ? calculateStreak(await this.repository.listCompletedDates(userId, scoreDate), scoreDate) : 0;
     const rules = this.rules();
     const scores = calculateScores(session, streakDays, rules);
-    return this.repository.createEvent({ userId, sessionId, scoreDate, outcome: session.outcome, trustLevel: session.trustLevel,
+    const event = await this.repository.createEvent({ userId, sessionId, scoreDate, outcome: session.outcome, trustLevel: session.trustLevel,
       durationMinutes: Math.max(0, session.actualMinutes ?? 0), streakDays, ...scores, formulaVersion: rules.version });
+    this.events.emit('score.settled', userId);
+    return event;
   }
 
   getToday(userId: string) { return this.repository.getToday(userId, dateOnly(new Date())); }

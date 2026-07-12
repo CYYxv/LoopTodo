@@ -83,6 +83,22 @@ enum ResourceType {
   ai_material
 }
 
+enum FriendshipStatus {
+  pending
+  accepted
+  blocked
+}
+
+enum PkMatchStatus {
+  active
+  completed
+}
+
+enum StudyRoomVisibility {
+  public
+  private
+}
+
 model User {
   id                       String          @id @default(uuid()) @db.Uuid
   email                    String          @unique @db.VarChar(320)
@@ -92,6 +108,9 @@ model User {
   vipStatus                VipStatus       @default(free) @map("vip_status")
   privacySettings          Json            @default("{}") @map("privacy_settings")
   multiDeviceFocusSync     Boolean         @default(false) @map("multi_device_focus_sync")
+  socialEnabled            Boolean         @default(true) @map("social_enabled")
+  shareCurrentTask         Boolean         @default(false) @map("share_current_task")
+  shareCompletedTasks      Boolean         @default(false) @map("share_completed_tasks")
   createdAt                DateTime        @default(now()) @map("created_at")
   updatedAt                DateTime        @updatedAt @map("updated_at")
   deviceSessions           DeviceSession[]
@@ -108,6 +127,13 @@ model User {
   aiMaterials              AiMaterial[]
   aiAudits                 AiAudit[]
   scoreEvents              ScoreEvent[]
+  friendshipsRequested     Friendship[]    @relation("FriendshipRequester")
+  friendshipsReceived      Friendship[]    @relation("FriendshipAddressee")
+  pkMatchesCreated         PkMatch[]        @relation("PkChallenger")
+  pkMatchesReceived        PkMatch[]        @relation("PkOpponent")
+  studyRoomsOwned          StudyRoom[]      @relation("StudyRoomOwner")
+  studyRoomMemberships     StudyRoomMember[]
+  studyRoomReactions       StudyRoomReaction[]
 
   @@map("users")
 }
@@ -394,6 +420,83 @@ model ScoreEvent {
 
   @@index([userId, scoreDate])
   @@map("score_events")
+}
+
+model Friendship {
+  id           String           @id @default(uuid()) @db.Uuid
+  requesterId  String           @map("requester_id") @db.Uuid
+  addresseeId  String           @map("addressee_id") @db.Uuid
+  pairKey      String           @unique @map("pair_key") @db.VarChar(73)
+  status       FriendshipStatus @default(pending)
+  respondedAt  DateTime?        @map("responded_at")
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
+  requester    User             @relation("FriendshipRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  addressee    User             @relation("FriendshipAddressee", fields: [addresseeId], references: [id], onDelete: Cascade)
+
+  @@index([requesterId, status])
+  @@index([addresseeId, status])
+  @@map("friendships")
+}
+
+model PkMatch {
+  id            String        @id @default(uuid()) @db.Uuid
+  challengerId  String        @map("challenger_id") @db.Uuid
+  opponentId    String        @map("opponent_id") @db.Uuid
+  matchDate     DateTime      @map("match_date") @db.Date
+  pairDateKey   String        @unique @map("pair_date_key") @db.VarChar(84)
+  status        PkMatchStatus @default(active)
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+  challenger    User          @relation("PkChallenger", fields: [challengerId], references: [id], onDelete: Cascade)
+  opponent      User          @relation("PkOpponent", fields: [opponentId], references: [id], onDelete: Cascade)
+
+  @@index([challengerId, matchDate])
+  @@index([opponentId, matchDate])
+  @@map("pk_matches")
+}
+
+model StudyRoom {
+  id          String              @id @default(uuid()) @db.Uuid
+  ownerId     String              @map("owner_id") @db.Uuid
+  name        String              @db.VarChar(120)
+  visibility  StudyRoomVisibility @default(public)
+  inviteCode  String?             @unique @map("invite_code") @db.VarChar(16)
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+  owner       User                @relation("StudyRoomOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members     StudyRoomMember[]
+  reactions   StudyRoomReaction[]
+
+  @@index([visibility, createdAt])
+  @@map("study_rooms")
+}
+
+model StudyRoomMember {
+  id          String    @id @default(uuid()) @db.Uuid
+  roomId      String    @map("room_id") @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  joinedAt    DateTime  @default(now()) @map("joined_at")
+  leftAt      DateTime? @map("left_at")
+  room        StudyRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, userId])
+  @@index([userId, leftAt])
+  @@map("study_room_members")
+}
+
+model StudyRoomReaction {
+  id          String    @id @default(uuid()) @db.Uuid
+  roomId      String    @map("room_id") @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  emoji       String    @db.VarChar(24)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  room        StudyRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, createdAt])
+  @@map("study_room_reactions")
 }
 
 model DeviceSession {

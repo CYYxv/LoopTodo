@@ -10,10 +10,13 @@ import { TaskFocusModule } from './task-focus/task-focus.module';
 import { NotificationModule } from './notifications/notification.module';
 import { TaskAiModule } from './task-ai/task-ai.module';
 import { ScoringModule } from './scoring/scoring.module';
+import { SocialModule } from './social/social.module';
+import { EventBusModule } from './common/event-bus.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnvironment }),
+    EventBusModule,
     PrismaModule,
     RedisModule,
     AuthModule,
@@ -22,6 +25,7 @@ import { ScoringModule } from './scoring/scoring.module';
     NotificationModule,
     TaskAiModule,
     ScoringModule,
+    SocialModule,
   ],
 })
 export class AppModule {}

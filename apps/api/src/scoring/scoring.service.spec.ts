@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import type { ScoringRepository } from './scoring.repository';
 import { calculateScores, calculateStreak, ScoringService } from './scoring.service';
 import type { ScoreEventView, ScoringSession } from './scoring.types';
+import { EventBusService } from '../common/event-bus.module';
 
 const completed: ScoringSession = { id: 'session', userId: 'user', timerMode: 'countup', trustLevel: 'high',
   endedAt: new Date('2026-07-12T10:00:00Z'), actualMinutes: 240, outcome: 'completed' };
@@ -25,7 +26,7 @@ describe('scoring', () => {
       async createEvent(input) { const event = { ...input, id: 'event' }; events.push(event); return event; },
       async getToday() { throw new Error('unused'); }, async getHistory() { throw new Error('unused'); },
     };
-    const service = new ScoringService(repository, { get() { return undefined; } } as unknown as ConfigService);
+    const service = new ScoringService(repository, { get() { return undefined; } } as unknown as ConfigService, new EventBusService());
     await service.settleSession('user', 'session');
     expect(events[0]).toMatchObject({ sessionId: 'session', streakDays: 1, totalScore: 130, formulaVersion: 'v1' });
   });
