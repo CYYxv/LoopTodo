@@ -1,5 +1,8 @@
 export type LockCapabilities = {
   supported: boolean;
+  manufacturer: string;
+  sdkInt: number;
+  vendorBackgroundSettingsAvailable: boolean;
   notificationGranted: boolean;
   notificationListenerEnabled: boolean;
   accessibilityEnabled: boolean;

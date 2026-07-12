@@ -1,0 +1,8 @@
+feature: 2026-07-12-android-compatibility
+steps:
+  - { id: S1, action: "补充设备厂商与 SDK 能力", status: done }
+  - { id: S2, action: "实现 OEM 后台设置安全跳转", status: done }
+  - { id: S3, action: "补充设置页厂商权限引导", status: done }
+  - { id: S4, action: "输出厂商兼容矩阵和步骤", status: done }
+  - { id: S5, action: "完成测试与原生编译审查", status: done }
+

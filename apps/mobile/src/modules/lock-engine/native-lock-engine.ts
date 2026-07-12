@@ -29,4 +29,4 @@ export function createNativeLockEngine(): LockEngine {
 }
 
 function native() { return requireNativeModule<NativeModule>('AndroidLockEngine'); }
-function unsupported(): LockCapabilities { return { supported: false, notificationGranted: false, notificationListenerEnabled: false, accessibilityEnabled: false, batteryOptimizationIgnored: false, riskConfirmed: false, emergencyExitsRemaining: 0, exactAlarmAllowed: false }; }
+function unsupported(): LockCapabilities { return { supported: false, manufacturer: 'unsupported', sdkInt: 0, vendorBackgroundSettingsAvailable: false, notificationGranted: false, notificationListenerEnabled: false, accessibilityEnabled: false, batteryOptimizationIgnored: false, riskConfirmed: false, emergencyExitsRemaining: 0, exactAlarmAllowed: false }; }

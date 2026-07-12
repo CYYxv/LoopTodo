@@ -97,7 +97,7 @@ describe('task store local loop', () => {
     const { repository, sessions } = createRepository();
     const calls: string[] = [];
     const engine: LockEngine = {
-      async checkCapabilities() { return { supported: true, notificationGranted: true, notificationListenerEnabled: true, accessibilityEnabled: true, batteryOptimizationIgnored: true, riskConfirmed: true, emergencyExitsRemaining: 2, exactAlarmAllowed: true }; },
+      async checkCapabilities() { return { supported: true, manufacturer: 'test', sdkInt: 36, vendorBackgroundSettingsAvailable: true, notificationGranted: true, notificationListenerEnabled: true, accessibilityEnabled: true, batteryOptimizationIgnored: true, riskConfirmed: true, emergencyExitsRemaining: 2, exactAlarmAllowed: true }; },
       async confirmRisk() { return undefined; }, async getActiveSession() { return null; },
       async startLockSession(input) { calls.push(`start:${input.taskId}`); }, async endLockSession(id) { calls.push(`end:${id}`); },
       async emergencyExit(_id, reason) { calls.push(`emergency:${reason}`); }, async scheduleForcedRule() { return undefined; }, async cancelForcedRule() { return undefined; }, async markForcedRuleSatisfied() { return undefined; }, async openPermissionSettings() { return undefined; },

@@ -18,6 +18,9 @@ class AndroidLockEngineModule : Module() {
       val context = appContext.reactContext ?: error("Android context unavailable")
       mapOf(
         "supported" to true,
+        "manufacturer" to Build.MANUFACTURER.orEmpty(),
+        "sdkInt" to Build.VERSION.SDK_INT,
+        "vendorBackgroundSettingsAvailable" to (vendorBackgroundComponent()?.let { Intent().setComponent(it).resolveActivity(context.packageManager) } != null),
         "notificationGranted" to (Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED),
         "notificationListenerEnabled" to notificationListenerEnabled(context),
         "accessibilityEnabled" to accessibilityEnabled(context),
@@ -69,9 +72,12 @@ class AndroidLockEngineModule : Module() {
         "notificationListener" -> Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")
         "exactAlarm" -> Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, android.net.Uri.parse("package:${context.packageName}"))
         "battery" -> Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+        "vendorBackground" -> vendorBackgroundIntent(context)
         else -> Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:${context.packageName}"))
       }
-      context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+      val safeIntent = if (intent.resolveActivity(context.packageManager) != null) intent
+        else Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:${context.packageName}"))
+      context.startActivity(safeIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
   }
   private fun finish(id: String) {
@@ -87,5 +93,20 @@ class AndroidLockEngineModule : Module() {
   private fun notificationListenerEnabled(context: android.content.Context): Boolean {
     val expected = ComponentName(context, LockNotificationListener::class.java).flattenToString()
     return Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners")?.split(':')?.any { it.equals(expected, true) } == true
+  }
+  private fun vendorBackgroundIntent(context: android.content.Context): Intent {
+    return vendorBackgroundComponent()?.let { Intent().setComponent(it) }
+      ?: Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:${context.packageName}"))
+  }
+  private fun vendorBackgroundComponent(): ComponentName? {
+    return when (Build.MANUFACTURER.lowercase()) {
+      "xiaomi", "redmi" -> ComponentName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity")
+      "oppo", "oneplus", "realme" -> ComponentName("com.coloros.safecenter", "com.coloros.safecenter.permission.startup.StartupAppListActivity")
+      "vivo", "iqoo" -> ComponentName("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.BgStartUpManagerActivity")
+      "huawei" -> ComponentName("com.huawei.systemmanager", "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity")
+      "honor" -> ComponentName("com.hihonor.systemmanager", "com.hihonor.systemmanager.startupmgr.ui.StartupNormalAppListActivity")
+      "samsung" -> ComponentName("com.samsung.android.lool", "com.samsung.android.sm.ui.battery.BatteryActivity")
+      else -> null
+    }
   }
 }

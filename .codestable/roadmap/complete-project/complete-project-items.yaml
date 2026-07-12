@@ -159,8 +159,8 @@ items:
   - slug: android-compatibility
     description: 完成主流厂商真机权限、后台、重启与锁机兼容验证
     depends_on: [android-lock-engine, system-hardening]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-07-12-android-compatibility
     minimal_loop: false
     notes: 产出设备兼容矩阵和产品风险提示
   - slug: release-apk

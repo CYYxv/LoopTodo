@@ -10,5 +10,5 @@ export interface LockEngine {
   scheduleForcedRule(input: { id: string; sourceId: string; title: string; durationMinutes: number; dailyMinute: number; recurring: boolean }): Promise<void>;
   cancelForcedRule(id: string): Promise<void>;
   markForcedRuleSatisfied(id: string): Promise<void>;
-  openPermissionSettings(kind: 'notifications' | 'notificationListener' | 'accessibility' | 'battery' | 'exactAlarm'): Promise<void>;
+  openPermissionSettings(kind: 'notifications' | 'notificationListener' | 'accessibility' | 'battery' | 'exactAlarm' | 'vendorBackground'): Promise<void>;
 }

@@ -80,12 +80,15 @@ export function SettingsPanel() {
       <Card variant="secondary">
         <Card.Body className="gap-2">
           <Card.Title>锁机权限实时检查</Card.Title>
+          <Text type="body-xs">设备：{capabilities?.manufacturer || 'Android'} · API {capabilities?.sdkInt ?? '-'}</Text>
           <Text type="body-xs">通知监听 {yes(capabilities?.notificationListenerEnabled)} · 无障碍 {yes(capabilities?.accessibilityEnabled)} · 电池白名单 {yes(capabilities?.batteryOptimizationIgnored)} · 精确闹钟 {yes(capabilities?.exactAlarmAllowed)}</Text>
           <View className="flex-row flex-wrap gap-2">
             <Button size="sm" onPress={() => void refresh()}>重新检查</Button>
             <Button size="sm" variant="secondary" onPress={() => void open('accessibility')}>无障碍设置</Button>
             <Button size="sm" variant="secondary" onPress={() => void open('notificationListener')}>通知监听</Button>
+            <Button size="sm" variant="secondary" onPress={() => void open('vendorBackground')}>厂商后台设置</Button>
           </View>
+          <Text type="body-xs" color="muted">请允许自启动、后台运行和后台弹出。厂商设置页不可用时会安全回退到应用详情页。</Text>
         </Card.Body>
       </Card>
 
