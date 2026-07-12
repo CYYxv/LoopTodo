@@ -1,4 +1,4 @@
-import { View } from 'react-native';
+import { ScrollView, useWindowDimensions, View } from 'react-native';
 
 import { Button } from 'heroui-native/button';
 import { Card } from 'heroui-native/card';
@@ -32,7 +32,7 @@ export function Header() {
           </Text>
         </View>
         <Chip variant="secondary" color="accent">
-          <Chip.Label>黄金 III</Chip.Label>
+          <Chip.Label>离线可用</Chip.Label>
         </Chip>
       </View>
       <Text type="body-sm" color="muted">
@@ -49,8 +49,9 @@ export function DashboardSummary({
   todayMinutes: number;
   completedSessions: number;
 }) {
+  const { width } = useWindowDimensions();
   return (
-    <View className="flex-row gap-3">
+    <View className={`${width < 380 ? 'flex-col' : 'flex-row'} gap-3`} accessibilityLabel={`今日计划${todayMinutes}分钟，完成闭环${completedSessions}次`}>
       <MetricCard label="今日计划" value={`${todayMinutes}m`} />
       <MetricCard label="完成闭环" value={`${completedSessions} 次`} />
       <MetricCard label="紧急退出" value="2/2" />
@@ -81,19 +82,21 @@ export function PanelTabs({
   onPanelChange: (panel: PanelKey) => void;
 }) {
   return (
-    <View className="flex-row flex-wrap gap-2">
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2" accessibilityRole="tablist">
       {(Object.keys(panelLabels) as PanelKey[]).map((panel) => (
         <Button
           key={panel}
           size="sm"
           variant={activePanel === panel ? 'primary' : 'secondary'}
           accessibilityLabel={`切换到${panelLabels[panel]}`}
+          accessibilityRole="tab"
+          accessibilityState={{ selected: activePanel === panel }}
           onPress={() => onPanelChange(panel)}
-          className="min-w-16 flex-1"
+          className="min-w-20"
         >
           {panelLabels[panel]}
         </Button>
       ))}
-    </View>
+    </ScrollView>
   );
 }

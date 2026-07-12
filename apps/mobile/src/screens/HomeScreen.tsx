@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { ActivityIndicator, ScrollView, useColorScheme, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
@@ -34,6 +34,7 @@ import {
 
 export function HomeScreen() {
   const [activePanel, setActivePanel] = useState<PanelKey>('tasks');
+  const colorScheme = useColorScheme(); const { width } = useWindowDimensions();
   const tasks = useTaskStore((state) => state.tasks);
   const activeSession = useTaskStore((state) => state.activeSession);
   const sessionRecords = useTaskStore((state) => state.sessionRecords);
@@ -41,6 +42,7 @@ export function HomeScreen() {
   const selectedMode = useTaskStore((state) => state.selectedMode);
   const strictOptions = useTaskStore((state) => state.strictOptions);
   const error = useTaskStore((state) => state.error);
+  const isHydrating = useTaskStore((state) => state.isHydrating);
   const hydrate = useTaskStore((state) => state.hydrate);
   const createTask = useTaskStore((state) => state.createTask);
   const startSession = useTaskStore((state) => state.startSession);
@@ -108,7 +110,7 @@ export function HomeScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-background">
-      <StatusBar style="dark" />
+      <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
       {activeSession && activeTask ? (
         <ActiveSessionScreen
           session={activeSession}
@@ -120,10 +122,12 @@ export function HomeScreen() {
       ) : (
         <ScrollView
           className="flex-1"
-          contentContainerClassName="gap-5 px-5 pb-8 pt-4"
+          contentContainerClassName="gap-5 pb-8 pt-4"
+          contentContainerStyle={{ width: '100%', maxWidth: 760, alignSelf: 'center', paddingHorizontal: width < 360 ? 12 : 20 }}
           showsVerticalScrollIndicator={false}
         >
           <Header />
+          {isHydrating ? <Card accessibilityRole="progressbar"><Card.Body className="items-center gap-2"><ActivityIndicator /><Text type="body-sm">正在恢复本地任务与专注状态…</Text></Card.Body></Card> : null}
           <DashboardSummary
             todayMinutes={todayMinutes}
             completedSessions={sessionRecords.filter((record) => record.outcome === 'completed').length}
@@ -137,7 +141,7 @@ export function HomeScreen() {
           <ForcedTriggerStatusCard capabilities={lockCapabilities} enabledRules={habits.filter((habit) => habit.forceEnabled).length}
             onRefresh={() => void refreshLockCapabilities()} onOpen={(kind) => void openLockPermission(kind)} />
           {error || habitError ? (
-            <Card variant="secondary">
+            <Card variant="secondary" accessibilityRole="alert" accessibilityLiveRegion="assertive">
               <Card.Body className="gap-2">
                 <Chip size="sm" color="danger" variant="soft">
                   操作失败

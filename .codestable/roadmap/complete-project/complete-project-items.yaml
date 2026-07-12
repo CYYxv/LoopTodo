@@ -138,8 +138,8 @@ items:
   - slug: mobile-polish-accessibility
     description: 完成全量移动端页面空加载错误态、深色主题、字体放大、小屏和可访问性
     depends_on: [habit-goal-management, task-sync, trusted-resource-container, settings-privacy-controls]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-07-12-mobile-polish-accessibility
     minimal_loop: false
     notes: 不改变业务契约
   - slug: observability-security

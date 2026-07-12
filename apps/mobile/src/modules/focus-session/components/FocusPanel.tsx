@@ -51,7 +51,7 @@ export function FocusPanel({
               {selectedTask?.title ?? '暂无可执行任务'}
             </Text>
           </View>
-          <View className="flex-row gap-3">
+          <View className="flex-row flex-wrap gap-3">
             <ModeButton
               isActive={selectedMode === 'focus'}
               label="专注模式"
@@ -85,6 +85,7 @@ export function FocusPanel({
                 </Text>
               </View>
               <Switch
+                accessibilityLabel={option.label}
                 isSelected={selectedMode === 'lock' ? true : option.enabled}
                 isDisabled={selectedMode === 'lock'}
                 onSelectedChange={() => onStrictOptionToggle(option.id)}
@@ -112,6 +113,7 @@ export function FocusPanel({
       </Card.Body></Card> : null}
 
       <Button
+        accessibilityLabel={selectedMode === 'lock' ? '开始锁机' : '开始可信专注'}
         size="lg"
         variant={selectedMode === 'lock' ? 'danger' : 'primary'}
         isDisabled={!selectedTask || (selectedMode === 'lock' && (!lockCapabilities?.notificationGranted || !lockCapabilities.notificationListenerEnabled || !lockCapabilities.riskConfirmed))}
@@ -134,7 +136,14 @@ function ModeButton({
   onPress: () => void;
 }) {
   return (
-    <Button variant={isActive ? 'primary' : 'secondary'} onPress={onPress} className="flex-1">
+    <Button
+      variant={isActive ? 'primary' : 'secondary'}
+      onPress={onPress}
+      className="min-w-36 flex-1"
+      accessibilityRole="radio"
+      accessibilityState={{ selected: isActive }}
+      accessibilityLabel={`${label}，${description}`}
+    >
       <View className="items-center gap-1">
         <Text type="body-sm" weight="semibold">
           {label}

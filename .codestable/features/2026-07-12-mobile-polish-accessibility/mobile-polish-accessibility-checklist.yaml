@@ -1,0 +1,8 @@
+feature: 2026-07-12-mobile-polish-accessibility
+steps:
+  - { id: S1, action: "适配小屏和大字体布局", status: done }
+  - { id: S2, action: "适配系统深色与减少动态效果", status: done }
+  - { id: S3, action: "补齐核心控件无障碍语义", status: done }
+  - { id: S4, action: "补齐恢复加载和错误播报", status: done }
+  - { id: S5, action: "完成代码审查和 Android 导出", status: done }
+

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { ScrollView, useWindowDimensions, View } from 'react-native';
 
 import { Button } from 'heroui-native/button';
 import { Card } from 'heroui-native/card';
@@ -30,6 +30,7 @@ export function ActiveSessionScreen({
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [completedAmount, setCompletedAmount] = useState('');
   const [exitReason, setExitReason] = useState('');
+  const { width } = useWindowDimensions();
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(Date.now()), 1000);
@@ -48,7 +49,11 @@ export function ActiveSessionScreen({
   }
 
   return (
-    <ScrollView className="flex-1 bg-background" contentContainerClassName="gap-6 px-5 py-8">
+    <ScrollView
+      className="flex-1 bg-background"
+      contentContainerClassName={`w-full self-center gap-6 py-8 ${width < 360 ? 'px-3' : 'px-5'}`}
+      contentContainerStyle={{ maxWidth: 760 }}
+    >
       <View className="gap-5">
         <View className="items-center gap-2"><Chip color="accent" variant="secondary">专注模式 · {modeLabel(session.timerMode)}</Chip><Text type="h2" weight="bold" align="center">{task.title}</Text><Text type="body-sm" color="muted" align="center">进行中状态已写入本机，重启后继续恢复</Text></View>
         <Card><Card.Body className="items-center gap-4 py-8"><Text type="h1" weight="bold">{display}</Text><Text type="body" color="muted" align="center">先完成一个小闭环，再讨论完美不完美。</Text></Card.Body></Card>

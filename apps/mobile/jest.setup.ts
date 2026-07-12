@@ -9,3 +9,11 @@ jest.mock('heroui-native/switch', () => require('./test/heroui.mock').switchModu
 jest.mock('heroui-native/text', () => require('./test/heroui.mock').textModule);
 jest.mock('heroui-native/text-field', () => require('./test/heroui.mock').textFieldModule);
 jest.mock('react-native-safe-area-context', () => require('./test/safe-area.mock'));
+jest.mock('expo-video', () => {
+  const { View } = require('react-native');
+  return { useVideoPlayer: jest.fn(() => ({})), VideoView: View };
+});
+jest.mock('react-native-webview', () => {
+  const { View } = require('react-native');
+  return { WebView: View };
+});

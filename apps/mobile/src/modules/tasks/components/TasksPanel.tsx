@@ -100,7 +100,7 @@ function Field({ label, value, onChange, placeholder, keyboard }: { label: strin
 }
 
 function ChoiceRow({ value, options, onChange }: { value: string; options: [string, string][]; onChange: (value: string) => void }) {
-  return <View className="flex-row flex-wrap gap-2">{options.map(([id, label]) => <Button key={id} size="sm" variant={value === id ? 'primary' : 'secondary'} onPress={() => onChange(id)}>{label}</Button>)}</View>;
+  return <View className="flex-row flex-wrap gap-2" accessibilityRole="radiogroup">{options.map(([id, label]) => <Button key={id} size="sm" variant={value === id ? 'primary' : 'secondary'} accessibilityRole="radio" accessibilityState={{ selected: value === id }} onPress={() => onChange(id)}>{label}</Button>)}</View>;
 }
 
 function TaskCard({ task, onStart, onGoalProgress }: { task: Task; onStart: (taskId: string, mode: SessionMode) => void; onGoalProgress: (taskId: string, amount: number) => Promise<void> }) {
