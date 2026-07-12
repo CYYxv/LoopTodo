@@ -1,0 +1,7 @@
+feature: 2026-07-12-settings-privacy-controls
+steps:
+  - { id: S1, action: "实现显式设置字段", status: done }
+  - { id: S2, action: "实现社交与任务可见性", status: done }
+  - { id: S3, action: "实现通知偏好门控", status: done }
+  - { id: S4, action: "实现权限检查设置页", status: done }
+  - { id: S5, action: "完成审查和验证", status: done }

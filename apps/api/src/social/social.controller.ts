@@ -21,4 +21,5 @@ export class SocialController {
   @Post('study-rooms') createRoom(@Req() request: AuthenticatedRequest, @Body() input: CreateStudyRoomDto) { return this.service.createRoom(request.auth.sub, input.name, input.visibility); }
   @Post('study-rooms/join') joinRoom(@Req() request: AuthenticatedRequest, @Body() input: JoinStudyRoomDto) { return this.service.joinRoom(request.auth.sub, input.roomId, input.inviteCode); }
   @Post('study-rooms/:id/reactions') react(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() input: SendReactionDto) { return this.service.sendReaction(request.auth.sub, id, input.emoji); }
+  @Get('social/users/:id/status') status(@Req() request: AuthenticatedRequest, @Param('id') id: string) { return this.service.sharedStatus(request.auth.sub, id); }
 }

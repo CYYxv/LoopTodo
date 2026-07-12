@@ -21,7 +21,7 @@ class MemoryAuthRepository implements AuthRepository {
   }
   async findUserById(id: string) { return this.users.get(id) ?? null; }
   async createUserWithSession(input: Parameters<AuthRepository['createUserWithSession']>[0]) {
-    const user: AuthUser = { ...input.user, vipStatus: 'free', privacySettings: {}, multiDeviceFocusSync: false };
+    const user: AuthUser = { ...input.user, vipStatus: 'free', privacySettings: {}, multiDeviceFocusSync: false, socialEnabled: true, shareCurrentTask: false, shareCompletedTasks: false, networkPolicy: 'offline_first', taskRemindersEnabled: true, familyAlertsEnabled: true, rewardNotificationsEnabled: true };
     this.users.set(user.id, user);
     this.sessions.set(input.session.id, { ...input.session, userId: user.id, revokedAt: null });
     return user;

@@ -23,6 +23,7 @@ import { useTaskStore } from '@/modules/tasks/task.store';
 import { StatisticsPanel } from '@/modules/scoring/components/StatisticsPanel';
 import { SubscriptionPanel } from '@/modules/subscription/components/SubscriptionPanel';
 import { RewardPanel } from '@/modules/rewards/components/RewardPanel';
+import { SettingsPanel } from '@/modules/settings/components/SettingsPanel';
 import type { CreateTaskInput } from '@/modules/tasks/task.types';
 import {
   DashboardSummary,
@@ -181,6 +182,7 @@ export function HomeScreen() {
           {activePanel === 'family' ? <FamilyPanel /> : null}
           {activePanel === 'vip' ? <SubscriptionPanel /> : null}
           {activePanel === 'rewards' ? <RewardPanel /> : null}
+          {activePanel === 'settings' ? <SettingsPanel /> : null}
         </ScrollView>
       )}
     </SafeAreaView>

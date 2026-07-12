@@ -131,8 +131,8 @@ items:
   - slug: settings-privacy-controls
     description: 实现多设备同步、社交、权限、通知和任务数据可见性设置
     depends_on: [task-sync, social-realtime, family-management, subscription-entitlements]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-07-12-settings-privacy-controls
     minimal_loop: false
     notes: 权限状态进入锁机前仍需实时检查
   - slug: mobile-polish-accessibility

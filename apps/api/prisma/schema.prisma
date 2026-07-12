@@ -160,6 +160,10 @@ enum RewardClaimStatus {
   declined
   fulfilled
 }
+enum NetworkPolicy {
+  offline_first
+  online_required
+}
 
 model User {
   id                       String          @id @default(uuid()) @db.Uuid
@@ -174,6 +178,10 @@ model User {
   shareCurrentTask         Boolean         @default(false) @map("share_current_task")
   shareCompletedTasks      Boolean         @default(false) @map("share_completed_tasks")
   isAdmin                  Boolean         @default(false) @map("is_admin")
+  networkPolicy            NetworkPolicy   @default(offline_first) @map("network_policy")
+  taskRemindersEnabled     Boolean         @default(true) @map("task_reminders_enabled")
+  familyAlertsEnabled      Boolean         @default(true) @map("family_alerts_enabled")
+  rewardNotificationsEnabled Boolean       @default(true) @map("reward_notifications_enabled")
   createdAt                DateTime        @default(now()) @map("created_at")
   updatedAt                DateTime        @updatedAt @map("updated_at")
   deviceSessions           DeviceSession[]

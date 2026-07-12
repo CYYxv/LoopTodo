@@ -5,7 +5,7 @@ import { Card } from 'heroui-native/card';
 import { Chip } from 'heroui-native/chip';
 import { Text } from 'heroui-native/text';
 
-export type PanelKey = 'tasks' | 'focus' | 'habits' | 'statistics' | 'social' | 'family' | 'vip' | 'rewards';
+export type PanelKey = 'tasks' | 'focus' | 'habits' | 'statistics' | 'social' | 'family' | 'vip' | 'rewards' | 'settings';
 
 const panelLabels: Record<PanelKey, string> = {
   tasks: '待办',
@@ -16,6 +16,7 @@ const panelLabels: Record<PanelKey, string> = {
   family: '家庭',
   vip: 'VIP',
   rewards: '奖励',
+  settings: '设置',
 };
 
 export function Header() {

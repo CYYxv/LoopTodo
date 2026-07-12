@@ -58,12 +58,15 @@ export class PrismaAuthRepository implements AuthRepository {
     });
   }
 
-  async updateSettings(userId: string, input: { multiDeviceFocusSync?: boolean; privacySettings?: Record<string, unknown> }) {
+  async updateSettings(userId: string, input: { multiDeviceFocusSync?: boolean; privacySettings?: Record<string, unknown>; socialEnabled?: boolean; shareCurrentTask?: boolean; shareCompletedTasks?: boolean; networkPolicy?: 'offline_first' | 'online_required'; taskRemindersEnabled?: boolean; familyAlertsEnabled?: boolean; rewardNotificationsEnabled?: boolean }) {
     const existing = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!existing) return null;
     return this.prisma.user.update({ where: { id: userId }, data: {
       multiDeviceFocusSync: input.multiDeviceFocusSync,
       privacySettings: input.privacySettings as Prisma.InputJsonValue | undefined,
+      socialEnabled: input.socialEnabled, shareCurrentTask: input.shareCurrentTask, shareCompletedTasks: input.shareCompletedTasks,
+      networkPolicy: input.networkPolicy, taskRemindersEnabled: input.taskRemindersEnabled,
+      familyAlertsEnabled: input.familyAlertsEnabled, rewardNotificationsEnabled: input.rewardNotificationsEnabled,
     } }) as Promise<AuthUser>;
   }
 }

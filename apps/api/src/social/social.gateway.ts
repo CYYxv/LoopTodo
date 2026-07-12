@@ -21,7 +21,7 @@ export class SocialGateway implements OnGatewayConnection, OnModuleInit, OnModul
   async handleConnection(socket: Socket) {
     const token = typeof socket.handshake.auth.token === 'string' ? socket.handshake.auth.token : null;
     if (!token) return socket.disconnect(true);
-    try { socket.data.userId = (await this.tokens.verifyAccess(token)).sub; }
+    try { socket.data.userId = (await this.tokens.verifyAccess(token)).sub; await this.social.ensureSocialEnabled(socket.data.userId); }
     catch { socket.disconnect(true); }
   }
 
