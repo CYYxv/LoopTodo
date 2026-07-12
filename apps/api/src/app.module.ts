@@ -15,6 +15,7 @@ import { EventBusModule } from './common/event-bus.module';
 import { TeamsSeasonsModule } from './teams-seasons/teams-seasons.module';
 import { SubscriptionModule } from './subscription/subscription.module';
 import { FamilyModule } from './family/family.module';
+import { RewardModule } from './rewards/reward.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { FamilyModule } from './family/family.module';
     TeamsSeasonsModule,
     SubscriptionModule,
     FamilyModule,
+    RewardModule,
   ],
 })
 export class AppModule {}

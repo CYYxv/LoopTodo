@@ -149,6 +149,18 @@ enum TaskChangeRequestStatus {
   rejected
 }
 
+enum RewardType {
+  virtual
+  physical
+}
+
+enum RewardClaimStatus {
+  pending
+  accepted
+  declined
+  fulfilled
+}
+
 model User {
   id                       String          @id @default(uuid()) @db.Uuid
   email                    String          @unique @db.VarChar(320)
@@ -161,6 +173,7 @@ model User {
   socialEnabled            Boolean         @default(true) @map("social_enabled")
   shareCurrentTask         Boolean         @default(false) @map("share_current_task")
   shareCompletedTasks      Boolean         @default(false) @map("share_completed_tasks")
+  isAdmin                  Boolean         @default(false) @map("is_admin")
   createdAt                DateTime        @default(now()) @map("created_at")
   updatedAt                DateTime        @updatedAt @map("updated_at")
   deviceSessions           DeviceSession[]
@@ -194,6 +207,9 @@ model User {
   familyGroupsCreated      FamilyGroup[]      @relation("FamilyGroupCreator")
   familyInvitesUsed        FamilyInvite[]     @relation("FamilyInviteUser")
   familyChangeReviews      TaskChangeRequest[] @relation("FamilyChangeReviewer")
+  rewardClaims             RewardClaim[]
+  rewardAddress            RewardAddress?
+  rewardAudits             RewardAudit[]
 
   @@map("users")
 }
@@ -681,6 +697,64 @@ model TaskChangeRequest {
 
   @@index([assignmentId, status])
   @@map("task_change_requests")
+}
+
+model Reward {
+  id          String        @id @default(uuid()) @db.Uuid
+  name        String        @db.VarChar(160)
+  description String
+  rewardType  RewardType    @map("reward_type")
+  imageUrl    String?       @map("image_url")
+  inventory   Int?
+  active      Boolean       @default(true)
+  config      Json          @default("{}")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+  claims      RewardClaim[]
+
+  @@index([active, createdAt])
+  @@map("rewards")
+}
+
+model RewardClaim {
+  id          String            @id @default(uuid()) @db.Uuid
+  rewardId    String            @map("reward_id") @db.Uuid
+  userId      String            @map("user_id") @db.Uuid
+  status      RewardClaimStatus @default(pending)
+  acceptedAt  DateTime?         @map("accepted_at")
+  fulfilledAt DateTime?         @map("fulfilled_at")
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+  reward      Reward            @relation(fields: [rewardId], references: [id], onDelete: Restrict)
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([rewardId, userId])
+  @@index([userId, status])
+  @@map("reward_claims")
+}
+
+model RewardAddress {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @unique @map("user_id") @db.Uuid
+  encryptedValue String   @map("encrypted_value")
+  valueHash      String   @map("value_hash") @db.Char(64)
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("reward_addresses")
+}
+
+model RewardAudit {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorId    String   @map("actor_id") @db.Uuid
+  claimId    String?  @map("claim_id") @db.Uuid
+  action     String   @db.VarChar(80)
+  targetHash String?  @map("target_hash") @db.Char(64)
+  createdAt  DateTime @default(now()) @map("created_at")
+  actor      User     @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([claimId, createdAt])
+  @@map("reward_audits")
 }
 
 model Friendship {

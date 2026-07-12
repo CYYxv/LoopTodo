@@ -21,6 +21,8 @@ export type Environment = {
   PAYMENT_API_URL: string;
   PAYMENT_API_KEY: string;
   PAYMENT_WEBHOOK_SECRET: string;
+  REWARD_ADDRESS_ENCRYPTION_KEY: string;
+  ADMIN_EMAILS: string;
 };
 
 export function validateEnvironment(input: Record<string, unknown>): Environment {
@@ -47,10 +49,13 @@ export function validateEnvironment(input: Record<string, unknown>): Environment
     PAYMENT_API_URL: String(input.PAYMENT_API_URL ?? ''),
     PAYMENT_API_KEY: String(input.PAYMENT_API_KEY ?? ''),
     PAYMENT_WEBHOOK_SECRET: String(input.PAYMENT_WEBHOOK_SECRET ?? 'development-payment-webhook-secret'),
+    REWARD_ADDRESS_ENCRYPTION_KEY: String(input.REWARD_ADDRESS_ENCRYPTION_KEY ?? 'development-reward-address-key'),
+    ADMIN_EMAILS: String(input.ADMIN_EMAILS ?? ''),
   };
   if (!['http', 'test'].includes(environment.PAYMENT_PROVIDER)) throw new Error('PAYMENT_PROVIDER must be http or test');
   if (environment.NODE_ENV === 'production' && environment.PAYMENT_PROVIDER === 'test') throw new Error('PAYMENT_PROVIDER=test is not allowed in production');
   if (environment.NODE_ENV === 'production' && environment.PAYMENT_WEBHOOK_SECRET.length < 32) throw new Error('PAYMENT_WEBHOOK_SECRET must be at least 32 characters in production');
+  if (environment.NODE_ENV === 'production' && environment.REWARD_ADDRESS_ENCRYPTION_KEY.length < 32) throw new Error('REWARD_ADDRESS_ENCRYPTION_KEY must be at least 32 characters in production');
   return environment;
 }
 

@@ -1,0 +1,7 @@
+feature: 2026-07-12-reward-backoffice
+steps:
+  - { id: S1, action: "实现奖励配置和库存", status: done }
+  - { id: S2, action: "实现中奖通知与确认", status: done }
+  - { id: S3, action: "实现地址加密与访问控制", status: done }
+  - { id: S4, action: "实现用户奖励页面", status: done }
+  - { id: S5, action: "完成安全审查和验证", status: done }

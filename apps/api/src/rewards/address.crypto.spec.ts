@@ -1,0 +1,2 @@
+import { decryptAddress, encryptAddress } from './address.crypto';
+test('encrypts reward addresses with authenticated encryption', () => { const value = { recipient: '张三', phone: '13800000000', address: '测试地址' }; const encrypted = encryptAddress(value, 'secret'); expect(encrypted.encryptedValue).not.toContain('测试地址'); expect(decryptAddress(encrypted.encryptedValue, 'secret')).toEqual(value); expect(() => decryptAddress(encrypted.encryptedValue, 'wrong')).toThrow(); });

@@ -124,8 +124,8 @@ items:
   - slug: reward-backoffice
     description: 实现奖励配置、中奖确认、通知和地址权限控制后台
     depends_on: [subscription-entitlements, teams-seasons, notification-delivery]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-07-12-reward-backoffice
     minimal_loop: false
     notes: 地址字段必须最小权限访问
   - slug: settings-privacy-controls
