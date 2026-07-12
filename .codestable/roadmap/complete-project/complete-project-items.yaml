@@ -145,8 +145,8 @@ items:
   - slug: observability-security
     description: 实现埋点、审计日志、隐私边界和家庭支付奖励安全测试
     depends_on: [forced-trigger-scheduler, task-ai-service, teams-seasons, family-management, reward-backoffice]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-07-12-observability-security
     minimal_loop: false
     notes: 覆盖越权和敏感字段
   - slug: system-hardening

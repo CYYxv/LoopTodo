@@ -15,6 +15,8 @@ import { ApiResponseInterceptor } from '../src/common/api-response.interceptor';
 import { HabitModule } from '../src/habits/habit.module';
 import { HABIT_REPOSITORY, type HabitRepository } from '../src/habits/habit.repository';
 import type { HabitProgressView, HabitView } from '../src/habits/habit.types';
+import { PrismaService } from '../src/infrastructure/prisma/prisma.service';
+import { SubscriptionService } from '../src/subscription/subscription.service';
 
 describe('habits API', () => {
   let app: NestFastifyApplication;
@@ -50,6 +52,8 @@ describe('habits API', () => {
     })] }), HabitModule] })
       .overrideProvider(AUTH_REPOSITORY).useValue({})
       .overrideProvider(AUTH_RATE_LIMITER).useValue({ consume: async () => undefined })
+      .overrideProvider(PrismaService).useValue({})
+      .overrideProvider(SubscriptionService).useValue({ assertCanCreateHabit: async () => undefined })
       .overrideProvider(HABIT_REPOSITORY).useValue(repository).compile();
     app = module.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true }));

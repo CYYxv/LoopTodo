@@ -6,12 +6,13 @@ import { ApiError } from '../common/api-error';
 import { AI_PROVIDERS, type AiProvider } from './ai-provider';
 import { TASK_AI_REPOSITORY, type TaskAiRepository } from './task-ai.repository';
 import { SubscriptionService } from '../subscription/subscription.service';
+import { SecurityAuditService } from '../observability/security-audit.service';
 
 @Injectable()
 export class TaskAiService {
   private readonly providers: Map<string, AiProvider>;
   constructor(@Inject(TASK_AI_REPOSITORY) private readonly repository: TaskAiRepository,
-    @Inject(AI_PROVIDERS) providers: AiProvider[], private readonly config: ConfigService, private readonly subscriptions: SubscriptionService) {
+    @Inject(AI_PROVIDERS) providers: AiProvider[], private readonly config: ConfigService, private readonly subscriptions: SubscriptionService, private readonly security: SecurityAuditService) {
     this.providers = new Map(providers.map((provider) => [provider.name, provider]));
   }
   async createMaterial(userId: string, taskId: string, input: { title: string; content: string }) {
@@ -27,6 +28,7 @@ export class TaskAiService {
     const providerName = this.config.get<string>('AI_PROVIDER') ?? 'http';
     if (blocked) {
       await this.repository.recordAudit({ userId, taskId, questionHash, materialIds, provider: providerName, externalDataUsed: false, blocked: true, blockReason: blocked });
+      await this.security.record({ actorId: userId, category: 'ai', action: 'task_ai_request', outcome: 'blocked', targetType: 'task', targetId: taskId, metadata: { reason: blocked, provider: providerName, materialCount: materialIds.length, questionHash } });
       throw new ApiError('AI_SCOPE_VIOLATION', '任务型 AI 只能回答与当前任务和材料直接相关的问题', HttpStatus.UNPROCESSABLE_ENTITY);
     }
     const materials = await this.repository.listMaterials(userId, taskId, materialIds);
@@ -39,6 +41,7 @@ export class TaskAiService {
     catch (error) {
       await this.repository.recordAudit({ userId, taskId, questionHash, materialIds, provider: provider.name,
         externalDataUsed: false, blocked: true, blockReason: 'provider_error' });
+      await this.security.record({ actorId: userId, category: 'ai', action: 'task_ai_provider', outcome: 'failed', targetType: 'task', targetId: taskId, metadata: { provider: provider.name, materialCount: materialIds.length, questionHash } });
       throw error;
     }
     await this.repository.recordAudit({ userId, taskId, questionHash, materialIds, provider: provider.name,

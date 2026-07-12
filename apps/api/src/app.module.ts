@@ -16,11 +16,13 @@ import { TeamsSeasonsModule } from './teams-seasons/teams-seasons.module';
 import { SubscriptionModule } from './subscription/subscription.module';
 import { FamilyModule } from './family/family.module';
 import { RewardModule } from './rewards/reward.module';
+import { ObservabilityModule } from './observability/observability.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnvironment }),
     EventBusModule,
+    ObservabilityModule,
     PrismaModule,
     RedisModule,
     AuthModule,

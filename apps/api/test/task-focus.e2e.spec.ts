@@ -15,6 +15,10 @@ import { ApiResponseInterceptor } from '../src/common/api-response.interceptor';
 import { DuplicateCategoryError, TASK_FOCUS_REPOSITORY, TaskIdentityConflictError, type MutationResult, type TaskFocusRepository } from '../src/task-focus/task-focus.repository';
 import { TaskFocusModule } from '../src/task-focus/task-focus.module';
 import type { CategoryView, SessionView, TaskCreate, TaskPatch, TaskView } from '../src/task-focus/task-focus.types';
+import { PrismaService } from '../src/infrastructure/prisma/prisma.service';
+import { RedisService } from '../src/infrastructure/redis/redis.service';
+import { ScoringService } from '../src/scoring/scoring.service';
+import { FamilyService } from '../src/family/family.service';
 
 class MemoryTaskFocusRepository implements TaskFocusRepository {
   categories: Array<CategoryView & { userId: string }> = [];
@@ -133,6 +137,10 @@ describe('task focus API', () => {
       })] }), TaskFocusModule],
     }).overrideProvider(AUTH_REPOSITORY).useValue(authRepository)
       .overrideProvider(AUTH_RATE_LIMITER).useValue({ consume: async () => undefined })
+      .overrideProvider(PrismaService).useValue({})
+      .overrideProvider(RedisService).useValue({})
+      .overrideProvider(ScoringService).useValue({ settleSession: async () => undefined })
+      .overrideProvider(FamilyService).useValue({ handleSessionFinished: async () => undefined })
       .overrideProvider(TASK_FOCUS_REPOSITORY).useValue(repository).compile();
     app = module.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true }));

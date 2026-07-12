@@ -2,10 +2,11 @@ import { BadRequestException, ConflictException, ForbiddenException, Inject, Inj
 import { ConfigService } from '@nestjs/config'; import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../infrastructure/prisma/prisma.service'; import { PAYMENT_PROVIDERS, type PaymentProviderAdapter } from './payment-provider'; import { entitlementView, extendSubscription, planPrices, type Plan } from './subscription.policy';
+import { SecurityAuditService } from '../observability/security-audit.service';
 
 @Injectable() export class SubscriptionService {
   private readonly providers: Map<string, PaymentProviderAdapter>;
-  constructor(private readonly prisma: PrismaService, @Inject(PAYMENT_PROVIDERS) providers: PaymentProviderAdapter[], private readonly config: ConfigService) { this.providers = new Map(providers.map((provider) => [provider.name, provider])); }
+  constructor(private readonly prisma: PrismaService, @Inject(PAYMENT_PROVIDERS) providers: PaymentProviderAdapter[], private readonly config: ConfigService, private readonly security: SecurityAuditService) { this.providers = new Map(providers.map((provider) => [provider.name, provider])); }
   async entitlements(userId: string) { const active = await this.activeSubscription(userId); return { ...entitlementView(Boolean(active)), subscription: active }; }
   async assertEntitled(userId: string, entitlement: 'taskAi' | 'familyManagement') { const view = await this.entitlements(userId); if (!view[entitlement]) throw new ForbiddenException({ code: 'VIP_REQUIRED', message: '该功能需要 LoopTodo VIP' }); }
   async assertCanCreateHabit(userId: string) { const view = await this.entitlements(userId); if (view.habitLimit === null) return; const count = await this.prisma.habit.count({ where: { userId, status: 'active' } }); if (count >= view.habitLimit) throw new ForbiddenException({ code: 'HABIT_LIMIT_REACHED', message: '免费版最多创建 3 个习惯' }); }
@@ -17,7 +18,7 @@ import { PrismaService } from '../infrastructure/prisma/prisma.service'; import 
     catch (error) { await this.prisma.subscriptionOrder.update({ where: { id: order.id }, data: { status: 'failed' } }); throw error; }
   }
   async handleWebhook(input: { eventId: string; externalOrderId: string; status: 'paid' | 'failed' }, signature: string) { const payload = canonical(input); const verified = verify(payload, signature, this.config.get<string>('PAYMENT_WEBHOOK_SECRET') ?? ''); const order = await this.prisma.subscriptionOrder.findUnique({ where: { externalOrderId: input.externalOrderId } }); const existing = await this.prisma.paymentAudit.findUnique({ where: { eventId: input.eventId } });
-    if (!verified) { if (!existing?.verified) await this.recordAudit(input.eventId, payload, false, 'invalid_signature', order); throw new UnauthorizedException({ code: 'INVALID_PAYMENT_SIGNATURE', message: '支付回调签名无效' }); }
+    if (!verified) { if (!existing?.verified) await this.recordAudit(input.eventId, payload, false, 'invalid_signature', order); await this.security.record({ actorId: order?.userId, category: 'payment', action: 'payment_webhook', outcome: 'denied', targetType: 'subscription_order', targetId: order?.id ?? input.externalOrderId, metadata: { eventId: input.eventId, reason: 'invalid_signature' } }); throw new UnauthorizedException({ code: 'INVALID_PAYMENT_SIGNATURE', message: '支付回调签名无效' }); }
     if (!order) { await this.recordAudit(input.eventId, payload, true, 'order_not_found', null); throw new NotFoundException({ code: 'PAYMENT_ORDER_NOT_FOUND', message: '订阅订单不存在' }); }
     if (existing?.verified) return { duplicate: true };
     if (input.status === 'failed') { await this.prisma.subscriptionOrder.update({ where: { id: order.id }, data: { status: 'failed' } }); await this.recordAudit(input.eventId, payload, true, 'failed', order); return { paid: false }; }

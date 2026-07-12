@@ -1,0 +1,8 @@
+feature: 2026-07-12-observability-security
+steps:
+  - { id: S1, action: "实现请求 ID 与结构化日志", status: done }
+  - { id: S2, action: "实现统一安全事件与脱敏", status: done }
+  - { id: S3, action: "接入四类高风险业务边界", status: done }
+  - { id: S4, action: "补充隐私和越权安全测试", status: done }
+  - { id: S5, action: "完成构建审查与验收", status: done }
+
