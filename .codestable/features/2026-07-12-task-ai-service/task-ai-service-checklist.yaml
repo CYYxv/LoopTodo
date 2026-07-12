@@ -1,0 +1,24 @@
+feature: 2026-07-12-task-ai-service
+created: 2026-07-12
+steps:
+  - id: S1
+    action: "实现 AI 材料持久化和任务归属校验"
+    status: done
+  - id: S2
+    action: "实现 provider adapter、范围阻断和审计"
+    status: done
+  - id: S3
+    action: "实现移动端材料与问答面板"
+    status: done
+  - id: S4
+    action: "完成本地代码审查和必要验证"
+    status: done
+checks:
+  - item: "只发送当前任务显式批准的材料"
+    status: passed
+  - item: "生产环境禁用 test provider"
+    status: passed
+  - item: "provider 失败和范围阻断均留审计"
+    status: passed
+  - item: "外部数据回答显示风险提示"
+    status: passed

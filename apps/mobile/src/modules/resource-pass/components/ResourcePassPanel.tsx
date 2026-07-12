@@ -13,6 +13,7 @@ import { useResourcePassStore } from '../resource-pass.store';
 import type { ResourcePass, ResourcePassType } from '../resource-pass.types';
 import { LocalVideoPlayer } from './LocalVideoPlayer';
 import { RestrictedWebView } from './RestrictedWebView';
+import { TaskAiPanel } from '@/modules/task-ai/components/TaskAiPanel';
 
 export function ResourcePassPanel({ taskId, readOnly = false }: { taskId: string | null; readOnly?: boolean }) {
   const [webType, setWebType] = useState<'url' | 'domain'>('url'); const [value, setValue] = useState(''); const [active, setActive] = useState<ResourcePass | null>(null);
@@ -29,6 +30,7 @@ export function ResourcePassPanel({ taskId, readOnly = false }: { taskId: string
     {resources.map((resource) => <View key={resource.id} className="flex-row items-center justify-between gap-2"><View className="flex-1"><Text type="body-sm">{resource.displayName}</Text><Text type="body-xs" color="muted">{label(resource.type)} · {resource.valueHash}</Text></View><Button size="sm" variant="secondary" onPress={() => setActive(resource)}>打开</Button>{!readOnly ? <Text type="body-xs" onPress={() => void remove(taskId, resource.id)}>删除</Text> : null}</View>)}
     {resources.length === 0 ? <Text type="body-xs" color="muted">尚未批准资源</Text> : null}
     {active ? <View className="gap-2"><View className="flex-row items-center justify-between"><Chip variant="soft">只读容器</Chip><Text type="body-xs" onPress={() => setActive(null)}>关闭</Text></View>{active.type === 'url' || active.type === 'domain' ? <RestrictedWebView resource={active} /> : active.type === 'local_video' ? <LocalVideoPlayer uri={active.value} /> : <Text type="body-sm">本地文件已固定保存；当前版本不调用外部应用打开，避免离开专注环境。</Text>}</View> : null}
+    <TaskAiPanel taskId={taskId} readOnly={readOnly} />
   </Card.Body></Card>;
 }
 function label(type: ResourcePassType) { return { url: '精确网页', domain: '域名', local_video: '本地视频', local_file: '本地文件' }[type]; }

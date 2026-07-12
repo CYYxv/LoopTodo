@@ -82,8 +82,8 @@ items:
   - slug: task-ai-service
     description: 实现任务材料限定的 AI 服务、审计和外部数据风险提示
     depends_on: [api-foundation-auth, trusted-resource-container]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-07-12-task-ai-service
     minimal_loop: false
     notes: AI provider 通过 adapter 接入
   - slug: scoring-statistics

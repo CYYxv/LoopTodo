@@ -75,6 +75,14 @@ enum NotificationDeliveryStatus {
   cancelled
 }
 
+enum ResourceType {
+  url
+  domain
+  local_file
+  local_video
+  ai_material
+}
+
 model User {
   id                       String          @id @default(uuid()) @db.Uuid
   email                    String          @unique @db.VarChar(320)
@@ -96,6 +104,9 @@ model User {
   forcedLockRules          ForcedLockRule[]
   devices                  Device[]
   notificationEvents       NotificationEvent[]
+  resourcePasses           ResourcePass[]
+  aiMaterials              AiMaterial[]
+  aiAudits                 AiAudit[]
 
   @@map("users")
 }
@@ -199,10 +210,63 @@ model Task {
   focusSessions           FocusSession[]
   taskProgressEntries     TaskProgressEntry[]
   forcedLockRules         ForcedLockRule[]
+  resourcePasses          ResourcePass[]
+  aiMaterials             AiMaterial[]
+  aiAudits                AiAudit[]
 
   @@index([userId, status, updatedAt])
   @@index([userId, activeSessionId])
   @@map("tasks")
+}
+
+model ResourcePass {
+  id               String       @id @default(uuid()) @db.Uuid
+  userId           String       @map("user_id") @db.Uuid
+  taskId           String       @map("task_id") @db.Uuid
+  resourceType     ResourceType @map("resource_type")
+  resourceValue    String       @map("resource_value")
+  trustWeight      Int          @default(100) @map("trust_weight")
+  addedDuringFocus Boolean      @default(false) @map("added_during_focus")
+  auditReason      String?      @map("audit_reason")
+  createdAt        DateTime     @default(now()) @map("created_at")
+  user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task             Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([userId, taskId, createdAt])
+  @@map("resource_passes")
+}
+
+model AiMaterial {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  taskId      String   @map("task_id") @db.Uuid
+  title       String   @db.VarChar(160)
+  content     String
+  contentHash String   @map("content_hash") @db.Char(64)
+  createdAt   DateTime @default(now()) @map("created_at")
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([userId, taskId, createdAt])
+  @@map("ai_materials")
+}
+
+model AiAudit {
+  id               String   @id @default(uuid()) @db.Uuid
+  userId           String   @map("user_id") @db.Uuid
+  taskId           String   @map("task_id") @db.Uuid
+  questionHash     String   @map("question_hash") @db.Char(64)
+  materialIds      Json     @map("material_ids")
+  provider         String   @db.VarChar(40)
+  externalDataUsed Boolean  @default(false) @map("external_data_used")
+  blocked          Boolean  @default(false)
+  blockReason      String?  @map("block_reason") @db.VarChar(120)
+  createdAt        DateTime @default(now()) @map("created_at")
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task             Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([userId, taskId, createdAt])
+  @@map("ai_audits")
 }
 
 model TaskProgressEntry {

@@ -8,6 +8,7 @@ import { RedisModule } from './infrastructure/redis/redis.module';
 import { HabitModule } from './habits/habit.module';
 import { TaskFocusModule } from './task-focus/task-focus.module';
 import { NotificationModule } from './notifications/notification.module';
+import { TaskAiModule } from './task-ai/task-ai.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { NotificationModule } from './notifications/notification.module';
     TaskFocusModule,
     HabitModule,
     NotificationModule,
+    TaskAiModule,
   ],
 })
 export class AppModule {}
