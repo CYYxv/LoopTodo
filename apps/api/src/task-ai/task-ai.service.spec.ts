@@ -4,6 +4,7 @@ import type { AiProvider } from './ai-provider';
 import type { TaskAiRepository } from './task-ai.repository';
 import { TaskAiService } from './task-ai.service';
 import type { AiMaterialView } from './task-ai.types';
+import type { SubscriptionService } from '../subscription/subscription.service';
 
 function setup(providerResult = { answer: '材料内答案', externalDataUsed: false }) {
   const audits: Array<Parameters<TaskAiRepository['recordAudit']>[0]> = [];
@@ -16,7 +17,8 @@ function setup(providerResult = { answer: '材料内答案', externalDataUsed: f
   };
   const provider: AiProvider = { name: 'test', async answer() { return providerResult; } };
   const config = { get(name: string) { return name === 'AI_PROVIDER' ? 'test' : undefined; } } as ConfigService;
-  return { service: new TaskAiService(repository, [provider], config), audits, materialId: materials[0]!.id };
+  const subscriptions = { async assertEntitled() { return undefined; } } as unknown as SubscriptionService;
+  return { service: new TaskAiService(repository, [provider], config, subscriptions), audits, materialId: materials[0]!.id };
 }
 
 describe('TaskAiService', () => {

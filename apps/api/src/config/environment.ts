@@ -17,6 +17,10 @@ export type Environment = {
   RANK_THRESHOLDS_JSON: string;
   TEAM_AVERAGE_WEIGHT: number;
   TEAM_TOTAL_BONUS_WEIGHT: number;
+  PAYMENT_PROVIDER: string;
+  PAYMENT_API_URL: string;
+  PAYMENT_API_KEY: string;
+  PAYMENT_WEBHOOK_SECRET: string;
 };
 
 export function validateEnvironment(input: Record<string, unknown>): Environment {
@@ -39,7 +43,14 @@ export function validateEnvironment(input: Record<string, unknown>): Environment
     RANK_THRESHOLDS_JSON: rankThresholds(input.RANK_THRESHOLDS_JSON ?? '[0,500,1500,3000,5000,8000]'),
     TEAM_AVERAGE_WEIGHT: finiteNumber(input.TEAM_AVERAGE_WEIGHT ?? 0.7, 'TEAM_AVERAGE_WEIGHT'),
     TEAM_TOTAL_BONUS_WEIGHT: finiteNumber(input.TEAM_TOTAL_BONUS_WEIGHT ?? 0.3, 'TEAM_TOTAL_BONUS_WEIGHT'),
+    PAYMENT_PROVIDER: String(input.PAYMENT_PROVIDER ?? 'test'),
+    PAYMENT_API_URL: String(input.PAYMENT_API_URL ?? ''),
+    PAYMENT_API_KEY: String(input.PAYMENT_API_KEY ?? ''),
+    PAYMENT_WEBHOOK_SECRET: String(input.PAYMENT_WEBHOOK_SECRET ?? 'development-payment-webhook-secret'),
   };
+  if (!['http', 'test'].includes(environment.PAYMENT_PROVIDER)) throw new Error('PAYMENT_PROVIDER must be http or test');
+  if (environment.NODE_ENV === 'production' && environment.PAYMENT_PROVIDER === 'test') throw new Error('PAYMENT_PROVIDER=test is not allowed in production');
+  if (environment.NODE_ENV === 'production' && environment.PAYMENT_WEBHOOK_SECRET.length < 32) throw new Error('PAYMENT_WEBHOOK_SECRET must be at least 32 characters in production');
   return environment;
 }
 

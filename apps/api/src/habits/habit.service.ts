@@ -1,13 +1,14 @@
-import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 
 import type { AddHabitProgressDto } from './dto/add-habit-progress.dto';
 import type { CreateHabitDto } from './dto/create-habit.dto';
 import type { UpdateHabitDto } from './dto/update-habit.dto';
-import { HABIT_REPOSITORY, type HabitMutation, type HabitRepository } from './habit.repository';
+import { HABIT_REPOSITORY, HabitLimitExceededError, type HabitMutation, type HabitRepository } from './habit.repository';
+import { SubscriptionService } from '../subscription/subscription.service';
 
 @Injectable()
 export class HabitService {
-  constructor(@Inject(HABIT_REPOSITORY) private readonly repository: HabitRepository) {}
+  constructor(@Inject(HABIT_REPOSITORY) private readonly repository: HabitRepository, private readonly subscriptions: SubscriptionService) {}
 
   list(userId: string, date?: string) {
     const day = date ? new Date(`${date}T00:00:00.000Z`) : utcDay(new Date());
@@ -15,10 +16,12 @@ export class HabitService {
     return this.repository.list(userId, day);
   }
 
-  create(userId: string, input: CreateHabitDto) {
+  async create(userId: string, input: CreateHabitDto) {
     validateForce(input.forceEnabled, input.triggerTime ?? null);
-    return this.repository.create(userId, { name: input.name.trim(), targetMinutes: input.targetMinutes,
-      forceEnabled: input.forceEnabled, triggerTime: input.forceEnabled ? input.triggerTime ?? null : null });
+    await this.subscriptions.assertCanCreateHabit(userId);
+    try { return await this.repository.create(userId, { name: input.name.trim(), targetMinutes: input.targetMinutes,
+      forceEnabled: input.forceEnabled, triggerTime: input.forceEnabled ? input.triggerTime ?? null : null }); }
+    catch (error) { if (error instanceof HabitLimitExceededError) throw new ForbiddenException({ code: 'HABIT_LIMIT_REACHED', message: '免费版最多创建 3 个习惯' }); throw error; }
   }
 
   async update(userId: string, id: string, input: UpdateHabitDto) {

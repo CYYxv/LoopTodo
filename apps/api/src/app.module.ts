@@ -13,6 +13,7 @@ import { ScoringModule } from './scoring/scoring.module';
 import { SocialModule } from './social/social.module';
 import { EventBusModule } from './common/event-bus.module';
 import { TeamsSeasonsModule } from './teams-seasons/teams-seasons.module';
+import { SubscriptionModule } from './subscription/subscription.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { TeamsSeasonsModule } from './teams-seasons/teams-seasons.module';
     ScoringModule,
     SocialModule,
     TeamsSeasonsModule,
+    SubscriptionModule,
   ],
 })
 export class AppModule {}

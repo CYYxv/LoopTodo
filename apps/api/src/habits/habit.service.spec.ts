@@ -3,6 +3,9 @@ import { randomUUID } from 'node:crypto';
 import type { HabitMutation, HabitRepository } from './habit.repository';
 import { HabitService } from './habit.service';
 import type { HabitProgressView, HabitView } from './habit.types';
+import type { SubscriptionService } from '../subscription/subscription.service';
+
+const subscriptions = { async assertCanCreateHabit() { return undefined; } } as unknown as SubscriptionService;
 
 class MemoryHabitRepository implements HabitRepository {
   habits: Array<HabitView & { userId: string }> = [];
@@ -46,13 +49,13 @@ class MemoryHabitRepository implements HabitRepository {
 
 describe('HabitService', () => {
   test('requires trigger time when force constraint is enabled', async () => {
-    const service = new HabitService(new MemoryHabitRepository());
-    expect(() => service.create('user-one', { name: '晨读', targetMinutes: 30, forceEnabled: true })).toThrow('开启强制约束时必须设置触发时间');
+    const service = new HabitService(new MemoryHabitRepository(), subscriptions);
+    await expect(service.create('user-one', { name: '晨读', targetMinutes: 30, forceEnabled: true })).rejects.toThrow('开启强制约束时必须设置触发时间');
   });
 
   test('isolates progress, enforces version and keeps progress idempotent', async () => {
     const repository = new MemoryHabitRepository();
-    const service = new HabitService(repository);
+    const service = new HabitService(repository, subscriptions);
     const habit = await service.create('user-one', { name: '晨读', targetMinutes: 30, forceEnabled: true, triggerTime: '07:30' });
 
     await service.update('user-one', habit.id, { version: 1, targetMinutes: 45 });

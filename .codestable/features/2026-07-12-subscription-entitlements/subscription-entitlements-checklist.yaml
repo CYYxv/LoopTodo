@@ -1,0 +1,27 @@
+feature: 2026-07-12-subscription-entitlements
+created: 2026-07-12
+steps:
+  - id: S1
+    action: "实现订阅订单与订阅记录"
+    status: done
+  - id: S2
+    action: "实现支付 adapter 与回调验签"
+    status: done
+  - id: S3
+    action: "实现权益查询和功能门控"
+    status: done
+  - id: S4
+    action: "实现移动端 VIP 购买界面"
+    status: done
+  - id: S5
+    action: "完成支付安全审查和验证"
+    status: done
+checks:
+  - item: "生产环境禁用测试支付"
+    status: passed
+  - item: "回调验签和事件幂等"
+    status: passed
+  - item: "并发续费按到期时间叠加"
+    status: passed
+  - item: "免费习惯上限并发安全"
+    status: passed

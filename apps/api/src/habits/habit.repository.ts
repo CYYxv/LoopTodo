@@ -1,6 +1,7 @@
 import type { HabitProgressView, HabitView } from './habit.types';
 
 export const HABIT_REPOSITORY = Symbol('HABIT_REPOSITORY');
+export class HabitLimitExceededError extends Error {}
 
 export type HabitMutation<T> =
   | { status: 'ok'; value: T; replayed?: boolean }

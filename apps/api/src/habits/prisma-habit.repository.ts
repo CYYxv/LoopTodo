@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma, type Habit, type HabitProgressEntry } from '@prisma/client';
 
 import { PrismaService } from '../infrastructure/prisma/prisma.service';
-import type { HabitMutation, HabitRepository } from './habit.repository';
+import { HabitLimitExceededError, type HabitMutation, type HabitRepository } from './habit.repository';
 import type { HabitProgressView, HabitView } from './habit.types';
 
 @Injectable()
@@ -21,12 +21,15 @@ export class PrismaHabitRepository implements HabitRepository {
 
   async create(userId: string, input: Parameters<HabitRepository['create']>[1]) {
     return this.prisma.$transaction(async (transaction) => {
+      await transaction.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${userId}))`;
+      const activeSubscription = await transaction.subscription.findFirst({ where: { userId, expiresAt: { gt: new Date() } }, select: { id: true } });
+      if (!activeSubscription && await transaction.habit.count({ where: { userId, status: 'active' } }) >= 3) throw new HabitLimitExceededError();
       const habit = await transaction.habit.create({ data: { userId, ...input } });
       if (input.forceEnabled && input.triggerTime) {
         await transaction.forcedLockRule.create({ data: { userId, habitId: habit.id, triggerTime: input.triggerTime } });
       }
       return habitView(habit, 0);
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
   async update(userId: string, id: string, version: number, patch: Parameters<HabitRepository['update']>[3]): Promise<HabitMutation<HabitView>> {

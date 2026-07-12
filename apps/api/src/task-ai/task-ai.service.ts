@@ -5,12 +5,13 @@ import { createHash } from 'node:crypto';
 import { ApiError } from '../common/api-error';
 import { AI_PROVIDERS, type AiProvider } from './ai-provider';
 import { TASK_AI_REPOSITORY, type TaskAiRepository } from './task-ai.repository';
+import { SubscriptionService } from '../subscription/subscription.service';
 
 @Injectable()
 export class TaskAiService {
   private readonly providers: Map<string, AiProvider>;
   constructor(@Inject(TASK_AI_REPOSITORY) private readonly repository: TaskAiRepository,
-    @Inject(AI_PROVIDERS) providers: AiProvider[], private readonly config: ConfigService) {
+    @Inject(AI_PROVIDERS) providers: AiProvider[], private readonly config: ConfigService, private readonly subscriptions: SubscriptionService) {
     this.providers = new Map(providers.map((provider) => [provider.name, provider]));
   }
   async createMaterial(userId: string, taskId: string, input: { title: string; content: string }) {
@@ -20,6 +21,7 @@ export class TaskAiService {
   }
   async listMaterials(userId: string, taskId: string) { if (!(await this.repository.getTask(userId, taskId))) throw notFound(); return this.repository.listMaterials(userId, taskId); }
   async ask(userId: string, taskId: string, question: string, materialIds: string[]) {
+    await this.subscriptions.assertEntitled(userId, 'taskAi');
     const task = await this.repository.getTask(userId, taskId); if (!task) throw notFound();
     const blocked = blockedReason(question); const questionHash = hash(question.trim());
     const providerName = this.config.get<string>('AI_PROVIDER') ?? 'http';

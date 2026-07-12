@@ -21,6 +21,7 @@ import { useSyncStore } from '@/modules/sync/sync.store';
 import { TasksPanel } from '@/modules/tasks/components/TasksPanel';
 import { useTaskStore } from '@/modules/tasks/task.store';
 import { StatisticsPanel } from '@/modules/scoring/components/StatisticsPanel';
+import { SubscriptionPanel } from '@/modules/subscription/components/SubscriptionPanel';
 import type { CreateTaskInput } from '@/modules/tasks/task.types';
 import {
   DashboardSummary,
@@ -177,6 +178,7 @@ export function HomeScreen() {
           {activePanel === 'statistics' ? <StatisticsPanel records={sessionRecords} /> : null}
           {activePanel === 'social' ? <SocialPanel /> : null}
           {activePanel === 'family' ? <FamilyPanel /> : null}
+          {activePanel === 'vip' ? <SubscriptionPanel /> : null}
         </ScrollView>
       )}
     </SafeAreaView>

@@ -110,8 +110,8 @@ items:
   - slug: subscription-entitlements
     description: 实现 VIP 订阅状态、权益控制、习惯上限和支付 adapter
     depends_on: [api-foundation-auth]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-07-12-subscription-entitlements
     minimal_loop: false
     notes: 真实支付需外部商户凭证，测试使用明确标识的 adapter
   - slug: family-management
