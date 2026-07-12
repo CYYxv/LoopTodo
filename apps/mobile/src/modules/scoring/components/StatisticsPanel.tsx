@@ -1,9 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { View } from 'react-native';
-import { Button } from 'heroui-native/button';
-import { Card } from 'heroui-native/card';
-import { Chip } from 'heroui-native/chip';
-import { Text } from 'heroui-native/text';
+import { Button, Card, Chip, Text } from '@/ui/hero-runtime';
 
 import type { FocusSessionRecord } from '@/modules/focus-session/focus-session.types';
 import { localStatistics } from '../scoring.local';

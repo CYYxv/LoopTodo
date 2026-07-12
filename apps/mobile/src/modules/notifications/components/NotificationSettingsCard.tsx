@@ -1,9 +1,5 @@
 import { View } from 'react-native';
-import { Button } from 'heroui-native/button';
-import { Card } from 'heroui-native/card';
-import { Chip } from 'heroui-native/chip';
-import { Switch } from 'heroui-native/switch';
-import { Text } from 'heroui-native/text';
+import { Button, Card, Chip, Switch, Text } from '@/ui/hero-runtime';
 
 import type { NotificationPermission } from '../notification.types';
 

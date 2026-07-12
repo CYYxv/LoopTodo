@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { View } from 'react-native';
 import { WebView } from 'react-native-webview';
-import { Text } from 'heroui-native/text';
+import { Text } from '@/ui/hero-runtime';
 
 import { isNavigationAllowed } from '../resource-pass.policy';
 import type { ResourcePass } from '../resource-pass.types';

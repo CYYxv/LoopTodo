@@ -1,11 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, ScrollView, useColorScheme, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, useColorScheme, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
-import { Card } from 'heroui-native/card';
-import { Chip } from 'heroui-native/chip';
-import { Text } from 'heroui-native/text';
+import { Card, Chip, Text } from '@/ui/hero-runtime';
 
 import { ActiveSessionScreen } from '@/modules/focus-session/components/ActiveSessionScreen';
 import { HabitsPanel } from '@/modules/habits/components/HabitsPanel';
@@ -113,7 +111,7 @@ export function HomeScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-background">
+    <SafeAreaView style={[styles.safeArea, colorScheme === 'dark' && styles.safeAreaDark]}>
       <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
       {activeSession && activeTask ? (
         <ActiveSessionScreen
@@ -125,7 +123,7 @@ export function HomeScreen() {
         />
       ) : (
         <ScrollView
-          className="flex-1"
+          style={styles.scrollView}
           contentContainerClassName="gap-5 pb-8 pt-4"
           contentContainerStyle={{ width: '100%', maxWidth: 760, alignSelf: 'center', paddingHorizontal: width < 360 ? 12 : 20 }}
           showsVerticalScrollIndicator={false}
@@ -197,3 +195,16 @@ export function HomeScreen() {
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#FAFAFA',
+  },
+  safeAreaDark: {
+    backgroundColor: '#111111',
+  },
+  scrollView: {
+    flex: 1,
+  },
+});

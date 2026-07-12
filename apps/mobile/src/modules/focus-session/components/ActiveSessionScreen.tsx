@@ -1,13 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ScrollView, useWindowDimensions, View } from 'react-native';
 
-import { Button } from 'heroui-native/button';
-import { Card } from 'heroui-native/card';
-import { Chip } from 'heroui-native/chip';
-import { Input } from 'heroui-native/input';
-import { Label } from 'heroui-native/label';
-import { Text } from 'heroui-native/text';
-import { TextField } from 'heroui-native/text-field';
+import { Button, Card, Chip, Input, Label, Text, TextField } from '@/ui/hero-runtime';
 
 import type { ActiveSession } from '@/modules/focus-session/focus-session.types';
 import { formatDuration } from '@/modules/focus-session/focus-session.utils';

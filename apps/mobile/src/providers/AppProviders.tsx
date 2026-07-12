@@ -3,7 +3,7 @@ import { AccessibilityInfo, StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { HeroUINativeProvider } from 'heroui-native/provider';
+import { HeroUINativeProvider } from '@/ui/hero-runtime';
 
 export function AppProviders({ children }: PropsWithChildren) {
   const [reduceMotion, setReduceMotion] = useState(false);

@@ -1,9 +1,6 @@
 import { View } from 'react-native';
 
-import { Button } from 'heroui-native/button';
-import { Card } from 'heroui-native/card';
-import { Chip } from 'heroui-native/chip';
-import { Text } from 'heroui-native/text';
+import { Button, Card, Chip, Text } from '@/ui/hero-runtime';
 
 import type { SyncConflict } from '../sync.types';
 

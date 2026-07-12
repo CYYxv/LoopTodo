@@ -1,13 +1,7 @@
 import { useState } from 'react';
 import { View } from 'react-native';
 
-import { Button } from 'heroui-native/button';
-import { Card } from 'heroui-native/card';
-import { Chip } from 'heroui-native/chip';
-import { Input } from 'heroui-native/input';
-import { Label } from 'heroui-native/label';
-import { Text } from 'heroui-native/text';
-import { TextField } from 'heroui-native/text-field';
+import { Button, Card, Chip, Input, Label, Text, TextField } from '@/ui/hero-runtime';
 
 import type { CreateHabitInput, Habit } from '../habit.types';
 

@@ -1,9 +1,6 @@
 import { View } from 'react-native';
 
-import { Button } from 'heroui-native/button';
-import { Card } from 'heroui-native/card';
-import { Switch } from 'heroui-native/switch';
-import { Text } from 'heroui-native/text';
+import { Button, Card, Switch, Text } from '@/ui/hero-runtime';
 
 import type { SessionMode, StrictOption } from '@/modules/focus-session/focus-session.types';
 import type { Task } from '@/modules/tasks/task.types';
