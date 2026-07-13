@@ -7,12 +7,14 @@ import type { CreateHabitInput, Habit } from './habit.types';
 import { createNativeForcedTriggerScheduler } from '@/modules/forced-trigger/native-forced-trigger.scheduler';
 import type { ForcedTriggerScheduler } from '@/modules/forced-trigger/forced-trigger.scheduler';
 
+export type CreateHabitResult = { ok: true; habitId: string } | { ok: false; error: string };
+
 type HabitStore = {
   habits: Habit[];
   isHydrating: boolean;
   error: string | null;
   hydrate(): Promise<void>;
-  createHabit(input: CreateHabitInput): Promise<void>;
+  createHabit(input: CreateHabitInput): Promise<CreateHabitResult>;
   addProgress(habitId: string, minutes: number): Promise<void>;
   archiveHabit(habitId: string): Promise<void>;
   clearError(): void;
@@ -36,8 +38,9 @@ export function createHabitStore(repository: HabitRepository, now: () => number 
       try {
         const habit = await repository.create(input); set((state) => ({ habits: [...state.habits, habit], error: null }));
         if (habit.forceEnabled && habit.triggerTime) try { await scheduleHabit(forcedScheduler, habit); } catch (error) { set({ error: message(error) }); }
+        return { ok: true, habitId: habit.id };
       }
-      catch (error) { set({ error: message(error) }); }
+      catch (error) { const nextError = message(error); set({ error: nextError }); return { ok: false, error: nextError }; }
     },
     async addProgress(habitId, minutes) {
       const key = `habit-progress-${habitId}-${now()}-${Math.random().toString(36).slice(2, 6)}`;
