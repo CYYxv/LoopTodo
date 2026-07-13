@@ -19,6 +19,11 @@ describe('authStore', () => {
     expect(authStore.getState().error).toContain('HTTPS');
   });
 
+  test('allows HTTP API URLs on a private local network', async () => {
+    await expect(authStore.getState().setBaseUrl('http://192.168.0.105:3000')).resolves.toBeUndefined();
+    expect(authStore.getState().baseUrl).toBe('http://192.168.0.105:3000');
+  });
+
   test('persists tokens and configures all cloud modules after login', async () => {
     await authStore.getState().setBaseUrl('https://api.example.com');
     globalThis.fetch = jest.fn(async () => ({ ok: true, json: async () => ({ data: { user: { id: 'user', email: 'u@example.com', nickname: 'User', vipStatus: 'free' }, tokens: { accessToken: 'access', refreshToken: 'refresh', expiresIn: 900 } } }) })) as never;

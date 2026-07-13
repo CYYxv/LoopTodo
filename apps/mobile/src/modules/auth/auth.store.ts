@@ -128,9 +128,17 @@ async function authorizedRequest(baseUrl: string, path: string, token: string) {
 function normalizeBaseUrl(value: string) {
   const normalized = value.trim().replace(/\/$/, '');
   const url = new URL(normalized);
-  const local = ['localhost', '127.0.0.1', '10.0.2.2'].includes(url.hostname);
+  const local = ['localhost', '127.0.0.1', '10.0.2.2'].includes(url.hostname) || isPrivateIpv4(url.hostname);
   if (url.protocol !== 'https:' && !(url.protocol === 'http:' && local)) throw new Error('API 地址必须使用 HTTPS，本机调试地址除外');
   return normalized;
+}
+
+function isPrivateIpv4(hostname: string) {
+  const parts = hostname.split('.').map(Number);
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return false;
+  return parts[0] === 10 ||
+    (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
+    (parts[0] === 192 && parts[1] === 168);
 }
 
 function deviceName() {
