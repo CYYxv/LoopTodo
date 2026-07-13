@@ -1,4 +1,4 @@
-import type { PropsWithChildren } from 'react';
+import { Children, type PropsWithChildren } from 'react';
 import { Pressable, StyleSheet, Switch as NativeSwitch, Text as NativeText, TextInput, useColorScheme, View } from 'react-native';
 import { useResolveClassNames } from 'uniwind';
 
@@ -15,7 +15,9 @@ export function Text({ type = 'body', color = 'default', weight, align, classNam
 export function Button({ children, isDisabled, variant = 'primary', size = 'md', className = '', style, ...props }: any) {
   const classStyle = useResolveClassNames(className);
   const dark = useColorScheme() === 'dark';
-  return <Pressable {...props} disabled={isDisabled} accessibilityRole={props.accessibilityRole ?? 'button'} accessibilityState={{ ...props.accessibilityState, disabled: Boolean(isDisabled) }} style={({ pressed }) => [styles.button, dark ? darkButtonVariants[variant] ?? buttonVariants.primary : buttonVariants[variant] ?? buttonVariants.primary, buttonSizes[size] ?? buttonSizes.md, classStyle, isDisabled && styles.disabled, pressed && styles.pressed, typeof style === 'function' ? style({ pressed }) : style]}>{typeof children === 'string' ? <NativeText style={[styles.buttonText, ['secondary', 'danger-soft'].includes(variant) && (dark ? styles.secondaryTextDark : styles.secondaryText)]}>{children}</NativeText> : children}</Pressable>;
+  const childArray = Children.toArray(children);
+  const textual = childArray.length > 0 && childArray.every((child) => typeof child === 'string' || typeof child === 'number');
+  return <Pressable {...props} disabled={isDisabled} accessibilityRole={props.accessibilityRole ?? 'button'} accessibilityState={{ ...props.accessibilityState, disabled: Boolean(isDisabled) }} style={({ pressed }) => [styles.button, dark ? darkButtonVariants[variant] ?? buttonVariants.primary : buttonVariants[variant] ?? buttonVariants.primary, buttonSizes[size] ?? buttonSizes.md, classStyle, isDisabled && styles.disabled, pressed && styles.pressed, typeof style === 'function' ? style({ pressed }) : style]}>{textual ? <NativeText style={[styles.buttonText, ['secondary', 'danger-soft'].includes(variant) && (dark ? styles.secondaryTextDark : styles.secondaryText)]}>{childArray.join('')}</NativeText> : children}</Pressable>;
 }
 
 function CardRoot({ children, variant, className = '', style, ...props }: any) {

@@ -1,6 +1,15 @@
 import type { NotificationScheduler } from './notification.scheduler';
 import type { NotificationPermission, NotificationSchedule } from './notification.types';
 
+let foregroundConfigured = false;
+
+export async function configureForegroundNotifications() {
+  if (foregroundConfigured) return;
+  const notifications = await import('expo-notifications');
+  notifications.setNotificationHandler({ handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false }) });
+  foregroundConfigured = true;
+}
+
 export function createExpoNotificationScheduler(): NotificationScheduler {
   return {
     async getPermission() {
@@ -17,10 +26,14 @@ export function createExpoNotificationScheduler(): NotificationScheduler {
         notifications.setNotificationChannelAsync('reminders', {
           name: '任务提醒',
           importance: notifications.AndroidImportance.DEFAULT,
+          sound: 'default',
+          vibrationPattern: [0, 250, 150, 250],
         }),
         notifications.setNotificationChannelAsync('important', {
           name: '重要提醒',
           importance: notifications.AndroidImportance.HIGH,
+          sound: 'default',
+          vibrationPattern: [0, 300, 150, 300],
         }),
       ]);
     },
@@ -31,7 +44,7 @@ export function createExpoNotificationScheduler(): NotificationScheduler {
           title: schedule.title,
           body: schedule.body,
           data: { ...schedule.data, eventType: schedule.type, scheduleId: schedule.id },
-          sound: schedule.type === 'family_anomaly' ? 'default' : undefined,
+          sound: 'default',
         },
         trigger: {
           type: notifications.SchedulableTriggerInputTypes.DATE,

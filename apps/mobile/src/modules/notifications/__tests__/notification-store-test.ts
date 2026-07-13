@@ -24,16 +24,18 @@ describe('notification store', () => {
   test('does not schedule after permission is denied', async () => {
     const state = setup('denied');
     await state.store.getState().enableNotifications();
-    await state.store.getState().sendTestReminder();
+    const result = await state.store.getState().sendTestReminder();
     expect(state.store.getState().permission).toBe('denied');
     expect(state.schedules).toHaveLength(0);
+    expect(result).toEqual({ ok: false, error: '请先开启通知权限' });
   });
 
   test('schedules and cancels after permission is granted', async () => {
     const state = setup('granted');
     await state.store.getState().enableNotifications();
-    await state.store.getState().sendTestReminder();
+    const result = await state.store.getState().sendTestReminder();
     expect(state.schedules[0]?.platformNotificationId).toBe('platform-1');
+    expect(result).toEqual({ ok: true, scheduledAt: 4000 });
     await state.store.getState().cancel(state.schedules[0]!.id);
     expect(state.cancelled).toEqual(['platform-1']);
     expect(state.schedules[0]?.status).toBe('cancelled');
