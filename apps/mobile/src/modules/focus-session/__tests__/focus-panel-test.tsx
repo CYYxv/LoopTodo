@@ -1,0 +1,33 @@
+import { render } from '@testing-library/react-native';
+
+import type { LockCapabilities } from '@/modules/lock-engine/lock-engine.types';
+import { FocusPanel } from '../components/FocusPanel';
+
+test('renders with capabilities returned by an older development build', () => {
+  const legacyCapabilities = {
+    supported: true,
+    manufacturer: 'xiaomi',
+    sdkInt: 36,
+    vendorBackgroundSettingsAvailable: true,
+    notificationGranted: true,
+    notificationListenerEnabled: true,
+    accessibilityEnabled: false,
+    batteryOptimizationIgnored: true,
+    riskConfirmed: true,
+    emergencyExitsRemaining: 2,
+    exactAlarmAllowed: true,
+  } as unknown as LockCapabilities;
+
+  expect(() => render(<FocusPanel
+    selectedMode="focus"
+    strictOptions={[{ id: 'recents', label: '隐藏最近任务', description: '测试', enabled: false, capabilityKey: 'hideRecents' }]}
+    selectedTask={null}
+    onModeChange={jest.fn()}
+    onStrictOptionToggle={jest.fn()}
+    onStart={jest.fn()}
+    lockCapabilities={legacyCapabilities}
+    onRefreshLockCapabilities={jest.fn()}
+    onConfirmLockRisk={jest.fn()}
+    onOpenLockPermission={jest.fn()}
+  />)).not.toThrow();
+});

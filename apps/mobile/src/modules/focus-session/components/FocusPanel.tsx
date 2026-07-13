@@ -131,13 +131,14 @@ export function FocusPanel({
 }
 
 function optionCapability(option: StrictOption, capabilities: LockCapabilities | null) {
-  return option.capabilityKey ? capabilities?.restrictions[option.capabilityKey] ?? null : null;
+  return option.capabilityKey ? capabilities?.restrictions?.[option.capabilityKey] ?? null : null;
 }
 
 function capabilityLabel(option: StrictOption, capabilities: LockCapabilities | null) {
   if (!option.capabilityKey) return option.unavailableReason ?? '当前设备不支持';
   if (!capabilities) return '正在检查设备能力';
-  const capability = capabilities.restrictions[option.capabilityKey];
+  const capability = capabilities.restrictions?.[option.capabilityKey];
+  if (!capability) return '需更新 Development Build 后启用';
   if (!capability.supported) return capability.reason ?? '当前设备不支持';
   if (capability.effective) return '当前已生效';
   return capability.experimental ? '实验能力可用，尚未生效' : '设备支持';

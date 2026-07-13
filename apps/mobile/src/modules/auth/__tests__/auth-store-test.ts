@@ -1,4 +1,4 @@
-jest.mock('../cloud-session', () => ({ configureCloudSession: jest.fn() }));
+jest.mock('../cloud-session', () => ({ configureCloudSession: jest.fn(), clearCloudSession: jest.fn() }));
 
 import * as SecureStore from 'expo-secure-store';
 

@@ -3,7 +3,7 @@ import * as SecureStore from 'expo-secure-store';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 
-import { configureCloudSession } from './cloud-session';
+import { clearCloudSession, configureCloudSession } from './cloud-session';
 
 type User = { id: string; email: string; nickname: string; vipStatus: 'free' | 'active' | 'expired' };
 type TokenPair = { accessToken: string; refreshToken: string; expiresIn: number };
@@ -43,10 +43,11 @@ export const authStore = createStore<AuthState>((set, get) => ({
     const storedBaseUrl = await SecureStore.getItemAsync(baseUrlKey);
     const baseUrl = storedBaseUrl || get().baseUrl;
     const refreshToken = await SecureStore.getItemAsync(refreshTokenKey);
-    if (!baseUrl || !refreshToken) return set({ baseUrl, status: 'signed_out' });
+    if (!baseUrl || !refreshToken) { clearCloudSession(); return set({ baseUrl, status: 'signed_out' }); }
     try {
       await applySession(baseUrl, await request<AuthResult>(baseUrl, '/auth/refresh', { refreshToken }), set);
     } catch (error) {
+      clearCloudSession();
       await SecureStore.deleteItemAsync(refreshTokenKey);
       await SecureStore.deleteItemAsync('looptodo.access-token');
       set({ baseUrl, status: 'signed_out', user: null, error: message(error) });
@@ -59,16 +60,16 @@ export const authStore = createStore<AuthState>((set, get) => ({
     await authenticate(get, set, '/auth/register', { email, password, nickname, deviceName: deviceName() });
   },
   async logout() {
+    const state = get();
+    let logoutError: string | null = null;
     try {
-      const state = get();
       const token = await SecureStore.getItemAsync('looptodo.access-token');
       if (token && state.baseUrl) await authorizedRequest(state.baseUrl, '/auth/logout', token);
-      clearRefreshTimer();
-      await Promise.all([SecureStore.deleteItemAsync(refreshTokenKey), SecureStore.deleteItemAsync('looptodo.access-token')]);
-      set({ status: 'signed_out', user: null, error: null });
-    } catch (error) {
-      set({ error: message(error) });
-    }
+    } catch (error) { logoutError = message(error); }
+    clearRefreshTimer();
+    clearCloudSession();
+    await Promise.all([SecureStore.deleteItemAsync(refreshTokenKey), SecureStore.deleteItemAsync('looptodo.access-token')]);
+    set({ status: 'signed_out', user: null, error: logoutError });
   },
 }));
 
@@ -101,6 +102,7 @@ function scheduleRefresh(baseUrl: string, expiresIn: number, set: (value: Partia
       if (!refreshToken) throw new Error('登录会话已失效');
       await applySession(baseUrl, await request<AuthResult>(baseUrl, '/auth/refresh', { refreshToken }), set);
     } catch (error) {
+      clearCloudSession();
       await SecureStore.deleteItemAsync(refreshTokenKey);
       await SecureStore.deleteItemAsync('looptodo.access-token');
       set({ status: 'signed_out', user: null, error: message(error) });

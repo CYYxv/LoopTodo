@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { RedisModule } from '../infrastructure/redis/redis.module';
 
 import { AccessTokenGuard } from './access-token.guard';
 import { AUTH_RATE_LIMITER } from './auth-rate-limiter';
@@ -14,7 +15,7 @@ import { MemoryAuthRateLimiter } from './memory-auth-rate-limiter';
 import { TokenService } from './token.service';
 
 @Module({
-  imports: [JwtModule.register({})],
+  imports: [JwtModule.register({}), RedisModule],
   controllers: [AuthController],
   providers: [
     AuthService,

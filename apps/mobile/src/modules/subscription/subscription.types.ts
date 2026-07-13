@@ -1,2 +1,2 @@
-export type Entitlements = { vip: boolean; habitLimit: number | null; themes: boolean; backgrounds: boolean; focusPosters: boolean; whiteNoise: boolean; taskAi: boolean; mcp: boolean; familyManagement: boolean; subscription: { plan: string; expiresAt: string } | null };
+export type Entitlements = { vip: boolean; habitLimit: number | null; themes: boolean; backgrounds: boolean; focusPosters: boolean; whiteNoise: boolean; taskAi: boolean; mcp: boolean; familyManagement: boolean; subscription: { plan: string; expiresAt: string } | null; paymentAvailable: boolean; testPaymentAvailable: boolean };
 export type SubscriptionOrder = { id: string; plan: string; amountCents: number; provider: 'http' | 'test'; status: string; checkoutUrl: string | null };

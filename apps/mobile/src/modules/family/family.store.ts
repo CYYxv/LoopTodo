@@ -1,4 +1,83 @@
-import { useStore } from 'zustand'; import { createStore } from 'zustand/vanilla'; import { createFamilyClient, type FamilyClient } from './family.client'; import type { FamilyAssignment, FamilyChangeRequest, FamilyGroupMembership } from './family.types';
-type FamilyStore = { configured: boolean; client: FamilyClient | null; groups: FamilyGroupMembership[]; assignments: FamilyAssignment[]; requests: Record<string, FamilyChangeRequest[]>; inviteCode: string | null; childStatus: { tasks: unknown[]; sessions: unknown[] } | null; error: string | null; configure(baseUrl: string, token: string): void; load(): Promise<void>; createGroup(name: string): Promise<void>; invite(groupId: string, role: string): Promise<void>; join(code: string): Promise<void>; assign(groupId: string, childUserId: string, title: string, minutes: number, triggerTime?: string): Promise<void>; requestChange(id: string, type: 'update' | 'delete', reason: string, title?: string): Promise<void>; loadRequests(groupId: string): Promise<void>; review(groupId: string, id: string, decision: 'approved' | 'rejected'): Promise<void>; loadStatus(childId: string): Promise<void> };
-export function createFamilyStore() { return createStore<FamilyStore>((set, get) => ({ configured: false, client: null, groups: [], assignments: [], requests: {}, inviteCode: null, childStatus: null, error: null, configure(baseUrl, token) { set({ configured: true, client: createFamilyClient(baseUrl, token), error: null }); }, async load() { const client = get().client; if (!client) return; try { const [groups, assignments] = await Promise.all([client.groups(), client.assignments()]); set({ groups, assignments, error: null }); } catch (error) { set({ error: message(error) }); } }, async createGroup(name) { await mutate(get, set, (client) => client.createGroup(name)); }, async invite(groupId, role) { const client = get().client; if (!client) return; try { set({ inviteCode: (await client.invite(groupId, role)).code, error: null }); } catch (error) { set({ error: message(error) }); } }, async join(code) { await mutate(get, set, (client) => client.join(code)); }, async assign(groupId, childUserId, title, estimatedMinutes, triggerTime) { await mutate(get, set, (client) => client.assign(groupId, { childUserId, title, estimatedMinutes, triggerTime: triggerTime || undefined })); }, async requestChange(id, type, reason, title) { await mutate(get, set, (client) => client.requestChange(id, type, reason, title)); }, async loadRequests(groupId) { const client = get().client; if (!client) return; try { const items = await client.requests(groupId); set((state) => ({ requests: { ...state.requests, [groupId]: items } })); } catch (error) { set({ error: message(error) }); } }, async review(groupId, id, decision) { const client = get().client; if (!client) return; try { await client.review(id, decision); await get().loadRequests(groupId); } catch (error) { set({ error: message(error) }); } }, async loadStatus(childId) { const client = get().client; if (!client) return; try { set({ childStatus: await client.status(childId), error: null }); } catch (error) { set({ error: message(error) }); } } })); }
-async function mutate(get: () => FamilyStore, set: (value: Partial<FamilyStore>) => void, action: (client: FamilyClient) => Promise<void>) { const client = get().client; if (!client) return set({ error: '登录后才能使用家庭功能' }); try { await action(client); await get().load(); } catch (error) { set({ error: message(error) }); } } export const familyStore = createFamilyStore(); export function configureFamily(baseUrl: string, token: string) { familyStore.getState().configure(baseUrl, token); } export function useFamilyStore<T>(selector: (state: FamilyStore) => T) { return useStore(familyStore, selector); } function message(error: unknown) { return error instanceof Error ? error.message : '家庭操作失败'; }
+import { useStore } from 'zustand';
+import { createStore } from 'zustand/vanilla';
+
+import { createFamilyClient, type FamilyClient } from './family.client';
+import type { FamilyAssignment, FamilyChangeRequest, FamilyGroupMembership } from './family.types';
+
+type FamilyStore = {
+  configured: boolean;
+  client: FamilyClient | null;
+  groups: FamilyGroupMembership[];
+  assignments: FamilyAssignment[];
+  requests: Record<string, FamilyChangeRequest[]>;
+  inviteCode: string | null;
+  childStatus: { tasks: unknown[]; sessions: unknown[] } | null;
+  loading: boolean;
+  error: string | null;
+  configure(baseUrl: string, token: string): void;
+  load(): Promise<void>;
+  createGroup(name: string): Promise<void>;
+  invite(groupId: string, role: string): Promise<void>;
+  join(code: string): Promise<void>;
+  assign(groupId: string, childUserId: string, title: string, minutes: number, triggerTime?: string): Promise<void>;
+  requestChange(id: string, type: 'update' | 'delete', reason: string, title?: string): Promise<void>;
+  loadRequests(groupId: string): Promise<void>;
+  review(groupId: string, id: string, decision: 'approved' | 'rejected'): Promise<void>;
+  loadStatus(childId: string): Promise<void>;
+};
+
+export function createFamilyStore() {
+  return createStore<FamilyStore>((set, get) => ({
+    configured: false, client: null, groups: [], assignments: [], requests: {}, inviteCode: null, childStatus: null, loading: false, error: null,
+    configure(baseUrl, token) { set({ configured: true, client: createFamilyClient(baseUrl, token), error: null }); },
+    async load() {
+      const client = get().client;
+      if (!client || get().loading) return;
+      set({ loading: true, error: null });
+      try {
+        const [groups, assignments] = await Promise.all([client.groups(), client.assignments()]);
+        set({ groups, assignments, loading: false, error: null });
+      } catch (error) { set({ loading: false, error: message(error) }); }
+    },
+    async createGroup(name) { await mutate(get, set, (client) => client.createGroup(name)); },
+    async invite(groupId, role) {
+      const client = get().client;
+      if (!client) return set({ error: '登录后才能创建家庭邀请' });
+      try { set({ inviteCode: (await client.invite(groupId, role)).code, error: null }); }
+      catch (error) { set({ error: message(error) }); }
+    },
+    async join(code) { await mutate(get, set, (client) => client.join(code)); },
+    async assign(groupId, childUserId, title, estimatedMinutes, triggerTime) { await mutate(get, set, (client) => client.assign(groupId, { childUserId, title, estimatedMinutes, triggerTime: triggerTime || undefined })); },
+    async requestChange(id, type, reason, title) { await mutate(get, set, (client) => client.requestChange(id, type, reason, title)); },
+    async loadRequests(groupId) {
+      const client = get().client;
+      if (!client) return;
+      try { const items = await client.requests(groupId); set((state) => ({ requests: { ...state.requests, [groupId]: items }, error: null })); }
+      catch (error) { set({ error: message(error) }); }
+    },
+    async review(groupId, id, decision) {
+      const client = get().client;
+      if (!client) return;
+      try { await client.review(id, decision); await get().loadRequests(groupId); }
+      catch (error) { set({ error: message(error) }); }
+    },
+    async loadStatus(childId) {
+      const client = get().client;
+      if (!client) return;
+      try { set({ childStatus: await client.status(childId), error: null }); }
+      catch (error) { set({ error: message(error) }); }
+    },
+  }));
+}
+
+async function mutate(get: () => FamilyStore, set: (value: Partial<FamilyStore>) => void, action: (client: FamilyClient) => Promise<void>) {
+  const client = get().client;
+  if (!client) return set({ error: '登录后才能使用家庭功能' });
+  try { await action(client); await get().load(); }
+  catch (error) { set({ error: message(error) }); }
+}
+
+export const familyStore = createFamilyStore();
+export function configureFamily(baseUrl: string, token: string) { familyStore.getState().configure(baseUrl, token); }
+export function useFamilyStore<T>(selector: (state: FamilyStore) => T) { return useStore(familyStore, selector); }
+function message(error: unknown) { return error instanceof Error ? error.message : '家庭操作失败'; }
