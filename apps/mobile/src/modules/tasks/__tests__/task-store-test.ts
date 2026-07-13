@@ -44,6 +44,7 @@ const goalTask: Task = {
 function createRepository(options?: {
   activeSession?: ActiveSession;
   createError?: Error;
+  startError?: Error;
   finishError?: Error;
 }) {
   let tasks = [pomodoroTask, goalTask].map((task) => ({ ...task }));
@@ -60,6 +61,7 @@ function createRepository(options?: {
       return task;
     },
     async startSession(task, session) {
+      if (options?.startError) throw options.startError;
       tasks = tasks.map((candidate) => candidate.id === task.id ? task : candidate);
       activeSession = session;
     },
@@ -83,9 +85,10 @@ describe('task store local loop', () => {
   test('restores native lock state into SQLite after process restart', async () => {
     const { repository } = createRepository();
     const engine: LockEngine = {
-      async checkCapabilities() { throw new Error('unused'); }, async confirmRisk() { return undefined; },
+      async checkCapabilities() { return testCapabilities(); }, async confirmRisk() { return undefined; },
       async getActiveSession() { return { id: 'native-lock', taskId: 'task-one', taskTitle: '第一项任务', startedAt: 1000, endsAt: 61_000, enhanced: true }; },
       async startLockSession() { return undefined; }, async endLockSession() { return undefined; }, async emergencyExit() { return undefined; },
+      async applyFocusRestrictions() { return undefined; }, async clearFocusRestrictions() { return undefined; },
       async scheduleForcedRule() { return undefined; }, async cancelForcedRule() { return undefined; }, async markForcedRuleSatisfied() { return undefined; }, async openPermissionSettings() { return undefined; },
     };
     const store = createTaskStore(repository, [], () => 2000, engine);
@@ -97,18 +100,41 @@ describe('task store local loop', () => {
     const { repository, sessions } = createRepository();
     const calls: string[] = [];
     const engine: LockEngine = {
-      async checkCapabilities() { return { supported: true, manufacturer: 'test', sdkInt: 36, vendorBackgroundSettingsAvailable: true, notificationGranted: true, notificationListenerEnabled: true, accessibilityEnabled: true, batteryOptimizationIgnored: true, riskConfirmed: true, emergencyExitsRemaining: 2, exactAlarmAllowed: true }; },
+      async checkCapabilities() { return { supported: true, manufacturer: 'test', sdkInt: 36, vendorBackgroundSettingsAvailable: true, notificationGranted: true, notificationListenerEnabled: true, accessibilityEnabled: true, batteryOptimizationIgnored: true, riskConfirmed: true, emergencyExitsRemaining: 2, exactAlarmAllowed: true, restrictions: { hideRecents: supportedRestriction(), blockLeaving: supportedRestriction(), blockNotifications: supportedRestriction(), hideLauncherIcon: { supported: false, effective: false, reason: 'unsupported', experimental: true } } }; },
       async confirmRisk() { return undefined; }, async getActiveSession() { return null; },
       async startLockSession(input) { calls.push(`start:${input.taskId}`); }, async endLockSession(id) { calls.push(`end:${id}`); },
       async emergencyExit(_id, reason) { calls.push(`emergency:${reason}`); }, async scheduleForcedRule() { return undefined; }, async cancelForcedRule() { return undefined; }, async markForcedRuleSatisfied() { return undefined; }, async openPermissionSettings() { return undefined; },
+      async applyFocusRestrictions(options) { calls.push(`restrict:${options.hideRecents}:${options.blockLeaving}:${options.blockNotifications}`); }, async clearFocusRestrictions() { calls.push('clear'); },
     };
     const store = createTaskStore(repository, [pomodoroTask], () => 1000, engine);
 
     await store.getState().startSession('task-one', 'lock');
     await store.getState().finishSession('exited', undefined, '临时就医');
 
-    expect(calls).toEqual(['start:task-one', 'emergency:临时就医']);
+    expect(calls).toEqual(['restrict:true:true:true', 'start:task-one', 'emergency:临时就医', 'clear']);
     expect(sessions[0]).toMatchObject({ mode: 'lock', failureReason: '临时就医' });
+  });
+
+  test('applies supported focus restrictions and clears them after completion', async () => {
+    const { repository } = createRepository();
+    const calls: string[] = [];
+    const store = createTaskStore(repository, [pomodoroTask], () => 1000, testLockEngine(calls));
+
+    await store.getState().startSession('task-one', 'focus');
+    await store.getState().finishSession('completed');
+
+    expect(calls).toEqual(['restrict:false:false:true', 'clear']);
+  });
+
+  test('clears restrictions when session persistence fails to start', async () => {
+    const { repository } = createRepository({ startError: new Error('start failed') });
+    const calls: string[] = [];
+    const store = createTaskStore(repository, [pomodoroTask], () => 1000, testLockEngine(calls));
+
+    await store.getState().startSession('task-one', 'focus');
+
+    expect(calls).toEqual(['restrict:false:false:true', 'clear']);
+    expect(store.getState().activeSession).toBeNull();
   });
 
   test('hydrates the active session for restart recovery', async () => {
@@ -123,6 +149,16 @@ describe('task store local loop', () => {
 
     expect(store.getState().activeSession).toEqual(recovered);
     expect(store.getState().tasks).toHaveLength(2);
+  });
+
+  test('clears stale native restrictions when no session is recovered', async () => {
+    const { repository } = createRepository();
+    const calls: string[] = [];
+    const store = createTaskStore(repository, [], () => 1000, testLockEngine(calls));
+
+    await store.getState().hydrate();
+
+    expect(calls).toEqual(['clear']);
   });
 
   test('starts countdown with a recoverable planned end timestamp', async () => {
@@ -242,3 +278,19 @@ describe('task store local loop', () => {
     expect(store.getState().selectedTaskId).toBe('task-created');
   });
 });
+
+function supportedRestriction() { return { supported: true, effective: false, reason: null }; }
+
+function testLockEngine(calls: string[]): LockEngine {
+  return {
+    async checkCapabilities() { return testCapabilities(); },
+    async confirmRisk() { return undefined; }, async getActiveSession() { return null; },
+    async startLockSession() { return undefined; }, async endLockSession() { return undefined; }, async emergencyExit() { return undefined; },
+    async applyFocusRestrictions(options) { calls.push(`restrict:${options.hideRecents}:${options.blockLeaving}:${options.blockNotifications}`); },
+    async clearFocusRestrictions() { calls.push('clear'); }, async scheduleForcedRule() { return undefined; }, async cancelForcedRule() { return undefined; }, async markForcedRuleSatisfied() { return undefined; }, async openPermissionSettings() { return undefined; },
+  };
+}
+
+function testCapabilities() {
+  return { supported: true, manufacturer: 'test', sdkInt: 36, vendorBackgroundSettingsAvailable: true, notificationGranted: true, notificationListenerEnabled: true, accessibilityEnabled: true, batteryOptimizationIgnored: true, riskConfirmed: true, emergencyExitsRemaining: 2, exactAlarmAllowed: true, restrictions: { hideRecents: supportedRestriction(), blockLeaving: supportedRestriction(), blockNotifications: supportedRestriction(), hideLauncherIcon: { supported: false, effective: false, reason: 'unsupported', experimental: true } } };
+}

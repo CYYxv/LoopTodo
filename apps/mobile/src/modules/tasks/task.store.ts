@@ -1,3 +1,4 @@
+import * as SecureStore from 'expo-secure-store';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 
@@ -18,6 +19,7 @@ import type { CreateTaskInput, Task } from './task.types';
 import { getTaskExecutionState } from './task.execution';
 import { lockEngine } from '@/modules/lock-engine/lock-engine.store';
 import type { LockEngine } from '@/modules/lock-engine/lock-engine.port';
+import type { FocusRestrictionOptions, LockCapabilities } from '@/modules/lock-engine/lock-engine.types';
 import { createNativeForcedTriggerScheduler } from '@/modules/forced-trigger/native-forced-trigger.scheduler';
 import type { ForcedTriggerScheduler } from '@/modules/forced-trigger/forced-trigger.scheduler';
 
@@ -46,6 +48,8 @@ export type TaskStore = {
 
 export type CreateTaskResult = { ok: true; taskId: string } | { ok: false; error: string };
 
+const strictOptionsKey = 'looptodo.strict-options';
+
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : '发生未知错误';
 }
@@ -72,7 +76,11 @@ export function createTaskStore(
       if (get().isHydrating) return;
       set({ isHydrating: true, error: null });
       try {
-        const [snapshot, nativeSession] = await Promise.all([repository.hydrate(), nativeLockEngine.getActiveSession().catch(() => null)]);
+        const [snapshot, nativeSession, savedStrictOptions] = await Promise.all([
+          repository.hydrate(),
+          nativeLockEngine.getActiveSession().catch(() => null),
+          loadStrictOptions().catch(() => prototypeStrictOptions),
+        ]);
         let recoveredTasks = snapshot.tasks;
         let recoveredSession = snapshot.activeSession;
         if (nativeSession && !recoveredSession) {
@@ -86,12 +94,18 @@ export function createTaskStore(
           }
         }
         set((state) => ({
-          ...snapshot, tasks: recoveredTasks, activeSession: recoveredSession,
+          ...snapshot, tasks: recoveredTasks, activeSession: recoveredSession, strictOptions: savedStrictOptions,
           selectedTaskId: recoveredTasks.some((task) => task.id === state.selectedTaskId)
             ? state.selectedTaskId
             : recoveredTasks.find((task) => task.status !== 'completed')?.id ?? null,
           isHydrating: false,
         }));
+        if (recoveredSession?.phase === 'focus') {
+          const capabilities = await nativeLockEngine.checkCapabilities();
+          await nativeLockEngine.applyFocusRestrictions(restrictionsFor(recoveredSession.mode, savedStrictOptions, capabilities));
+        } else {
+          await nativeLockEngine.clearFocusRestrictions();
+        }
         try { await Promise.all(recoveredTasks.filter((task) => task.mustDo && task.forcedTriggerTime && task.status === 'pending').map((task) => scheduleTask(forcedScheduler, task))); }
         catch (error) { set({ error: errorMessage(error) }); }
         if (
@@ -139,11 +153,14 @@ export function createTaskStore(
       const activeTask: Task = { ...task, status: 'active', version: task.version + 1, syncStatus: 'pending' };
       set({ error: null, isStartingSession: true });
       try {
+        const capabilities = await nativeLockEngine.checkCapabilities();
         if (mode === 'lock') {
-          const capabilities = await nativeLockEngine.checkCapabilities();
           if (!capabilities.supported || !capabilities.notificationGranted || !capabilities.notificationListenerEnabled || !capabilities.riskConfirmed) {
             throw new Error('请先完成锁机风险确认并开启通知与通知读取权限');
           }
+        }
+        await nativeLockEngine.applyFocusRestrictions(restrictionsFor(mode, state.strictOptions, capabilities));
+        if (mode === 'lock') {
           await nativeLockEngine.startLockSession({ id: session.id, taskId, taskTitle: task.title,
             startedAt, endsAt: session.plannedEndAt!, enhanced: capabilities.accessibilityEnabled });
         }
@@ -162,6 +179,7 @@ export function createTaskStore(
         }));
       } catch (error) {
         if (mode === 'lock') await nativeLockEngine.endLockSession(session.id).catch(() => undefined);
+        await nativeLockEngine.clearFocusRestrictions().catch(() => undefined);
         set({ error: errorMessage(error), isStartingSession: false });
       }
     },
@@ -210,11 +228,15 @@ export function createTaskStore(
           else await nativeLockEngine.endLockSession(activeSession.id);
         }
         await repository.finishSession(nextTask, record, restSession);
+        const restrictionError = await nativeLockEngine.clearFocusRestrictions()
+          .then(() => null)
+          .catch((error) => errorMessage(error));
         set((state) => ({
           tasks: state.tasks.map((candidate) => candidate.id === nextTask.id ? nextTask : candidate),
           sessionRecords: [record, ...state.sessionRecords],
           activeSession: restSession,
           isFinishingSession: false,
+          error: restrictionError,
         }));
       } catch (error) {
         set({ isFinishingSession: false, error: errorMessage(error) });
@@ -255,8 +277,14 @@ export function createTaskStore(
     },
     selectMode(mode) { set({ selectedMode: mode }); },
     toggleStrictOption(optionId) {
-      set((state) => ({ strictOptions: state.strictOptions.map((option) =>
-        option.id === optionId ? { ...option, enabled: !option.enabled } : option) }));
+      const option = get().strictOptions.find((candidate) => candidate.id === optionId);
+      if (!option?.capabilityKey) return;
+      const strictOptions = get().strictOptions.map((candidate) =>
+        candidate.id === optionId ? { ...candidate, enabled: !candidate.enabled } : candidate);
+      set({ strictOptions });
+      void SecureStore.setItemAsync(strictOptionsKey, JSON.stringify(
+        Object.fromEntries(strictOptions.map((candidate) => [candidate.id, candidate.enabled]))
+      )).catch((error) => set({ error: errorMessage(error) }));
     },
     clearError() { set({ error: null }); },
   }));
@@ -272,4 +300,29 @@ function scheduleTask(scheduler: ForcedTriggerScheduler, task: Task) {
   const [hour, minute] = task.forcedTriggerTime!.split(':').map(Number);
   return scheduler.schedule({ id: taskRuleId(task.id), sourceId: task.id, title: task.title,
     durationMinutes: task.estimateMinutes, dailyMinute: hour * 60 + minute, recurring: false });
+}
+
+async function loadStrictOptions() {
+  const raw = await SecureStore.getItemAsync(strictOptionsKey);
+  if (!raw) return prototypeStrictOptions;
+  const saved = JSON.parse(raw) as Record<string, unknown>;
+  return prototypeStrictOptions.map((option) => {
+    const enabled = saved[option.id];
+    return { ...option, enabled: typeof enabled === 'boolean' ? enabled : option.enabled };
+  });
+}
+
+function restrictionsFor(mode: SessionMode, options: StrictOption[], capabilities: LockCapabilities): FocusRestrictionOptions {
+  const restrictions: FocusRestrictionOptions = {
+    hideRecents: false,
+    blockLeaving: false,
+    blockNotifications: false,
+    hideLauncherIcon: false,
+  };
+  for (const option of options) {
+    if (!option.capabilityKey) continue;
+    const capability = capabilities.restrictions[option.capabilityKey];
+    restrictions[option.capabilityKey] = capability.supported && (mode === 'lock' || option.enabled);
+  }
+  return restrictions;
 }

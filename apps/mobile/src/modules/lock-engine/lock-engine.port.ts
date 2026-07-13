@@ -1,4 +1,4 @@
-import type { LockCapabilities, NativeLockSession } from './lock-engine.types';
+import type { FocusRestrictionOptions, LockCapabilities, NativeLockSession } from './lock-engine.types';
 
 export interface LockEngine {
   checkCapabilities(): Promise<LockCapabilities>;
@@ -7,6 +7,8 @@ export interface LockEngine {
   startLockSession(input: NativeLockSession): Promise<void>;
   endLockSession(id: string): Promise<void>;
   emergencyExit(id: string, reason: string): Promise<void>;
+  applyFocusRestrictions(options: FocusRestrictionOptions): Promise<void>;
+  clearFocusRestrictions(): Promise<void>;
   scheduleForcedRule(input: { id: string; sourceId: string; title: string; durationMinutes: number; dailyMinute: number; recurring: boolean }): Promise<void>;
   cancelForcedRule(id: string): Promise<void>;
   markForcedRuleSatisfied(id: string): Promise<void>;

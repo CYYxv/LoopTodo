@@ -1,3 +1,4 @@
+import type { FocusRestrictionOptions } from '@/modules/lock-engine/lock-engine.types';
 import type { TimerMode } from '@/modules/tasks/task.types';
 
 export type SessionMode = 'focus' | 'lock';
@@ -28,4 +29,6 @@ export type StrictOption = {
   label: string;
   description: string;
   enabled: boolean;
+  capabilityKey: keyof FocusRestrictionOptions | null;
+  unavailableReason?: string;
 };

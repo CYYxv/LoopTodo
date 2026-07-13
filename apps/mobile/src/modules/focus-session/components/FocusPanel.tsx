@@ -82,11 +82,16 @@ export function FocusPanel({
                 <Text type="body-xs" color="muted">
                   {option.description}
                 </Text>
+                <Text type="body-xs" color={optionCapability(option, lockCapabilities)?.supported ? 'success' : 'muted'}>
+                  {capabilityLabel(option, lockCapabilities)}
+                </Text>
               </View>
               <Switch
                 accessibilityLabel={option.label}
-                isSelected={selectedMode === 'lock' ? true : option.enabled}
-                isDisabled={selectedMode === 'lock'}
+                isSelected={selectedMode === 'lock'
+                  ? optionCapability(option, lockCapabilities)?.supported === true
+                  : option.enabled}
+                isDisabled={selectedMode === 'lock' || optionCapability(option, lockCapabilities)?.supported !== true}
                 onSelectedChange={() => onStrictOptionToggle(option.id)}
               />
             </View>
@@ -123,6 +128,19 @@ export function FocusPanel({
       </Button>
     </View>
   );
+}
+
+function optionCapability(option: StrictOption, capabilities: LockCapabilities | null) {
+  return option.capabilityKey ? capabilities?.restrictions[option.capabilityKey] ?? null : null;
+}
+
+function capabilityLabel(option: StrictOption, capabilities: LockCapabilities | null) {
+  if (!option.capabilityKey) return option.unavailableReason ?? '当前设备不支持';
+  if (!capabilities) return '正在检查设备能力';
+  const capability = capabilities.restrictions[option.capabilityKey];
+  if (!capability.supported) return capability.reason ?? '当前设备不支持';
+  if (capability.effective) return '当前已生效';
+  return capability.experimental ? '实验能力可用，尚未生效' : '设备支持';
 }
 function ModeButton({
   isActive,
