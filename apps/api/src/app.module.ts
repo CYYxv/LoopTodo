@@ -17,8 +17,10 @@ import { SubscriptionModule } from './subscription/subscription.module';
 import { FamilyModule } from './family/family.module';
 import { RewardModule } from './rewards/reward.module';
 import { ObservabilityModule } from './observability/observability.module';
+import { AppController } from './app.controller';
 
 @Module({
+  controllers: [AppController],
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnvironment }),
     EventBusModule,
