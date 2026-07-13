@@ -171,6 +171,16 @@ describe('task store local loop', () => {
     expect(store.getState().activeSession).toBeNull();
   });
 
+  test('selects only pending local tasks for focus', () => {
+    const { repository } = createRepository();
+    const store = createTaskStore(repository, [pomodoroTask, goalTask]);
+    store.getState().selectTask('task-goal');
+    expect(store.getState().selectedTaskId).toBe('task-goal');
+    store.setState({ tasks: [{ ...pomodoroTask, remoteActive: true }, goalTask] });
+    store.getState().selectTask('task-one');
+    expect(store.getState().selectedTaskId).toBe('task-goal');
+  });
+
   test('enters rest and writes only one record when finish actions race', async () => {
     const { repository, sessions } = createRepository();
     let time = 1000;

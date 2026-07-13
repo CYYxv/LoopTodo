@@ -1,16 +1,30 @@
 import '../global.css';
 
-import { Stack, type ErrorBoundaryProps } from 'expo-router';
+import { Redirect, Stack, useSegments, type ErrorBoundaryProps } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { AppProviders } from '@/providers/AppProviders';
+import { AppBootstrap } from '@/providers/AppBootstrap';
+import { useAuthStore } from '@/modules/auth/auth.store';
+import { LoadingScreen } from '@/screens/LoadingScreen';
 
 export default function RootLayout() {
   return (
     <AppProviders>
-      <Stack screenOptions={{ headerShown: false }} />
+      <AppBootstrap>
+        <RootNavigator />
+      </AppBootstrap>
     </AppProviders>
   );
+}
+
+function RootNavigator() {
+  const status = useAuthStore((state) => state.status);
+  const segments = useSegments();
+  if (status === 'hydrating') return <LoadingScreen label="正在恢复 LoopTodo…" />;
+  if (status === 'signed_out' && segments[0] !== 'login') return <Redirect href="/login" />;
+  if (status === 'signed_in' && segments[0] === 'login') return <Redirect href="/today" />;
+  return <Stack screenOptions={{ headerShown: false }}><Stack.Screen name="(tabs)" /><Stack.Screen name="login" /><Stack.Screen name="create-task" options={{ presentation: 'modal' }} /><Stack.Screen name="session" options={{ gestureEnabled: false }} /></Stack>;
 }
 
 export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { View } from 'react-native';
 
 import { Button, Card, Switch, Text } from '@/ui/hero-runtime';
@@ -30,6 +31,7 @@ export function FocusPanel({
   onConfirmLockRisk: () => void;
   onOpenLockPermission: (kind: 'notifications' | 'notificationListener' | 'accessibility' | 'battery') => void;
 }) {
+  const [showResources, setShowResources] = useState(false);
   return (
     <View className="gap-4">
       <Card>
@@ -92,7 +94,8 @@ export function FocusPanel({
         </Card.Body>
       </Card>
 
-      <ResourcePassPanel taskId={selectedTask?.id ?? null} />
+      <Card variant="secondary"><Card.Body className="gap-3"><View><Card.Title>高级资源通行证</Card.Title><Card.Description>只在任务确实需要网页、文件或 AI 材料时配置。</Card.Description></View><Button variant="secondary" onPress={() => setShowResources((value) => !value)}>{showResources ? '收起高级区域' : '展开高级区域'}</Button></Card.Body></Card>
+      {showResources ? <ResourcePassPanel taskId={selectedTask?.id ?? null} /> : null}
 
       {selectedMode === 'lock' ? <Card variant="secondary"><Card.Body className="gap-3"><Card.Title>锁机权限检查</Card.Title>
         <Text type="body-xs">通知权限：{lockCapabilities?.notificationGranted ? '已开启' : '未开启'}</Text>

@@ -3,10 +3,11 @@
 ## 产物
 
 - APK：`H:\LoopTodo\releases\1.0.0\LoopTodo-1.0.0-arm64-release.apk`
+- x86_64 APK：`H:\LoopTodo\releases\1.0.0\LoopTodo-1.0.0-x86_64-release.apk`
 - AAB：`H:\LoopTodo\releases\1.0.0\LoopTodo-1.0.0-arm64-release.aab`
 - SHA-256：`H:\LoopTodo\releases\1.0.0\SHA256SUMS.txt`
 
-当前产物只包含 `arm64-v8a`，适用于绝大多数现代 Android 真机。包名为 `com.looptodo.app`，版本为 `1.0.0`，versionCode 为 `1`，minSdk 24，targetSdk 36。
+arm64 APK 只包含 `arm64-v8a`，适用于绝大多数现代 Android 真机；x86_64 APK 用于对应架构的模拟器。包名为 `com.looptodo.app`，版本为 `1.0.0`，versionCode 为 `1`，minSdk 24，targetSdk 36。
 
 ## 签名声明
 
@@ -29,10 +30,10 @@
 ## 验证结果
 
 - Mobile typecheck：通过。
-- Mobile Jest：12 suites / 29 tests 通过。
+- Mobile Jest：15 suites / 37 tests 通过。
 - Android production Expo export：通过。
-- arm64 Release APK 和 AAB：构建通过。
-- APK v2 签名校验：通过。
+- arm64 Release APK/AAB 与 x86_64 Release APK：构建通过。
+- 两个 APK 的 v2 签名校验：通过。
 - APK 已移除悬浮窗和旧版外部存储权限。
-- 当前无模拟器/真机，未执行安装、启动和 TalkBack 人工验收。
-
+- UI 已重构为登录入口、今日/专注/数据/我的四栏导航和独立全屏专注页。
+- 本轮未执行登录服务联调、真机连续切换和 TalkBack 人工验收。

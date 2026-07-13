@@ -37,6 +37,7 @@ export type TaskStore = {
   finishSession(outcome: SessionOutcome, completedAmount?: number, exitReason?: string): Promise<void>;
   finishRest(): Promise<void>;
   addGoalProgress(taskId: string, amount: number): Promise<void>;
+  selectTask(taskId: string): void;
   selectMode(mode: SessionMode): void;
   toggleStrictOption(optionId: string): void;
   clearError(): void;
@@ -243,6 +244,11 @@ export function createTaskStore(
         await repository.addGoalProgress(nextTask, amount, `task-progress-${taskId}-${now()}-${Math.random().toString(36).slice(2, 6)}`);
         set((state) => ({ tasks: state.tasks.map((candidate) => candidate.id === taskId ? nextTask : candidate), error: null }));
       } catch (error) { set({ error: errorMessage(error) }); }
+    },
+    selectTask(taskId) {
+      if (get().tasks.some((task) => task.id === taskId && task.status === 'pending' && !task.remoteActive)) {
+        set({ selectedTaskId: taskId });
+      }
     },
     selectMode(mode) { set({ selectedMode: mode }); },
     toggleStrictOption(optionId) {

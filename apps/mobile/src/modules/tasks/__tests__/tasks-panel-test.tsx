@@ -25,5 +25,14 @@ describe('task creation form', () => {
 
     await waitFor(() => expect(onCreateTask).toHaveBeenCalledTimes(1));
     expect(input.props.value).toBe('保留内容');
+    expect(screen.getByText('write failed')).toBeTruthy();
+  });
+
+  test('keeps advanced task rules out of the default path', async () => {
+    const screen = await render(<TasksPanel tasks={[]} onCreateTask={jest.fn()} onStart={jest.fn()} onGoalProgress={jest.fn()} />);
+    expect(screen.queryByText('休息分钟')).toBeNull();
+    await fireEvent.press(screen.getByText('更多设置'));
+    expect(screen.getByText('休息分钟')).toBeTruthy();
+    expect(screen.getByText('普通今日任务')).toBeTruthy();
   });
 });
