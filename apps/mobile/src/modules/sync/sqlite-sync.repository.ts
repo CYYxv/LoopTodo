@@ -138,9 +138,12 @@ async function mergeTask(database: SQLiteDatabase, remote: SyncSnapshot['tasks']
     return;
   }
   const mapped = remote.activeSessionId
-    ? await database.getFirstAsync<{ local_id: string }>("SELECT local_id FROM sync_entity_map WHERE entity_type = 'session' AND server_id = ?", remote.activeSessionId)
+    ? await database.getFirstAsync<{ local_id: string }>(`SELECT map.local_id FROM sync_entity_map map
+        INNER JOIN active_sessions active ON active.id = map.local_id
+        WHERE map.entity_type = 'session' AND map.server_id = ?`, remote.activeSessionId)
     : null;
   const remoteActive = remote.activeSessionId && !mapped ? 1 : 0;
+  const remoteStatus = remote.activeSessionId ? 'active' : remote.status === 'active' ? 'pending' : remote.status;
   await database.runAsync(`INSERT INTO tasks
     (id, title, category, kind, timer_mode, estimate_minutes, rest_minutes, deadline_at, target_amount,
      target_unit, completed_amount, must_do, trust_level, status, version, sync_status, remote_active,
@@ -155,7 +158,7 @@ async function mergeTask(database: SQLiteDatabase, remote: SyncSnapshot['tasks']
       server_updated_at = excluded.server_updated_at, updated_at = excluded.updated_at`,
     remote.id, remote.title, remote.taskType, remote.timerMode, remote.estimatedMinutes, remote.restMinutes,
     remote.deadlineAt ? Date.parse(remote.deadlineAt) : null, remote.targetAmount, remote.targetUnit,
-    remote.completedAmount, remote.isTodayRequired ? 1 : 0, remote.status, remote.version, remoteActive,
+    remote.completedAmount, remote.isTodayRequired ? 1 : 0, remoteStatus, remote.version, remoteActive,
     Date.parse(remote.updatedAt), timestamp, timestamp);
 }
 

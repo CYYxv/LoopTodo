@@ -15,6 +15,7 @@ import { taskProgressLabel } from './task.presentation';
 import { createUuid } from '@/shared/uuid';
 import type { TaskRepository } from './task.repository';
 import type { CreateTaskInput, Task } from './task.types';
+import { getTaskExecutionState } from './task.execution';
 import { lockEngine } from '@/modules/lock-engine/lock-engine.store';
 import type { LockEngine } from '@/modules/lock-engine/lock-engine.port';
 import { createNativeForcedTriggerScheduler } from '@/modules/forced-trigger/native-forced-trigger.scheduler';
@@ -68,6 +69,7 @@ export function createTaskStore(
     isFinishingSession: false,
     error: null,
     async hydrate() {
+      if (get().isHydrating) return;
       set({ isHydrating: true, error: null });
       try {
         const [snapshot, nativeSession] = await Promise.all([repository.hydrate(), nativeLockEngine.getActiveSession().catch(() => null)]);
@@ -120,7 +122,7 @@ export function createTaskStore(
     async startSession(taskId, mode) {
       const state = get();
       const task = state.tasks.find((candidate) => candidate.id === taskId);
-      if (!task || task.status === 'completed' || task.remoteActive || state.isHydrating ||
+      if (!task || !['available', 'local_active'].includes(getTaskExecutionState(task, state.activeSession)) || state.isHydrating ||
           state.isStartingSession || state.activeSession) return;
 
       const startedAt = now();
@@ -246,7 +248,8 @@ export function createTaskStore(
       } catch (error) { set({ error: errorMessage(error) }); }
     },
     selectTask(taskId) {
-      if (get().tasks.some((task) => task.id === taskId && task.status === 'pending' && !task.remoteActive)) {
+      const state = get();
+      if (state.tasks.some((task) => task.id === taskId && ['available', 'local_active'].includes(getTaskExecutionState(task, state.activeSession)))) {
         set({ selectedTaskId: taskId });
       }
     },

@@ -62,6 +62,22 @@ export function createSQLiteTaskRepository(
         database.getAllAsync<SessionRow>('SELECT * FROM focus_sessions ORDER BY ended_at DESC'),
         database.getFirstAsync<SessionRow>('SELECT * FROM active_sessions WHERE singleton_id = 1'),
       ]);
+      const staleTaskIds = taskRows
+        .filter((task) => task.status === 'active' && !task.remote_active && task.id !== activeRow?.task_id)
+        .map((task) => task.id);
+      if (staleTaskIds.length > 0) {
+        await database.withTransactionAsync(async () => {
+          for (const taskId of staleTaskIds) {
+            await database.runAsync("UPDATE tasks SET status = 'pending', sync_status = 'pending', updated_at = ? WHERE id = ? AND status = 'active' AND remote_active = 0", now(), taskId);
+          }
+        });
+        for (const row of taskRows) {
+          if (staleTaskIds.includes(row.id)) {
+            row.status = 'pending';
+            row.sync_status = 'pending';
+          }
+        }
+      }
       return {
         tasks: taskRows.map(mapTask),
         sessionRecords: recordRows.map(mapRecord),
