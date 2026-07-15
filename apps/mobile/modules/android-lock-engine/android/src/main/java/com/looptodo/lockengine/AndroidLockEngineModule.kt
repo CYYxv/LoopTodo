@@ -66,18 +66,34 @@ class AndroidLockEngineModule : Module() {
       require(LockState.read(context)?.id == id) { "Lock session does not match" }
       LockState.useEmergency(context); finish(id)
     }
-    AsyncFunction("applyFocusRestrictions") { hideRecents: Boolean, blockLeaving: Boolean, blockNotifications: Boolean, hideLauncherIcon: Boolean ->
+    AsyncFunction("applyFocusRestrictions") { hideRecents: Boolean, blockLeaving: Boolean, blockNotifications: Boolean, hideLauncherIcon: Boolean, allowedPackages: List<String>, expiresAt: Double ->
       val context = appContext.reactContext ?: error("Android context unavailable")
       require(!hideLauncherIcon) { "隐藏桌面图标为实验能力，当前设备未安全启用" }
       if (blockLeaving) require(accessibilityEnabled(context)) { "阻止离开需要开启无障碍增强约束" }
       if (blockNotifications) require(notificationListenerEnabled(context)) { "拦截通知需要开启通知读取权限" }
       if (hideRecents) require(FocusRestrictionState.setExcludedFromRecents(appContext.currentActivity, true)) { "当前窗口无法隐藏最近任务" }
-      else FocusRestrictionState.setExcludedFromRecents(appContext.currentActivity, false)
-      FocusRestrictionState.write(context, FocusRestrictions(hideRecents, blockLeaving, blockNotifications))
+      else FocusRestrictionState.clearExcludedFromRecents(context)
+      // 白名单仅在专注模式生效；锁机模式忽略。这里持久化用户选中的包名，由无障碍服务读取放行。
+      val allowed = allowedPackages.filter { it.isNotBlank() }.toSet()
+      // expiresAt 是兜底过期时间（epoch millis）：即使 app 进程被杀且再未打开，无障碍服务读到过期状态会自清，避免永久困住用户。
+      FocusRestrictionState.write(context, FocusRestrictions(hideRecents, blockLeaving, blockNotifications, allowed, expiresAt.toLong()))
+    }
+    AsyncFunction("listLaunchableApps") {
+      val context = appContext.reactContext ?: error("Android context unavailable")
+      val manager = context.packageManager
+      val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+      manager.queryIntentActivities(intent, 0)
+        .mapNotNull { resolveInfo ->
+          val packageName = resolveInfo.activityInfo?.packageName ?: return@mapNotNull null
+          if (packageName == context.packageName) return@mapNotNull null
+          mapOf("packageName" to packageName, "label" to resolveInfo.loadLabel(manager).toString())
+        }
+        .distinctBy { it["packageName"] }
+        .sortedBy { (it["label"] as String).lowercase() }
     }
     AsyncFunction("clearFocusRestrictions") {
       val context = appContext.reactContext ?: error("Android context unavailable")
-      FocusRestrictionState.setExcludedFromRecents(appContext.currentActivity, false); FocusRestrictionState.clear(context)
+      FocusRestrictionState.clear(context)
     }
     AsyncFunction("openPermissionSettings") { kind: String ->
       val context = appContext.reactContext ?: error("Android context unavailable")
@@ -97,7 +113,7 @@ class AndroidLockEngineModule : Module() {
   private fun finish(id: String) {
     val context = appContext.reactContext ?: error("Android context unavailable")
     require(LockState.read(context)?.id == id) { "Lock session does not match" }
-    LockState.clear(context); FocusRestrictionState.setExcludedFromRecents(appContext.currentActivity, false); FocusRestrictionState.clear(context)
+    LockState.clear(context); FocusRestrictionState.clear(context)
     context.stopService(Intent(context, LockForegroundService::class.java));
     context.sendBroadcast(Intent(LockActivity.ACTION_FINISH).setPackage(context.packageName))
   }
@@ -114,8 +130,9 @@ class AndroidLockEngineModule : Module() {
     val accessibility = accessibilityEnabled(context); val notifications = notificationListenerEnabled(context)
     val recentsSupported = FocusRestrictionState.canSetExcludedFromRecents(appContext.currentActivity)
     return mapOf(
-      "hideRecents" to mapOf("supported" to recentsSupported, "effective" to FocusRestrictionState.isExcludedFromRecents(appContext.currentActivity), "reason" to (if (recentsSupported) null else "当前窗口无法控制最近任务")),
+      "hideRecents" to mapOf("supported" to recentsSupported, "effective" to FocusRestrictionState.hasExcludedFromRecentsTask(context), "reason" to (if (recentsSupported) null else "当前窗口无法控制最近任务")),
       "blockLeaving" to mapOf("supported" to accessibility, "effective" to (active.blockLeaving && accessibility), "reason" to (if (accessibility) null else "需要开启无障碍增强约束")),
+      "whitelist" to mapOf("supported" to accessibility, "effective" to (active.blockLeaving && accessibility && active.allowedPackages.isNotEmpty()), "reason" to (if (accessibility) null else "需要开启无障碍增强约束")),
       "blockNotifications" to mapOf("supported" to notifications, "effective" to (active.blockNotifications && notifications), "reason" to (if (notifications) null else "需要开启通知读取权限")),
       "hideLauncherIcon" to mapOf("supported" to false, "effective" to false, "reason" to "为避免应用无法重新打开，当前版本暂不启用", "experimental" to true)
     )

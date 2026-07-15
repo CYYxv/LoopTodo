@@ -1,10 +1,11 @@
 import { useEffect } from 'react';
-import { View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 
 import { Button, Card, Chip, Switch, Text } from '@/ui/hero-runtime';
 
 import { useLockEngineStore } from '@/modules/lock-engine/lock-engine.store';
 import { useNotificationStore } from '@/modules/notifications/notification.store';
+import { useWhitelistStore } from '@/modules/focus-session/whitelist.store';
 
 import { useSettingsStore, type Settings } from '../settings.store';
 
@@ -18,11 +19,18 @@ export function SettingsPanel() {
   const refresh = useLockEngineStore((state) => state.refresh);
   const open = useLockEngineStore((state) => state.open);
   const notificationPermission = useNotificationStore((state) => state.permission);
+  const whitelistSelected = useWhitelistStore((state) => state.selected);
+  const whitelistApps = useWhitelistStore((state) => state.apps);
+  const whitelistLoading = useWhitelistStore((state) => state.loadingApps);
+  const hydrateWhitelist = useWhitelistStore((state) => state.hydrate);
+  const loadWhitelistApps = useWhitelistStore((state) => state.loadApps);
+  const toggleWhitelist = useWhitelistStore((state) => state.toggle);
 
   useEffect(() => {
     if (configured) void load();
     void refresh();
-  }, [configured, load, refresh]);
+    void hydrateWhitelist();
+  }, [configured, load, refresh, hydrateWhitelist]);
 
   const toggle = (key: keyof Settings, next: boolean) => void update({ [key]: next });
 
@@ -85,6 +93,42 @@ export function SettingsPanel() {
             <Button size="sm" variant="secondary" onPress={() => void open('vendorBackground')}>厂商后台设置</Button>
           </View>
           <Text type="body-xs" color="muted">请允许自启动、后台运行和后台弹出。厂商设置页不可用时会安全回退到应用详情页。</Text>
+        </Card.Body>
+      </Card>
+
+      <Card variant="secondary">
+        <Card.Body className="gap-3">
+          <View className="flex-row items-center justify-between gap-3">
+            <Card.Title>专注应用白名单</Card.Title>
+            <Chip color={whitelistSelected.length > 0 ? 'success' : 'default'} variant="soft">
+              已选 {whitelistSelected.length}
+            </Chip>
+          </View>
+          <Text type="body-xs" color="muted">
+            仅用于专注模式的「仅允许任务白名单」严格项：开启后离开 LoopTodo 只允许切换到下方勾选的应用（拨号与相机始终放行）。锁机模式不使用白名单。需先开启无障碍增强约束。
+          </Text>
+          <Button size="sm" variant="secondary" onPress={() => void loadWhitelistApps()} isDisabled={whitelistLoading}>
+            {whitelistLoading ? '正在读取已安装应用…' : whitelistApps.length > 0 ? '刷新已安装应用' : '读取已安装应用'}
+          </Button>
+          {whitelistApps.length === 0 ? (
+            <Text type="body-xs" color="muted">点击上方按钮读取本机可启动的应用列表。</Text>
+          ) : (
+            <View className="gap-2">
+              {whitelistApps.map((app) => (
+                <View key={app.packageName} className="flex-row items-center justify-between gap-3">
+                  <View className="flex-1">
+                    <Text type="body-sm">{app.label}</Text>
+                    <Text type="body-xs" color="muted">{app.packageName}</Text>
+                  </View>
+                  <Switch
+                    accessibilityLabel={`允许 ${app.label}`}
+                    isSelected={whitelistSelected.includes(app.packageName)}
+                    onSelectedChange={() => void toggleWhitelist(app.packageName)}
+                  />
+                </View>
+              ))}
+            </View>
+          )}
         </Card.Body>
       </Card>
 

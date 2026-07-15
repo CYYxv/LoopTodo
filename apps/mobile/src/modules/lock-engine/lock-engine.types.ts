@@ -14,11 +14,14 @@ export type LockCapabilities = {
 };
 
 export type NativeLockSession = { id: string; taskId: string; taskTitle: string; startedAt: number; endsAt: number; enhanced: boolean };
-export type FocusRestrictionOptions = { hideRecents: boolean; blockLeaving: boolean; blockNotifications: boolean; hideLauncherIcon: boolean };
+export type FocusRestrictionOptions = { hideRecents: boolean; blockLeaving: boolean; blockNotifications: boolean; hideLauncherIcon: boolean; allowedPackages: string[]; expiresAt: number };
 export type RestrictionCapability = { supported: boolean; effective: boolean; reason: string | null; experimental?: boolean };
 export type FocusRestrictionCapabilities = {
   hideRecents: RestrictionCapability;
   blockLeaving: RestrictionCapability;
   blockNotifications: RestrictionCapability;
   hideLauncherIcon: RestrictionCapability;
+  whitelist: RestrictionCapability;
 };
+
+export type InstalledApp = { packageName: string; label: string };

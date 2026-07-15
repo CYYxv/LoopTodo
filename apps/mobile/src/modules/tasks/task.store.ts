@@ -11,6 +11,7 @@ import type {
 } from '@/modules/focus-session/focus-session.types';
 
 import { prototypeStrictOptions } from './prototype.data';
+import { selectedWhitelistPackages, whitelistStore } from '@/modules/focus-session/whitelist.store';
 import { createSQLiteTaskRepository } from './sqlite-task.repository';
 import { taskProgressLabel } from './task.presentation';
 import { createUuid } from '@/shared/uuid';
@@ -78,11 +79,41 @@ export function createTaskStore(
       try {
         const [snapshot, nativeSession, savedStrictOptions] = await Promise.all([
           repository.hydrate(),
-          nativeLockEngine.getActiveSession().catch(() => null),
+          nativeLockEngine.getActiveSession(),
           loadStrictOptions().catch(() => prototypeStrictOptions),
+          whitelistStore.getState().hydrate().catch(() => undefined),
         ]);
         let recoveredTasks = snapshot.tasks;
         let recoveredSession = snapshot.activeSession;
+        let recoveredRecords = snapshot.sessionRecords;
+        if (!nativeSession && recoveredSession?.mode === 'lock') {
+          const task = recoveredTasks.find((candidate) => candidate.id === recoveredSession?.taskId);
+          if (task) {
+            const endedAt = now();
+            const recoveredTask: Task = {
+              ...task,
+              status: 'pending',
+              version: task.version + 1,
+              syncStatus: 'pending',
+              progressLabel: '',
+            };
+            recoveredTask.progressLabel = taskProgressLabel(recoveredTask);
+            const record: FocusSessionRecord = {
+              ...recoveredSession,
+              endedAt,
+              outcome: 'exited',
+              failureReason: '锁机会话已在系统侧结束',
+              durationSeconds: Math.max(0, Math.floor((endedAt - recoveredSession.startedAt) / 1000)),
+              completedAmount: null,
+            };
+            await repository.finishSession(recoveredTask, record, null);
+            recoveredTasks = recoveredTasks.map((candidate) => candidate.id === recoveredTask.id ? recoveredTask : candidate);
+            recoveredRecords = [record, ...recoveredRecords];
+          } else {
+            await repository.finishRest();
+          }
+          recoveredSession = null;
+        }
         if (nativeSession && !recoveredSession) {
           const task = recoveredTasks.find((candidate) => candidate.id === nativeSession.taskId);
           if (task) {
@@ -94,15 +125,17 @@ export function createTaskStore(
           }
         }
         set((state) => ({
-          ...snapshot, tasks: recoveredTasks, activeSession: recoveredSession, strictOptions: savedStrictOptions,
+          ...snapshot, tasks: recoveredTasks, sessionRecords: recoveredRecords, activeSession: recoveredSession, strictOptions: savedStrictOptions,
           selectedTaskId: recoveredTasks.some((task) => task.id === state.selectedTaskId)
             ? state.selectedTaskId
             : recoveredTasks.find((task) => task.status !== 'completed')?.id ?? null,
           isHydrating: false,
         }));
-        if (recoveredSession?.phase === 'focus') {
+        // 仅「锁机」会话在进程重启后重新施加限制（PRD：锁机杀不掉、可重启恢复）。
+        // 「专注」会话可自由退出，进程死亡后不得重新困人——否则残留的 active 会话会让无障碍持续拉回，用户退不出。
+        if (recoveredSession?.phase === 'focus' && recoveredSession.mode === 'lock') {
           const capabilities = await nativeLockEngine.checkCapabilities();
-          await nativeLockEngine.applyFocusRestrictions(restrictionsFor(recoveredSession.mode, savedStrictOptions, capabilities));
+          await nativeLockEngine.applyFocusRestrictions(restrictionsFor(recoveredSession.mode, savedStrictOptions, capabilities, selectedWhitelistPackages(), recoveredSession.plannedEndAt ?? 0));
         } else {
           await nativeLockEngine.clearFocusRestrictions();
         }
@@ -116,7 +149,17 @@ export function createTaskStore(
           await get().finishRest();
         }
       } catch (error) {
-        set({ isHydrating: false, error: errorMessage(error) });
+        try {
+          const nativeSession = await nativeLockEngine.getActiveSession();
+          if (!nativeSession) await nativeLockEngine.clearFocusRestrictions();
+          set({ isHydrating: false, error: errorMessage(error) });
+        } catch (recoveryError) {
+          const primaryError = errorMessage(error);
+          const restrictionError = errorMessage(recoveryError);
+          set({ isHydrating: false, error: primaryError === restrictionError
+            ? primaryError
+            : `${primaryError}；限制状态检查失败：${restrictionError}` });
+        }
       }
     },
     async createTask(input) {
@@ -159,7 +202,7 @@ export function createTaskStore(
             throw new Error('请先完成锁机风险确认并开启通知与通知读取权限');
           }
         }
-        await nativeLockEngine.applyFocusRestrictions(restrictionsFor(mode, state.strictOptions, capabilities));
+        await nativeLockEngine.applyFocusRestrictions(restrictionsFor(mode, state.strictOptions, capabilities, selectedWhitelistPackages(), session.plannedEndAt ?? startedAt + 4 * 60 * 60 * 1000));
         if (mode === 'lock') {
           await nativeLockEngine.startLockSession({ id: session.id, taskId, taskTitle: task.title,
             startedAt, endsAt: session.plannedEndAt!, enhanced: capabilities.accessibilityEnabled });
@@ -312,17 +355,38 @@ async function loadStrictOptions() {
   });
 }
 
-function restrictionsFor(mode: SessionMode, options: StrictOption[], capabilities: LockCapabilities): FocusRestrictionOptions {
+function restrictionsFor(
+  mode: SessionMode,
+  options: StrictOption[],
+  capabilities: LockCapabilities,
+  whitelistPackages: string[] = [],
+  expiresAt = 0,
+): FocusRestrictionOptions {
   const restrictions: FocusRestrictionOptions = {
     hideRecents: false,
     blockLeaving: false,
     blockNotifications: false,
     hideLauncherIcon: false,
+    allowedPackages: [],
+    expiresAt,
   };
+  // 锁机模式忽略白名单（PRD 3.4）：只在专注模式启用「仅允许白名单」时注入放行包名。
+  let whitelistEnabled = false;
   for (const option of options) {
-    if (!option.capabilityKey) continue;
-    const capability = capabilities.restrictions[option.capabilityKey];
-    restrictions[option.capabilityKey] = capability.supported && (mode === 'lock' || option.enabled);
+    const key = option.capabilityKey;
+    if (!key) continue;
+    const capability = capabilities.restrictions[key];
+    const active = capability.supported && (mode === 'lock' || option.enabled);
+    if (key === 'whitelist') {
+      // 白名单是「阻止离开」的细化：开启后 blockLeaving 生效，并把选中的应用注入放行集合。
+      if (active && mode === 'focus') {
+        whitelistEnabled = true;
+        restrictions.blockLeaving = true;
+      }
+      continue;
+    }
+    restrictions[key] = active;
   }
+  restrictions.allowedPackages = whitelistEnabled ? whitelistPackages.filter((pkg) => pkg.trim().length > 0) : [];
   return restrictions;
 }

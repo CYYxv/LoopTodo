@@ -71,11 +71,11 @@ export const prototypeTasks: Task[] = [
 export const prototypeStrictOptions: StrictOption[] = [
   {
     id: 'whitelist',
-    label: '仅允许任务白名单',
-    description: '仅允许任务所需应用，其他应用无法打开',
+    label: '仅允许白名单应用',
+    description: '专注期间只放行「设置 - 专注白名单」里勾选的应用，其余应用离开即被拉回（依赖无障碍增强约束）',
     enabled: false,
-    capabilityKey: null,
-    unavailableReason: '当前版本尚未提供安全的应用白名单',
+    capabilityKey: 'whitelist',
+    unavailableReason: '需要开启无障碍增强约束',
   },
   {
     id: 'notifications',

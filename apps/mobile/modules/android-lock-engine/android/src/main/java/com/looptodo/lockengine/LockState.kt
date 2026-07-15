@@ -18,7 +18,11 @@ object LockState {
     val raw = context.getSharedPreferences(FILE, Context.MODE_PRIVATE).getString(SESSION, null) ?: return null
     val json = JSONObject(raw)
     val session = LockSession(json.getString("id"), json.getString("taskId"), json.getString("taskTitle"), json.getLong("startedAt"), json.getLong("endsAt"), json.getBoolean("enhanced"))
-    if (session.endsAt <= System.currentTimeMillis()) { clear(context); return null }
+    if (session.endsAt <= System.currentTimeMillis()) {
+      clear(context)
+      FocusRestrictionState.clear(context)
+      return null
+    }
     return session
   }
   fun write(context: Context, session: LockSession) {
