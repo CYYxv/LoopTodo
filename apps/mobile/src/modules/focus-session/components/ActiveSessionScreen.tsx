@@ -54,7 +54,7 @@ export function ActiveSessionScreen({
         {task.kind === 'goal' ? <TextField><Label>本次完成量（{task.targetUnit}）</Label><Input value={completedAmount} onChangeText={setCompletedAmount} keyboardType="numeric" placeholder="由你填写确认" /></TextField> : null}
       </View>
       <ResourcePassPanel taskId={task.id} readOnly />
-      <View className="gap-3"><TextField><Label>{session.mode === 'lock' ? '紧急退出原因' : '退出复盘（可选）'}</Label><Input value={exitReason} onChangeText={setExitReason} placeholder={session.mode === 'lock' ? '本月紧急次数有限，请说明原因' : '是什么打断了这次专注？'} /></TextField><Button variant="primary" size="lg" onPress={() => void onComplete(task.kind === 'goal' ? Number(completedAmount) : undefined)}>完成本次闭环</Button><Button variant="secondary" onPress={() => void onExit(exitReason)}>{session.mode === 'lock' ? '紧急退出锁机' : '退出专注'}</Button></View>
+      <View className="gap-3"><TextField><Label>{session.mode === 'lock' ? '紧急退出原因' : '退出原因（可选）'}</Label><Input value={exitReason} onChangeText={setExitReason} placeholder={session.mode === 'lock' ? '本月紧急次数有限，请说明原因' : '是什么打断了这次专注？'} />{session.mode === 'focus' ? <Text type="body-xs" color="muted">仅点击“退出专注”时保存为失败复盘。</Text> : null}</TextField><Button variant="primary" size="lg" onPress={() => void onComplete(task.kind === 'goal' ? Number(completedAmount) : undefined)}>完成本次闭环</Button><Button variant="secondary" onPress={() => void onExit(exitReason)}>{session.mode === 'lock' ? '紧急退出锁机' : '退出专注'}</Button></View>
     </ScrollView>
   );
 }

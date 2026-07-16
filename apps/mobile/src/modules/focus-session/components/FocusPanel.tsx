@@ -99,7 +99,7 @@ export function FocusPanel({
         </Card.Body>
       </Card>
 
-      <Card variant="secondary"><Card.Body className="gap-3"><View><Card.Title>高级资源通行证</Card.Title><Card.Description>只在任务确实需要网页、文件或 AI 材料时配置。</Card.Description></View><Button variant="secondary" onPress={() => setShowResources((value) => !value)}>{showResources ? '收起高级区域' : '展开高级区域'}</Button></Card.Body></Card>
+      <Card variant="secondary"><Card.Body className="gap-3"><View><Card.Title>专注资料与 AI（高级）</Card.Title><Card.Description>提前添加专注时允许查看的网页、视频、文件或 AI 材料；普通任务无需配置。</Card.Description></View><Button variant="secondary" onPress={() => setShowResources((value) => !value)}>{showResources ? '收起高级区域' : '展开高级区域'}</Button></Card.Body></Card>
       {showResources ? <ResourcePassPanel taskId={selectedTask?.id ?? null} /> : null}
 
       {selectedMode === 'lock' ? <Card variant="secondary"><Card.Body className="gap-3"><Card.Title>锁机权限检查</Card.Title>

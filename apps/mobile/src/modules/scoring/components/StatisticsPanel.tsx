@@ -75,7 +75,7 @@ export function StatisticsPanel({ records, tasks }: { records: FocusSessionRecor
     </Card.Body></Card>
 
     <RecordList title="最近专注" records={scopedRecords.slice(0, 8)} taskById={taskById} selectedRecordId={selectedRecordId} onSelect={setSelectedRecordId} empty="当前范围还没有专注记录" />
-    <RecordList title="失败复盘" records={failedRecords.slice(0, 8)} taskById={taskById} selectedRecordId={selectedRecordId} onSelect={setSelectedRecordId} empty="当前范围没有失败记录" />
+    <RecordList title="失败复盘" records={failedRecords.slice(0, 8)} taskById={taskById} selectedRecordId={selectedRecordId} onSelect={setSelectedRecordId} empty="当前范围没有失败记录" showFailureReason />
     {selectedRecord ? <RecordDetail record={selectedRecord} task={taskById.get(selectedRecord.taskId)} /> : null}
   </View>;
 }
@@ -84,10 +84,10 @@ function Metric({ label, value }: { label: string; value: string }) {
   return <View className="min-w-28 flex-1 rounded-panel-inner bg-surface-secondary p-2"><Text type="body-xs" color="muted">{label}</Text><Text type="body-sm" weight="semibold">{value}</Text></View>;
 }
 
-function RecordList({ title, records, taskById, selectedRecordId, onSelect, empty }: { title: string; records: FocusSessionRecord[]; taskById: Map<string, Task>; selectedRecordId: string | null; onSelect: (id: string) => void; empty: string }) {
+function RecordList({ title, records, taskById, selectedRecordId, onSelect, empty, showFailureReason = false }: { title: string; records: FocusSessionRecord[]; taskById: Map<string, Task>; selectedRecordId: string | null; onSelect: (id: string) => void; empty: string; showFailureReason?: boolean }) {
   return <Card variant="secondary"><Card.Body className="gap-2"><Card.Title>{title}</Card.Title>
     {records.length ? records.map((record) => <Button key={record.id} variant="secondary" onPress={() => onSelect(record.id)}>
-      <View className="w-full flex-row flex-wrap items-center justify-between gap-2"><Text type="body-sm" weight="semibold">{taskById.get(record.taskId)?.title ?? '已删除任务'}</Text><View className="flex-row items-center gap-2">{selectedRecordId === record.id ? <Chip color="accent">查看中</Chip> : null}<Text type="body-xs" color="muted">{formatDateTime(record.endedAt)} · {Math.floor(record.durationSeconds / 60)} 分钟</Text></View></View>
+      <View className="w-full gap-1"><View className="flex-row flex-wrap items-center justify-between gap-2"><Text type="body-sm" weight="semibold">{taskById.get(record.taskId)?.title ?? '已删除任务'}</Text><View className="flex-row items-center gap-2">{selectedRecordId === record.id ? <Chip color="accent">查看中</Chip> : null}<Text type="body-xs" color="muted">{formatDateTime(record.endedAt)} · {Math.floor(record.durationSeconds / 60)} 分钟</Text></View></View>{showFailureReason && record.failureReason ? <Text type="body-xs" color="danger">复盘：{record.failureReason}</Text> : null}</View>
     </Button>) : <Text type="body-sm" color="muted">{empty}</Text>}
   </Card.Body></Card>;
 }

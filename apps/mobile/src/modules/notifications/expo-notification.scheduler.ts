@@ -2,6 +2,9 @@ import type { NotificationScheduler } from './notification.scheduler';
 import type { NotificationPermission, NotificationSchedule } from './notification.types';
 
 let foregroundConfigured = false;
+type NotificationsModule = typeof import('expo-notifications');
+type LoadNotifications = () => Promise<NotificationsModule>;
+const loadExpoNotifications: LoadNotifications = () => import('expo-notifications');
 
 export async function configureForegroundNotifications() {
   if (foregroundConfigured) return;
@@ -10,41 +13,39 @@ export async function configureForegroundNotifications() {
   foregroundConfigured = true;
 }
 
-export function createExpoNotificationScheduler(): NotificationScheduler {
+export function createExpoNotificationScheduler(loadNotifications: LoadNotifications = loadExpoNotifications): NotificationScheduler {
   return {
     async getPermission() {
-      const notifications = await import('expo-notifications');
+      const notifications = await loadNotifications();
       return mapPermission((await notifications.getPermissionsAsync()).status);
     },
     async requestPermission() {
-      const notifications = await import('expo-notifications');
+      const notifications = await loadNotifications();
       return mapPermission((await notifications.requestPermissionsAsync()).status);
     },
     async configureChannels() {
-      const notifications = await import('expo-notifications');
+      const notifications = await loadNotifications();
       await Promise.all([
         notifications.setNotificationChannelAsync('reminders', {
           name: '任务提醒',
           importance: notifications.AndroidImportance.DEFAULT,
-          sound: 'default',
           vibrationPattern: [0, 250, 150, 250],
         }),
         notifications.setNotificationChannelAsync('important', {
           name: '重要提醒',
           importance: notifications.AndroidImportance.HIGH,
-          sound: 'default',
           vibrationPattern: [0, 300, 150, 300],
         }),
       ]);
     },
     async schedule(schedule) {
-      const notifications = await import('expo-notifications');
+      const notifications = await loadNotifications();
       return notifications.scheduleNotificationAsync({
         content: {
           title: schedule.title,
           body: schedule.body,
           data: { ...schedule.data, eventType: schedule.type, scheduleId: schedule.id },
-          sound: 'default',
+          sound: true,
         },
         trigger: {
           type: notifications.SchedulableTriggerInputTypes.DATE,
@@ -54,7 +55,7 @@ export function createExpoNotificationScheduler(): NotificationScheduler {
       });
     },
     async cancel(platformNotificationId) {
-      const notifications = await import('expo-notifications');
+      const notifications = await loadNotifications();
       await notifications.cancelScheduledNotificationAsync(platformNotificationId);
     },
   };

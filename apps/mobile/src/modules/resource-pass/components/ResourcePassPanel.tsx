@@ -18,10 +18,10 @@ export function ResourcePassPanel({ taskId, readOnly = false }: { taskId: string
   const error = useResourcePassStore((state) => state.error); const load = useResourcePassStore((state) => state.load);
   const add = useResourcePassStore((state) => state.add); const remove = useResourcePassStore((state) => state.remove);
   useEffect(() => { if (taskId) void load(taskId); }, [load, taskId]);
-  if (!taskId) return <Card variant="secondary"><Card.Body><Card.Title>任务资源通行证</Card.Title><Card.Description>先选择任务，再添加可信资源。</Card.Description></Card.Body></Card>;
+  if (!taskId) return <Card variant="secondary"><Card.Body><Card.Title>专注资料</Card.Title><Card.Description>先选择任务，再添加专注时允许查看的资料。</Card.Description></Card.Body></Card>;
   const addWeb = async () => { await add({ taskId, type: webType, value, displayName: value }); setValue(''); };
   const pick = async (type: 'local_video' | 'local_file') => { const asset = await pickLocalResource(type); if (asset) await add({ taskId, type, ...asset }); };
-  return <Card variant="secondary"><Card.Body className="gap-3"><View><Card.Title>任务资源通行证</Card.Title><Card.Description>{readOnly ? '专注中只读，不能临时扩展白名单' : '开始前批准资源；专注中无法修改'}</Card.Description></View>
+  return <Card variant="secondary"><Card.Body className="gap-3"><View><Card.Title>专注资料</Card.Title><Card.Description>{readOnly ? '这些资料已在开始专注前添加，专注中不能临时增加' : '提前添加专注时需要查看的网页、视频或文件；普通任务无需配置'}</Card.Description></View>
     {!readOnly ? <><View className="flex-row gap-2"><Button size="sm" variant={webType === 'url' ? 'primary' : 'secondary'} onPress={() => setWebType('url')}>精确页面</Button><Button size="sm" variant={webType === 'domain' ? 'primary' : 'secondary'} onPress={() => setWebType('domain')}>整个域名</Button></View><TextField><Label>HTTPS 地址</Label><Input value={value} onChangeText={setValue} placeholder="https://example.com/material" /></TextField><View className="flex-row flex-wrap gap-2"><Button size="sm" isDisabled={!value.trim()} onPress={() => void addWeb()}>批准网页</Button><Button size="sm" variant="secondary" onPress={() => void pick('local_video')}>选择本地视频</Button><Button size="sm" variant="secondary" onPress={() => void pick('local_file')}>选择本地文件</Button></View></> : null}
     {loadState === 'loading' ? <Text type="body-xs" color="muted">正在加载任务资源…</Text> : null}
     {error ? <Text type="body-xs">{error}</Text> : null}

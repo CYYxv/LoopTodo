@@ -1,4 +1,4 @@
-import { Children, type PropsWithChildren } from 'react';
+import { Children, type PropsWithChildren, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Switch as NativeSwitch, Text as NativeText, TextInput, useColorScheme, View } from 'react-native';
 import { useResolveClassNames } from 'uniwind';
 
@@ -15,9 +15,8 @@ export function Text({ type = 'body', color = 'default', weight, align, classNam
 export function Button({ children, isDisabled, variant = 'primary', size = 'md', className = '', style, ...props }: any) {
   const classStyle = useResolveClassNames(className);
   const dark = useColorScheme() === 'dark';
-  const childArray = Children.toArray(children);
-  const textual = childArray.length > 0 && childArray.every((child) => typeof child === 'string' || typeof child === 'number');
-  return <Pressable {...props} disabled={isDisabled} accessibilityRole={props.accessibilityRole ?? 'button'} accessibilityState={{ ...props.accessibilityState, disabled: Boolean(isDisabled) }} style={({ pressed }) => [styles.button, dark ? darkButtonVariants[variant] ?? buttonVariants.primary : buttonVariants[variant] ?? buttonVariants.primary, buttonSizes[size] ?? buttonSizes.md, classStyle, isDisabled && styles.disabled, pressed && styles.pressed, typeof style === 'function' ? style({ pressed }) : style]}>{textual ? <NativeText style={[styles.buttonText, ['secondary', 'danger-soft'].includes(variant) && (dark ? styles.secondaryTextDark : styles.secondaryText)]}>{childArray.join('')}</NativeText> : children}</Pressable>;
+  const textContent = textualChildContent(children);
+  return <Pressable {...props} disabled={isDisabled} accessibilityRole={props.accessibilityRole ?? 'button'} accessibilityState={{ ...props.accessibilityState, disabled: Boolean(isDisabled) }} style={({ pressed }) => [styles.button, dark ? darkButtonVariants[variant] ?? buttonVariants.primary : buttonVariants[variant] ?? buttonVariants.primary, buttonSizes[size] ?? buttonSizes.md, classStyle, isDisabled && styles.disabled, pressed && styles.pressed, typeof style === 'function' ? style({ pressed }) : style]}>{textContent != null ? <NativeText style={[styles.buttonText, ['secondary', 'danger-soft'].includes(variant) && (dark ? styles.secondaryTextDark : styles.secondaryText)]}>{textContent}</NativeText> : children}</Pressable>;
 }
 
 function CardRoot({ children, variant, className = '', style, ...props }: any) {
@@ -39,7 +38,8 @@ export const Card = Object.assign(CardRoot, { Body: CardBody, Title: CardTitle, 
 
 function ChipRoot({ children, color = 'default', className = '', style, ...props }: any) {
   const classStyle = useResolveClassNames(className);
-  return <View {...props} style={[styles.chip, chipColors[color] ?? chipColors.default, classStyle, style]}>{typeof children === 'string' ? <NativeText style={styles.chipText}>{children}</NativeText> : children}</View>;
+  const textContent = textualChildContent(children);
+  return <View {...props} style={[styles.chip, chipColors[color] ?? chipColors.default, classStyle, style]}>{textContent != null ? <NativeText style={styles.chipText}>{textContent}</NativeText> : children}</View>;
 }
 function ChipLabel({ className = '', style, ...props }: any) {
   const classStyle = useResolveClassNames(className);
@@ -71,6 +71,13 @@ export function TextField({ children, className = '', style, ...props }: any) {
 export function Switch({ isSelected, onSelectedChange, isDisabled, className = '', style, ...props }: any) {
   const classStyle = useResolveClassNames(className);
   return <NativeSwitch {...props} value={isSelected} disabled={isDisabled} onValueChange={onSelectedChange} style={[classStyle, style]} />;
+}
+
+function textualChildContent(children: ReactNode) {
+  const childArray = Children.toArray(children);
+  return childArray.length > 0 && childArray.every((child) => typeof child === 'string' || typeof child === 'number')
+    ? childArray.join('')
+    : null;
 }
 
 const styles = StyleSheet.create({
