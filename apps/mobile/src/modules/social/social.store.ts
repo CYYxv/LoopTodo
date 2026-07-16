@@ -1,6 +1,7 @@
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 
+import { offlineFeatureMessage } from '../../shared/offline-feature-message';
 import { createHttpSocialClient, type SocialClient } from './social.client';
 import { connectSocialRealtime, type SocialRealtime } from './social.realtime';
 import type { Friend, PkMatch, RoomReaction, StudyRoom } from './social.types';
@@ -115,4 +116,4 @@ async function action(get: () => SocialStore, set: (value: Partial<SocialStore>)
 export const socialStore = createSocialStore();
 export function configureSocial(baseUrl: string, token: string) { socialStore.getState().configure(baseUrl, token); }
 export function useSocialStore<T>(selector: (state: SocialStore) => T) { return useStore(socialStore, selector); }
-function message(error: unknown) { return error instanceof Error ? error.message : '社交操作失败'; }
+function message(error: unknown) { return offlineFeatureMessage(error, '社交操作失败'); }

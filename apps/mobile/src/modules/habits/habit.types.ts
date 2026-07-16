@@ -9,3 +9,5 @@ export type Habit = {
 };
 
 export type CreateHabitInput = Omit<Habit, 'id' | 'todayMinutes' | 'status'>;
+export type UpdateHabitInput = CreateHabitInput;
+export type HabitProgressDay = { date: string; minutes: number };

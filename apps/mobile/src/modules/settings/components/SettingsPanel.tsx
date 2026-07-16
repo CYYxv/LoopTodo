@@ -62,17 +62,6 @@ export function SettingsPanel() {
 
       <Card variant="secondary">
         <Card.Body className="gap-3">
-          <Card.Title>联网策略</Card.Title>
-          <View className="flex-row flex-wrap gap-2" accessibilityRole="radiogroup">
-            <PolicyButton selected={value?.networkPolicy !== 'online_required'} label="离线执行后同步" onPress={() => void update({ networkPolicy: 'offline_first' })} />
-            <PolicyButton selected={value?.networkPolicy === 'online_required'} label="要求联网" onPress={() => void update({ networkPolicy: 'online_required' })} />
-          </View>
-          <Text type="body-xs" color="muted">已开始的锁机始终由本地执行，并在恢复联网后同步。</Text>
-        </Card.Body>
-      </Card>
-
-      <Card variant="secondary">
-        <Card.Body className="gap-3">
           <Card.Title>通知</Card.Title>
           <Setting label="任务与专注提醒" value={value?.taskRemindersEnabled ?? true} onChange={(next) => toggle('taskRemindersEnabled', next)} />
           <Setting label="家庭异常提醒" value={value?.familyAlertsEnabled ?? true} onChange={(next) => toggle('familyAlertsEnabled', next)} />
@@ -139,10 +128,6 @@ export function SettingsPanel() {
 
 function Setting({ label, value, onChange }: { label: string; value: boolean; onChange(value: boolean): void }) {
   return <View className="flex-row items-center justify-between gap-3"><Text type="body-sm" className="flex-1">{label}</Text><Switch accessibilityLabel={label} isSelected={value} onSelectedChange={onChange} /></View>;
-}
-
-function PolicyButton({ selected, label, onPress }: { selected: boolean; label: string; onPress(): void }) {
-  return <Button size="sm" variant={selected ? 'primary' : 'secondary'} accessibilityRole="radio" accessibilityState={{ selected }} onPress={onPress}>{label}</Button>;
 }
 
 function yes(value?: boolean) {

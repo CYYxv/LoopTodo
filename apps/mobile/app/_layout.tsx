@@ -23,8 +23,8 @@ function RootNavigator() {
   const segments = useSegments();
   if (status === 'hydrating') return <LoadingScreen label="正在恢复 LoopTodo…" />;
   if (status === 'signed_out' && segments[0] !== 'login') return <Redirect href="/login" />;
-  if (status === 'signed_in' && segments[0] === 'login') return <Redirect href="/today" />;
-  return <Stack screenOptions={{ headerShown: false }}><Stack.Screen name="(tabs)" /><Stack.Screen name="login" /><Stack.Screen name="create-task" options={{ presentation: 'modal' }} /><Stack.Screen name="session" options={{ gestureEnabled: false }} /></Stack>;
+  if (status === 'signed_in' && segments[0] === 'login') return <Redirect href="/tasks" />;
+  return <Stack screenOptions={{ headerShown: false }}><Stack.Screen name="(tabs)" /><Stack.Screen name="login" /><Stack.Screen name="create-task" options={{ presentation: 'modal' }} /><Stack.Screen name="session" options={{ gestureEnabled: false }} /><Stack.Screen name="habit/[id]" /></Stack>;
 }
 
 export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {

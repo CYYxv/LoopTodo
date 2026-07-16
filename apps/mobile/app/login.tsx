@@ -22,14 +22,14 @@ export default function LoginRoute() {
   const [advanced, setAdvanced] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  if (status === 'signed_in') return <Redirect href="/today" />;
+  if (status === 'signed_in') return <Redirect href="/tasks" />;
 
   const submit = async () => {
     try {
       if (server !== baseUrl) await setBaseUrl(server);
       if (registering) await register(email.trim(), password, nickname.trim());
       else await login(email.trim(), password);
-      if (authStore.getState().status === 'signed_in') router.replace('/today');
+      if (authStore.getState().status === 'signed_in') router.replace('/tasks');
     } catch {
       return;
     }

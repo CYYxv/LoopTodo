@@ -14,6 +14,7 @@ const session: ActiveSession = { id: 'session', taskId: 'task', mode: 'focus', t
 describe('task execution state', () => {
   test('distinguishes local, remote and stale active tasks', () => {
     expect(getTaskExecutionState({ ...task, status: 'active' }, session)).toBe('local_active');
+    expect(getTaskExecutionState({ ...task, id: 'another-task' }, session)).toBe('local_session_blocked');
     expect(getTaskExecutionState({ ...task, status: 'active', remoteActive: true }, null)).toBe('remote_active');
     expect(getTaskExecutionState({ ...task, status: 'active' }, null)).toBe('stale_active');
   });

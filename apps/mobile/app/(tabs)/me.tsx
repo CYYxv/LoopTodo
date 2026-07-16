@@ -8,7 +8,7 @@ import { PageHeader, Screen } from '@/ui/screen-layout';
 const entries = [
   ['/sync', '账号与同步', '设备同步、冲突与手动同步'],
   ['/notifications', '通知与锁机权限', '提醒、通知监听与系统权限'],
-  ['/settings', '联网策略与隐私', '隐私、显示和联网规则'],
+  ['/settings', '隐私与权限', '隐私、显示和系统权限'],
   ['/social', '社交与战队', '好友 PK、自习室和竞赛'],
   ['/family', '家庭', '家庭组、家长任务和修改申请'],
   ['/rewards', '奖励', '积分奖励与兑换记录'],

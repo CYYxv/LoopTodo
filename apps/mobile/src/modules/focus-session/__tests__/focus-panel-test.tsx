@@ -31,3 +31,20 @@ test('renders with capabilities returned by an older development build', () => {
     onOpenLockPermission={jest.fn()}
   />)).not.toThrow();
 });
+
+test('does not expose the removed advanced resource feature', async () => {
+  const screen = await render(<FocusPanel
+    selectedMode="focus"
+    strictOptions={[]}
+    selectedTask={null}
+    onModeChange={jest.fn()}
+    onStrictOptionToggle={jest.fn()}
+    onStart={jest.fn()}
+    lockCapabilities={null}
+    onRefreshLockCapabilities={jest.fn()}
+    onConfirmLockRisk={jest.fn()}
+    onOpenLockPermission={jest.fn()}
+  />);
+
+  expect(screen.queryByText('专注资料与 AI（高级）')).toBeNull();
+});

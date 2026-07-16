@@ -3,7 +3,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { getLoopTodoDatabase } from '@/modules/tasks/database';
 
 import type { HabitRepository } from './habit.repository';
-import type { CreateHabitInput, Habit } from './habit.types';
+import type { CreateHabitInput, Habit, HabitProgressDay, UpdateHabitInput } from './habit.types';
 
 type HabitRow = {
   id: string; name: string; target_minutes: number; force_enabled: number;
@@ -34,6 +34,23 @@ export function createSQLiteHabitRepository(
         VALUES (?, ?, ?, ?, ?, 'active', ?, ?)`, id, input.name.trim(), input.targetMinutes,
         input.forceEnabled ? 1 : 0, input.forceEnabled ? input.triggerTime : null, now(), now());
       return { id, ...input, name: input.name.trim(), todayMinutes: 0, status: 'active' };
+    },
+    async update(habitId, input) {
+      validateInput(input);
+      const database = await getDatabase();
+      const result = await database.runAsync(`UPDATE habits SET name = ?, target_minutes = ?, force_enabled = ?,
+        trigger_time = ?, updated_at = ? WHERE id = ? AND status = 'active'`, input.name.trim(), input.targetMinutes,
+        input.forceEnabled ? 1 : 0, input.forceEnabled ? input.triggerTime : null, now(), habitId);
+      if (result.changes !== 1) throw new Error('习惯不存在或已归档');
+      const row = await database.getFirstAsync<HabitRow>(`SELECT h.id, h.name, h.target_minutes, h.force_enabled,
+        h.trigger_time, h.status, 0 AS today_minutes FROM habits h WHERE h.id = ?`, habitId);
+      if (!row) throw new Error('习惯不存在或已归档');
+      return mapHabit(row);
+    },
+    async history(habitId) {
+      const database = await getDatabase();
+      return database.getAllAsync<HabitProgressDay>(`SELECT progress_date AS date, SUM(minutes) AS minutes
+        FROM habit_progress_entries WHERE habit_id = ? GROUP BY progress_date ORDER BY progress_date DESC LIMIT 30`, habitId);
     },
     async addProgress(habitId, minutes, day, idempotencyKey) {
       if (minutes <= 0) throw new Error('进度分钟数必须大于 0');

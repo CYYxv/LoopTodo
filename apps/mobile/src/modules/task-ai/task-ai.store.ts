@@ -1,6 +1,7 @@
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 
+import { offlineFeatureMessage } from '../../shared/offline-feature-message';
 import { createHttpTaskAiClient, type TaskAiClient } from './task-ai.client';
 import type { AiAnswer, AiMaterial } from './task-ai.types';
 
@@ -33,4 +34,4 @@ export function createTaskAiStore(initialClient: TaskAiClient | null = null) {
 export const taskAiStore = createTaskAiStore();
 export function configureTaskAi(baseUrl: string, accessToken: string) { taskAiStore.getState().configure(baseUrl, accessToken); }
 export function useTaskAiStore<T>(selector: (state: TaskAiStore) => T) { return useStore(taskAiStore, selector); }
-function message(error: unknown) { return error instanceof Error ? error.message : '任务型 AI 操作失败'; }
+function message(error: unknown) { return offlineFeatureMessage(error, '任务型 AI 操作失败'); }

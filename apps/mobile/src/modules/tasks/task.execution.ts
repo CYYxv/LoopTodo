@@ -5,6 +5,7 @@ import type { Task } from './task.types';
 export type TaskExecutionState =
   | 'available'
   | 'local_active'
+  | 'local_session_blocked'
   | 'remote_active'
   | 'sync_conflict'
   | 'stale_active'
@@ -16,6 +17,7 @@ export function getTaskExecutionState(task: Task, activeSession: ActiveSession |
   if (activeSession?.taskId === task.id) return 'local_active';
   if (task.remoteActive) return 'remote_active';
   if (task.status === 'active') return 'stale_active';
+  if (activeSession) return 'local_session_blocked';
   return 'available';
 }
 
@@ -23,6 +25,7 @@ export function taskExecutionReason(state: TaskExecutionState) {
   return {
     available: null,
     local_active: '本机正在执行，点击继续',
+    local_session_blocked: '请先完成或结束当前专注任务',
     remote_active: '正在其他设备执行',
     sync_conflict: '任务存在同步冲突，请先处理',
     stale_active: '任务状态尚未恢复，请刷新同步状态',

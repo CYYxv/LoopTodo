@@ -21,13 +21,14 @@ type SyncStore = {
 const repository = createSQLiteSyncRepository();
 let engine: SyncEngine | null = null;
 
-export const syncStore = createStore<SyncStore>((set) => ({
+export const syncStore = createStore<SyncStore>((set, get) => ({
   configured: false, isSyncing: false, pending: 0, conflicts: [], error: null,
   async hydrate() {
     const summary = await repository.summary();
     set({ pending: summary.pending, conflicts: summary.conflicts, error: summary.lastError });
   },
   async syncNow() {
+    if (get().isSyncing) return;
     if (!engine) return set({ error: '登录后才能启用云同步' });
     set({ isSyncing: true, error: null });
     try {

@@ -75,6 +75,7 @@ export function createTaskStore(
     error: null,
     async hydrate() {
       if (get().isHydrating) return;
+      const existingSessionId = get().activeSession?.id ?? null;
       set({ isHydrating: true, error: null });
       try {
         const [snapshot, nativeSession, savedStrictOptions] = await Promise.all([
@@ -136,7 +137,7 @@ export function createTaskStore(
         if (recoveredSession?.phase === 'focus' && recoveredSession.mode === 'lock') {
           const capabilities = await nativeLockEngine.checkCapabilities();
           await nativeLockEngine.applyFocusRestrictions(restrictionsFor(recoveredSession.mode, savedStrictOptions, capabilities, selectedWhitelistPackages(), recoveredSession.plannedEndAt ?? 0));
-        } else {
+        } else if (recoveredSession?.phase !== 'focus' || recoveredSession.id !== existingSessionId) {
           await nativeLockEngine.clearFocusRestrictions();
         }
         try { await Promise.all(recoveredTasks.filter((task) => task.mustDo && task.forcedTriggerTime && task.status === 'pending').map((task) => scheduleTask(forcedScheduler, task))); }

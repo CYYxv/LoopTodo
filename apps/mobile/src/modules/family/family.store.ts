@@ -1,6 +1,7 @@
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 
+import { offlineFeatureMessage } from '../../shared/offline-feature-message';
 import { createFamilyClient, type FamilyClient } from './family.client';
 import type { FamilyAssignment, FamilyChangeRequest, FamilyGroupMembership } from './family.types';
 
@@ -80,4 +81,4 @@ async function mutate(get: () => FamilyStore, set: (value: Partial<FamilyStore>)
 export const familyStore = createFamilyStore();
 export function configureFamily(baseUrl: string, token: string) { familyStore.getState().configure(baseUrl, token); }
 export function useFamilyStore<T>(selector: (state: FamilyStore) => T) { return useStore(familyStore, selector); }
-function message(error: unknown) { return error instanceof Error ? error.message : '家庭操作失败'; }
+function message(error: unknown) { return offlineFeatureMessage(error, '家庭操作失败'); }

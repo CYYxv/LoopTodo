@@ -140,6 +140,18 @@ describe('task store local loop', () => {
     expect(store.getState().activeSession).toBeNull();
   });
 
+  test('keeps active focus restrictions during an automatic sync refresh', async () => {
+    const { repository } = createRepository();
+    const calls: string[] = [];
+    const store = createTaskStore(repository, [pomodoroTask], () => 1000, testLockEngine(calls));
+
+    await store.getState().startSession('task-one', 'focus');
+    await store.getState().hydrate();
+
+    expect(calls).toEqual(['restrict:false:false:true']);
+    expect(store.getState().activeSession?.taskId).toBe('task-one');
+  });
+
   test('hydrates the active session for restart recovery', async () => {
     const recovered: ActiveSession = {
       id: 'session-recovered', taskId: 'task-one', mode: 'focus', timerMode: 'countdown',

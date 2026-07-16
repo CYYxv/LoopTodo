@@ -14,9 +14,9 @@ describe('root route authentication gate', () => {
     expect(screen.getByText('/login')).toBeTruthy();
   });
 
-  test('redirects signed-in users to today', async () => {
+  test('redirects signed-in users to tasks', async () => {
     authStore.setState({ status: 'signed_in', user: { id: 'user', email: 'u@example.com', nickname: 'User', vipStatus: 'free' } });
     const screen = await render(<IndexRoute />);
-    expect(screen.getByText('/today')).toBeTruthy();
+    expect(screen.getByText('/tasks')).toBeTruthy();
   });
 });

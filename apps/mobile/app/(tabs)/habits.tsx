@@ -15,5 +15,5 @@ export default function HabitsRoute() {
   const create = useHabitStore((state) => state.createHabit);
   const progress = useHabitStore((state) => state.addProgress);
   const archive = useHabitStore((state) => state.archiveHabit);
-  return <Screen><PageHeader title="习惯" description="管理每日目标与强制约束。" action={<Button size="sm" variant="secondary" onPress={() => router.back()}>返回</Button>} /><Button onPress={() => setCreateOpen(true)}>创建习惯</Button>{error ? <Text type="body-sm" color="danger">{error}</Text> : null}<HabitList habits={habits} onProgress={progress} onArchive={archive} /><BottomSheetModal visible={createOpen} title="创建习惯" onClose={() => setCreateOpen(false)}><HabitCreateForm onCreate={create} onCreated={() => setCreateOpen(false)} /></BottomSheetModal></Screen>;
+  return <Screen><PageHeader title="习惯" description="记录今天的习惯进度" action={<Button size="sm" onPress={() => setCreateOpen(true)}>创建习惯</Button>} />{error ? <Text type="body-sm" color="danger">{error}</Text> : null}<HabitList habits={habits} onProgress={progress} onArchive={archive} onOpen={(habitId) => router.push({ pathname: '/habit/[id]', params: { id: habitId } })} /><BottomSheetModal visible={createOpen} title="创建习惯" onClose={() => setCreateOpen(false)}><HabitCreateForm onCreate={create} onCreated={() => setCreateOpen(false)} /></BottomSheetModal></Screen>;
 }
