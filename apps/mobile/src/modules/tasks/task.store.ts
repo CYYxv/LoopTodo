@@ -347,6 +347,7 @@ export function createTaskStore(
       const session = state.activeSession;
       if (!session || session.phase !== 'focus' || state.isFinishingSession || state.isTogglingPause) return;
       if (session.mode === 'lock') return set({ error: '锁机模式不可暂停' });
+      if (strictEnabled(state.strictOptions, 'no-pause')) return set({ error: '当前专注禁止暂停' });
       const timestamp = now();
       const pausedDuration = session.pausedAt == null ? 0 : Math.max(0, timestamp - session.pausedAt);
       const nextSession: ActiveSession = session.pausedAt == null
@@ -382,6 +383,8 @@ export function createTaskStore(
       if (!activeSession || activeSession.phase !== 'focus' || isFinishingSession || isTogglingPause) return;
       const task = tasks.find((candidate) => candidate.id === activeSession.taskId);
       if (!task) return set({ error: '当前专注任务不存在' });
+      if (activeSession.mode === 'focus' && outcome === 'exited' && strictEnabled(get().strictOptions, 'no-cancel')) return set({ error: '当前专注禁止取消' });
+      if (outcome === 'completed' && activeSession.plannedEndAt && now() < activeSession.plannedEndAt && strictEnabled(get().strictOptions, 'no-early-complete')) return set({ error: '当前专注禁止提前完成' });
       if (outcome === 'completed' && task.kind === 'goal' && (!completedAmount || completedAmount <= 0)) {
         return set({ error: '请输入本次完成量' });
       }
@@ -473,7 +476,7 @@ export function createTaskStore(
     selectMode(mode) { set({ selectedMode: mode }); },
     toggleStrictOption(optionId) {
       const option = get().strictOptions.find((candidate) => candidate.id === optionId);
-      if (!option?.capabilityKey) return;
+      if (!option || option.available === false) return;
       const strictOptions = get().strictOptions.map((candidate) =>
         candidate.id === optionId ? { ...candidate, enabled: !candidate.enabled } : candidate);
       set({ strictOptions });
@@ -541,4 +544,8 @@ function restrictionsFor(
   }
   restrictions.allowedPackages = whitelistEnabled ? whitelistPackages.filter((pkg) => pkg.trim().length > 0) : [];
   return restrictions;
+}
+
+function strictEnabled(options: StrictOption[], id: string) {
+  return options.some((option) => option.id === id && option.enabled);
 }

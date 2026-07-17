@@ -33,7 +33,13 @@ class LockActivity : Activity() {
     layout.addView(TextView(this).apply { text = session.taskTitle; textSize = 20f; gravity = Gravity.CENTER; setPadding(0, 32, 0, 16) })
     val remaining = ((session.endsAt - System.currentTimeMillis()).coerceAtLeast(0) / 60000) + 1
     layout.addView(TextView(this).apply { text = "剩余约 ${remaining} 分钟"; textSize = 18f; gravity = Gravity.CENTER; setPadding(0, 0, 0, 24) })
-    layout.addView(Button(this).apply { text = "紧急电话"; setOnClickListener { startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:110"))) } })
+    layout.addView(LinearLayout(this).apply {
+      orientation = LinearLayout.HORIZONTAL
+      gravity = Gravity.CENTER
+      listOf("110" to "报警", "120" to "急救", "119" to "火警").forEach { (number, label) ->
+        addView(Button(this@LockActivity).apply { text = "$label $number"; setOnClickListener { startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$number"))) } })
+      }
+    })
     layout.addView(Button(this).apply { text = "拍照"; setOnClickListener { startActivity(Intent(this@LockActivity, LockCameraActivity::class.java)) } })
     layout.addView(Button(this).apply { text = "紧急退出申请"; setOnClickListener { packageManager.getLaunchIntentForPackage(packageName)?.let { intent -> startActivity(intent) } } })
     setContentView(layout)

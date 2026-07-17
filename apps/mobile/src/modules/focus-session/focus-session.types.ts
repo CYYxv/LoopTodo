@@ -33,5 +33,6 @@ export type StrictOption = {
   description: string;
   enabled: boolean;
   capabilityKey: keyof FocusRestrictionCapabilities | null;
+  available?: boolean;
   unavailableReason?: string;
 };

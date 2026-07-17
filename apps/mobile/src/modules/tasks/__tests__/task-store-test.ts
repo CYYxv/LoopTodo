@@ -249,6 +249,28 @@ describe('task store local loop', () => {
     expect(calls).toEqual(['restrict:false:false:true', 'clear']);
   });
 
+  test('enforces no-pause, no-early-complete and no-cancel strict options', async () => {
+    let time = 1_000;
+    const store = createTaskStore(createRepository().repository, [pomodoroTask], () => time, testLockEngine([]));
+    store.getState().toggleStrictOption('no-pause');
+    store.getState().toggleStrictOption('no-early-complete');
+    store.getState().toggleStrictOption('no-cancel');
+    await store.getState().startSession('task-one', 'focus');
+
+    await store.getState().toggleSessionPause();
+    expect(store.getState().activeSession?.pausedAt).toBeNull();
+    expect(store.getState().error).toBe('当前专注禁止暂停');
+    await store.getState().finishSession('completed');
+    expect(store.getState().activeSession).not.toBeNull();
+    expect(store.getState().error).toBe('当前专注禁止提前完成');
+    await store.getState().finishSession('exited');
+    expect(store.getState().activeSession).not.toBeNull();
+    expect(store.getState().error).toBe('当前专注禁止取消');
+    time += 25 * 60_000;
+    await store.getState().finishSession('completed');
+    expect(store.getState().activeSession?.phase).toBe('rest');
+  });
+
   test('persists pause state, extends a countdown on resume and excludes paused time', async () => {
     const { repository, sessions } = createRepository();
     const calls: string[] = [];

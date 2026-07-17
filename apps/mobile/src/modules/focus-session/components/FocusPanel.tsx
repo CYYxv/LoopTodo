@@ -125,11 +125,12 @@ export function FocusPanel({
 }
 
 function optionCapability(option: StrictOption, capabilities: LockCapabilities | null) {
-  return option.capabilityKey ? capabilities?.restrictions?.[option.capabilityKey] ?? null : null;
+  if (!option.capabilityKey) return { supported: option.available !== false, effective: option.enabled, reason: option.unavailableReason ?? null };
+  return capabilities?.restrictions?.[option.capabilityKey] ?? null;
 }
 
 function capabilityLabel(option: StrictOption, capabilities: LockCapabilities | null) {
-  if (!option.capabilityKey) return option.unavailableReason ?? '当前设备不支持';
+  if (!option.capabilityKey) return option.available === false ? option.unavailableReason ?? '当前设备不支持' : option.enabled ? '当前已启用' : '可用';
   if (!capabilities) return '正在检查设备能力';
   const capability = capabilities.restrictions?.[option.capabilityKey];
   if (!capability) return '需更新 Development Build 后启用';
