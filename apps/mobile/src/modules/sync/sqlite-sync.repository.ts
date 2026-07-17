@@ -82,11 +82,13 @@ export function createSQLiteSyncRepository(
             await database.runAsync('UPDATE focus_sessions SET synced_at = ? WHERE id = ?', now(), mapped.local_id);
             continue;
           }
+          const startedAt = Date.parse(session.startedAt);
+          const plannedFocusSeconds = Math.max(0, Math.round(session.plannedMinutes * 60));
           await database.runAsync(`INSERT OR IGNORE INTO focus_sessions
-            (id, task_id, mode, timer_mode, started_at, ended_at, outcome, failure_reason, completion_note,
-             duration_seconds, completed_amount, synced_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`, session.id, session.taskId, session.mode,
-            session.timerMode, Date.parse(session.startedAt), Date.parse(session.endedAt),
+            (id, task_id, mode, timer_mode, started_at, planned_end_at, planned_focus_seconds, ended_at,
+             outcome, failure_reason, completion_note, duration_seconds, completed_amount, synced_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`, session.id, session.taskId, session.mode,
+            session.timerMode, startedAt, startedAt + plannedFocusSeconds * 1000, plannedFocusSeconds, Date.parse(session.endedAt),
             session.outcome === 'completed' ? 'completed' : 'exited', session.failureReasonText, session.completionNote ?? null,
             (session.actualMinutes ?? 0) * 60, now());
         }

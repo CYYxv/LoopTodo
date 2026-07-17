@@ -12,6 +12,7 @@ export type ActiveSession = {
   phase: 'focus' | 'rest';
   startedAt: number;
   plannedEndAt: number | null;
+  plannedFocusSeconds?: number | null;
   restEndsAt: number | null;
   pausedAt?: number | null;
   accumulatedPausedMs?: number;

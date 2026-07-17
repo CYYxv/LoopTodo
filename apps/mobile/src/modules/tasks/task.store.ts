@@ -9,7 +9,7 @@ import type {
   SessionOutcome,
   StrictOption,
 } from '@/modules/focus-session/focus-session.types';
-import { sessionElapsedMilliseconds } from '@/modules/focus-session/focus-session.utils';
+import { calculateRecordedDurationSeconds, sessionElapsedMilliseconds } from '@/modules/focus-session/focus-session.utils';
 
 import { prototypeStrictOptions } from './prototype.data';
 import { selectedWhitelistPackages, whitelistStore } from '@/modules/focus-session/whitelist.store';
@@ -48,6 +48,7 @@ export type TaskStore = {
   deleteCategory(categoryId: string, expectedVersion: number): Promise<UpdateTaskResult>;
   startSession(taskId: string, mode: SessionMode): Promise<void>;
   toggleSessionPause(): Promise<void>;
+  completeExpiredCountdown(source: CountdownCompletionSource): Promise<CountdownCompletionResult>;
   finishSession(outcome: SessionOutcome, completedAmount?: number, exitReason?: string, completionNote?: string): Promise<void>;
   finishRest(): Promise<void>;
   addGoalProgress(taskId: string, amount: number): Promise<void>;
@@ -60,6 +61,8 @@ export type TaskStore = {
 export type CreateTaskResult = { ok: true; taskId: string } | { ok: false; error: string };
 export type UpdateTaskResult = { ok: true } | { ok: false; error: string };
 export type CategoryMutationResult = { ok: true; categoryId: string } | { ok: false; error: string };
+export type CountdownCompletionSource = 'foreground' | 'resume' | 'recovery';
+export type CountdownCompletionResult = 'completed' | 'goal-confirmation-required' | 'failed' | 'ignored';
 
 const strictOptionsKey = 'looptodo.strict-options';
 
@@ -134,6 +137,7 @@ export function createTaskStore(
           if (task) {
             recoveredSession = { id: nativeSession.id, taskId: nativeSession.taskId, mode: 'lock', timerMode: task.timerMode,
               phase: 'focus', startedAt: nativeSession.startedAt, plannedEndAt: nativeSession.endsAt, restEndsAt: null,
+              plannedFocusSeconds: Math.max(0, Math.round((nativeSession.endsAt - nativeSession.startedAt) / 1000)),
               pausedAt: null, accumulatedPausedMs: 0 };
             const activeTask = { ...task, status: 'active' as const, version: task.version + 1, syncStatus: 'pending' as const };
             await repository.startSession(activeTask, recoveredSession);
@@ -163,6 +167,8 @@ export function createTaskStore(
           recoveredSession.restEndsAt <= now()
         ) {
           await get().finishRest();
+        } else if (recoveredSession?.phase === 'focus') {
+          await get().completeExpiredCountdown('recovery');
         }
       } catch (error) {
         try {
@@ -305,6 +311,9 @@ export function createTaskStore(
         phase: 'focus',
         startedAt,
         plannedEndAt: mode === 'lock' || task.timerMode === 'countdown' ? startedAt + Math.min(180, task.estimateMinutes) * 60_000 : null,
+        plannedFocusSeconds: mode === 'lock' || task.timerMode === 'countdown'
+          ? Math.round(Math.min(180, task.estimateMinutes) * 60)
+          : null,
         restEndsAt: null,
         pausedAt: null,
         accumulatedPausedMs: 0,
@@ -378,6 +387,27 @@ export function createTaskStore(
         set({ isTogglingPause: false, error: errorMessage(error) });
       }
     },
+    async completeExpiredCountdown(source) {
+      void source;
+      const state = get();
+      const session = state.activeSession;
+      if (
+        !session ||
+        session.phase !== 'focus' ||
+        session.timerMode !== 'countdown' ||
+        session.pausedAt != null ||
+        session.plannedEndAt == null ||
+        now() < session.plannedEndAt ||
+        state.isFinishingSession ||
+        state.isTogglingPause
+      ) return 'ignored';
+      const task = state.tasks.find((candidate) => candidate.id === session.taskId);
+      if (!task) return 'ignored';
+      if (task.kind === 'goal') return 'goal-confirmation-required';
+      await get().finishSession('completed');
+      if (get().sessionRecords.some((record) => record.id === session.id)) return 'completed';
+      return get().activeSession?.id === session.id && get().error ? 'failed' : 'ignored';
+    },
     async finishSession(outcome, completedAmount, exitReason, completionNote) {
       const { activeSession, isFinishingSession, isTogglingPause, tasks } = get();
       if (!activeSession || activeSession.phase !== 'focus' || isFinishingSession || isTogglingPause) return;
@@ -411,7 +441,7 @@ export function createTaskStore(
         endedAt,
         outcome,
         failureReason: outcome === 'exited' ? (exitReason?.trim() || '用户主动退出专注') : null,
-        durationSeconds: Math.floor(sessionElapsedMilliseconds(activeSession, endedAt) / 1000),
+        durationSeconds: calculateRecordedDurationSeconds(activeSession, task, endedAt, outcome),
         completedAmount: task.kind === 'goal' && outcome === 'completed' ? completedAmount ?? null : null,
         completionNote: outcome === 'completed' ? completionNote?.trim() || null : null,
       };

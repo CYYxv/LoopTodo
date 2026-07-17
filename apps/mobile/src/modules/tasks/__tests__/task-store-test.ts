@@ -292,6 +292,63 @@ describe('task store local loop', () => {
     expect(sessions[0].durationSeconds).toBe(120);
   });
 
+  test('automatically completes an expired countdown once and enters rest', async () => {
+    const { repository, sessions } = createRepository();
+    let time = 1_000;
+    const store = createTaskStore(repository, [pomodoroTask], () => time, testLockEngine([]));
+    await store.getState().startSession('task-one', 'focus');
+    time = 1_000 + 10 * 60 * 60_000;
+
+    const [first, second] = await Promise.all([
+      store.getState().completeExpiredCountdown('foreground'),
+      store.getState().completeExpiredCountdown('foreground'),
+    ]);
+
+    expect([first, second].sort()).toEqual(['completed', 'ignored']);
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].durationSeconds).toBe(25 * 60);
+    expect(store.getState().activeSession?.phase).toBe('rest');
+  });
+
+  test('reports an automatic completion failure without immediately retrying it', async () => {
+    const { repository, sessions } = createRepository({ finishError: new Error('事务失败') });
+    let time = 1_000;
+    const store = createTaskStore(repository, [pomodoroTask], () => time, testLockEngine([]));
+    await store.getState().startSession('task-one', 'focus');
+    time += 26 * 60_000;
+
+    expect(await store.getState().completeExpiredCountdown('foreground')).toBe('failed');
+    expect(sessions).toHaveLength(0);
+    expect(store.getState().activeSession?.phase).toBe('focus');
+    expect(store.getState().error).toBe('事务失败');
+  });
+
+  test('asks for goal progress instead of automatically completing an expired goal', async () => {
+    const { repository, sessions } = createRepository();
+    let time = 1_000;
+    const store = createTaskStore(repository, [goalTask], () => time, testLockEngine([]));
+    await store.getState().startSession('task-goal', 'focus');
+    time += 31 * 60_000;
+
+    expect(await store.getState().completeExpiredCountdown('foreground')).toBe('goal-confirmation-required');
+    expect(sessions).toHaveLength(0);
+    expect(store.getState().activeSession?.phase).toBe('focus');
+  });
+
+  test('does not automatically complete a paused countdown', async () => {
+    const { repository, sessions } = createRepository();
+    let time = 1_000;
+    const store = createTaskStore(repository, [pomodoroTask], () => time, testLockEngine([]));
+    await store.getState().startSession('task-one', 'focus');
+    time += 60_000;
+    await store.getState().toggleSessionPause();
+    time += 30 * 60_000;
+
+    expect(await store.getState().completeExpiredCountdown('foreground')).toBe('ignored');
+    expect(sessions).toHaveLength(0);
+    expect(store.getState().activeSession?.pausedAt).not.toBeNull();
+  });
+
   test('clears restrictions when session persistence fails to start', async () => {
     const { repository } = createRepository({ startError: new Error('start failed') });
     const calls: string[] = [];
@@ -321,12 +378,28 @@ describe('task store local loop', () => {
       phase: 'focus', startedAt: 1000, plannedEndAt: 2000, restEndsAt: null,
     };
     const { repository } = createRepository({ activeSession: recovered });
-    const store = createTaskStore(repository);
+    const store = createTaskStore(repository, [], () => 1_500, testLockEngine([]));
 
     await store.getState().hydrate();
 
     expect(store.getState().activeSession).toEqual(recovered);
     expect(store.getState().tasks).toHaveLength(2);
+  });
+
+  test('completes an expired recovered countdown during hydration', async () => {
+    const recovered: ActiveSession = {
+      id: 'session-expired', taskId: 'task-one', mode: 'focus', timerMode: 'countdown',
+      phase: 'focus', startedAt: 1_000, plannedEndAt: 61_000, plannedFocusSeconds: 60,
+      restEndsAt: null, pausedAt: null, accumulatedPausedMs: 0,
+    };
+    const { repository, sessions } = createRepository({ activeSession: recovered });
+    const store = createTaskStore(repository, [], () => 120_000, testLockEngine([]));
+
+    await store.getState().hydrate();
+
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].durationSeconds).toBe(60);
+    expect(store.getState().activeSession?.phase).toBe('rest');
   });
 
   test('clears stale native restrictions when no session is recovered', async () => {

@@ -2,6 +2,34 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 let databasePromise: Promise<SQLiteDatabase> | null = null;
 
+export const legacyDurationRepairSql = `
+  UPDATE focus_sessions
+  SET planned_focus_seconds = CAST(MAX(0, COALESCE(MIN(
+    (SELECT json_extract(payload, '$.plannedMinutes') * 60
+     FROM sync_outbox
+     WHERE operation = 'session.start'
+       AND json_extract(payload, '$.localSessionId') = focus_sessions.id
+     ORDER BY created_at ASC LIMIT 1),
+    (planned_end_at - started_at) / 1000
+  ), (planned_end_at - started_at) / 1000)) AS INTEGER)
+  WHERE planned_focus_seconds IS NULL AND timer_mode = 'countdown' AND planned_end_at IS NOT NULL;
+  UPDATE focus_sessions
+  SET duration_seconds = planned_focus_seconds
+  WHERE outcome = 'completed' AND timer_mode = 'countdown' AND planned_focus_seconds IS NOT NULL
+    AND duration_seconds > planned_focus_seconds;
+  UPDATE active_sessions
+  SET planned_focus_seconds = CAST(MAX(0, COALESCE(MIN(
+    (SELECT json_extract(payload, '$.plannedMinutes') * 60
+     FROM sync_outbox
+     WHERE operation = 'session.start'
+       AND json_extract(payload, '$.localSessionId') = active_sessions.id
+     ORDER BY created_at ASC LIMIT 1),
+    (planned_end_at - started_at - COALESCE(accumulated_paused_ms, 0)) / 1000
+  ), (planned_end_at - started_at - COALESCE(accumulated_paused_ms, 0)) / 1000)) AS INTEGER)
+  WHERE planned_focus_seconds IS NULL AND timer_mode = 'countdown' AND planned_end_at IS NOT NULL;
+  INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (6, unixepoch() * 1000);
+`;
+
 export function getLoopTodoDatabase() {
   if (!databasePromise) {
     databasePromise = openAndMigrate().catch((error) => {
@@ -35,14 +63,15 @@ async function openAndMigrate() {
     );
     CREATE TABLE IF NOT EXISTS focus_sessions (
       id TEXT PRIMARY KEY NOT NULL, task_id TEXT NOT NULL, mode TEXT NOT NULL, timer_mode TEXT NOT NULL,
-      started_at INTEGER NOT NULL, planned_end_at INTEGER, ended_at INTEGER NOT NULL, outcome TEXT NOT NULL,
+      started_at INTEGER NOT NULL, planned_end_at INTEGER, planned_focus_seconds INTEGER,
+      ended_at INTEGER NOT NULL, outcome TEXT NOT NULL,
       failure_reason TEXT, completion_note TEXT, duration_seconds INTEGER NOT NULL, completed_amount REAL, synced_at INTEGER,
       FOREIGN KEY(task_id) REFERENCES tasks(id)
     );
     CREATE TABLE IF NOT EXISTS active_sessions (
       singleton_id INTEGER PRIMARY KEY CHECK(singleton_id = 1), id TEXT NOT NULL,
       task_id TEXT NOT NULL, mode TEXT NOT NULL, timer_mode TEXT NOT NULL, phase TEXT NOT NULL,
-      started_at INTEGER NOT NULL, planned_end_at INTEGER, rest_ends_at INTEGER,
+      started_at INTEGER NOT NULL, planned_end_at INTEGER, planned_focus_seconds INTEGER, rest_ends_at INTEGER,
       FOREIGN KEY(task_id) REFERENCES tasks(id)
     );
     CREATE TABLE IF NOT EXISTS habits (
@@ -72,8 +101,10 @@ async function openAndMigrate() {
   await ensureColumn(database, 'tasks', 'category_id', 'TEXT');
   await ensureColumn(database, 'focus_sessions', 'synced_at', 'INTEGER');
   await ensureColumn(database, 'focus_sessions', 'completion_note', 'TEXT');
+  await ensureColumn(database, 'focus_sessions', 'planned_focus_seconds', 'INTEGER');
   await ensureColumn(database, 'active_sessions', 'paused_at', 'INTEGER');
   await ensureColumn(database, 'active_sessions', 'accumulated_paused_ms', 'INTEGER NOT NULL DEFAULT 0');
+  await ensureColumn(database, 'active_sessions', 'planned_focus_seconds', 'INTEGER');
   await database.execAsync(`
     CREATE TABLE IF NOT EXISTS sync_outbox (
       id TEXT PRIMARY KEY NOT NULL, operation TEXT NOT NULL, entity_id TEXT NOT NULL,
@@ -119,6 +150,7 @@ async function openAndMigrate() {
     CREATE INDEX IF NOT EXISTS resource_passes_task_idx ON resource_passes(task_id, created_at);
     INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (5, unixepoch() * 1000);
   `);
+  await database.execAsync(legacyDurationRepairSql);
   await ensureColumn(database, 'sync_conflicts', 'outbox_id', 'TEXT');
   return database;
 }

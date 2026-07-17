@@ -41,6 +41,7 @@ type SessionRow = {
   phase?: ActiveSession['phase'];
   started_at: number;
   planned_end_at: number | null;
+  planned_focus_seconds?: number | null;
   rest_ends_at?: number | null;
   paused_at?: number | null;
   accumulated_paused_ms?: number;
@@ -177,15 +178,16 @@ export function createSQLiteTaskRepository(
         await insertActive(database, session);
         await enqueueSyncOperation(database, { type: 'session.start', taskId: task.id,
           localSessionId: session.id, mode: session.mode, startedAt: session.startedAt,
-          plannedMinutes: task.estimateMinutes }, task.id, `session-start-${session.id}`, now());
+          plannedMinutes: Math.round((session.plannedFocusSeconds ?? task.estimateMinutes * 60) / 60) }, task.id, `session-start-${session.id}`, now());
       });
     },
     async updateActiveSession(session) {
       const database = await getDatabase();
       const result = await database.runAsync(`UPDATE active_sessions SET
-        paused_at = ?, accumulated_paused_ms = ?, planned_end_at = ?, rest_ends_at = ?
+        paused_at = ?, accumulated_paused_ms = ?, planned_end_at = ?, planned_focus_seconds = ?, rest_ends_at = ?
         WHERE singleton_id = 1 AND id = ?`,
-        session.pausedAt ?? null, session.accumulatedPausedMs ?? 0, session.plannedEndAt, session.restEndsAt, session.id);
+        session.pausedAt ?? null, session.accumulatedPausedMs ?? 0, session.plannedEndAt,
+        session.plannedFocusSeconds ?? null, session.restEndsAt, session.id);
       if (result.changes !== 1) throw new Error('当前专注状态已变化，请重新进入专注页');
     },
     async finishSession(task, record, restSession) {
@@ -201,15 +203,16 @@ export function createSQLiteTaskRepository(
         );
         await database.runAsync(
           `INSERT INTO focus_sessions
-           (id, task_id, mode, timer_mode, started_at, planned_end_at, ended_at, outcome,
+           (id, task_id, mode, timer_mode, started_at, planned_end_at, planned_focus_seconds, ended_at, outcome,
             failure_reason, completion_note, duration_seconds, completed_amount, synced_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
           record.id,
           record.taskId,
           record.mode,
           record.timerMode,
           record.startedAt,
           record.plannedEndAt,
+          record.plannedFocusSeconds ?? null,
           record.endedAt,
           record.outcome,
           record.failureReason,
@@ -278,6 +281,7 @@ function mapActive(row: SessionRow): ActiveSession {
     phase: row.phase ?? 'focus',
     startedAt: row.started_at,
     plannedEndAt: row.planned_end_at,
+    plannedFocusSeconds: row.planned_focus_seconds ?? null,
     restEndsAt: row.rest_ends_at ?? null,
     pausedAt: row.paused_at ?? null,
     accumulatedPausedMs: row.accumulated_paused_ms ?? 0,
@@ -324,8 +328,8 @@ async function insertActive(database: SQLiteDatabase, session: ActiveSession) {
   await database.runAsync(
     `INSERT INTO active_sessions
      (singleton_id, id, task_id, mode, timer_mode, phase, started_at, planned_end_at, rest_ends_at,
-      paused_at, accumulated_paused_ms)
-     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      planned_focus_seconds, paused_at, accumulated_paused_ms)
+     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     session.id,
     session.taskId,
     session.mode,
@@ -334,6 +338,7 @@ async function insertActive(database: SQLiteDatabase, session: ActiveSession) {
     session.startedAt,
     session.plannedEndAt,
     session.restEndsAt,
+    session.plannedFocusSeconds ?? null,
     session.pausedAt ?? null,
     session.accumulatedPausedMs ?? 0
   );

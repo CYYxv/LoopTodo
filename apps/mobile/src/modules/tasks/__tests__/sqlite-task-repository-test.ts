@@ -32,11 +32,32 @@ test('persists the paused active session snapshot', async () => {
   const repository = createSQLiteTaskRepository(async () => database as never);
   const session: ActiveSession = {
     id: 'session-1', taskId: 'task-1', mode: 'focus', timerMode: 'countdown', phase: 'focus',
-    startedAt: 1_000, plannedEndAt: 61_000, restEndsAt: null, pausedAt: 11_000, accumulatedPausedMs: 5_000,
+    startedAt: 1_000, plannedEndAt: 61_000, plannedFocusSeconds: 60,
+    restEndsAt: null, pausedAt: 11_000, accumulatedPausedMs: 5_000,
   };
 
   await repository.updateActiveSession(session);
 
   expect(writes[0].sql).toContain('paused_at = ?');
-  expect(writes[0].args).toEqual([11_000, 5_000, 61_000, null, 'session-1']);
+  expect(writes[0].sql).toContain('planned_focus_seconds = ?');
+  expect(writes[0].args).toEqual([11_000, 5_000, 61_000, 60, null, 'session-1']);
+});
+
+test('syncs the capped planned focus duration instead of an oversized task estimate', async () => {
+  const writes: Array<{ sql: string; args: unknown[] }> = [];
+  const database = {
+    async withTransactionAsync(run: () => Promise<void>) { await run(); },
+    async runAsync(sql: string, ...args: unknown[]) { writes.push({ sql, args }); return { changes: 1 }; },
+  };
+  const repository = createSQLiteTaskRepository(async () => database as never);
+  const session: ActiveSession = {
+    id: 'session-long', taskId: task.id, mode: 'focus', timerMode: 'countdown', phase: 'focus',
+    startedAt: 1_000, plannedEndAt: 10_801_000, plannedFocusSeconds: 10_800,
+    restEndsAt: null, pausedAt: null, accumulatedPausedMs: 0,
+  };
+
+  await repository.startSession({ ...task, estimateMinutes: 240, status: 'active' }, session);
+
+  const outboxWrite = writes.find((write) => write.sql.includes('INSERT INTO sync_outbox'));
+  expect(JSON.parse(String(outboxWrite?.args[3]))).toMatchObject({ plannedMinutes: 180 });
 });

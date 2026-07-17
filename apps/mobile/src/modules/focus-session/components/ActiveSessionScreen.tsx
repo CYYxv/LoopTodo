@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useKeepAwake } from 'expo-keep-awake';
-import { Pressable, ScrollView, StyleSheet, useColorScheme, useWindowDimensions, View } from 'react-native';
+import { AppState, Pressable, ScrollView, StyleSheet, useColorScheme, useWindowDimensions, View } from 'react-native';
 import Svg, { Circle, Path, Polygon, Rect } from 'react-native-svg';
 
 import { BottomSheetModal } from '@/ui/bottom-sheet-modal';
@@ -8,6 +8,7 @@ import { Button, Card, Chip, Input, Label, Text, TextField } from '@/ui/hero-run
 
 import type { ActiveSession } from '@/modules/focus-session/focus-session.types';
 import { formatDuration, sessionTimerSeconds } from '@/modules/focus-session/focus-session.utils';
+import type { CountdownCompletionResult } from '@/modules/tasks/task.store';
 import type { Task } from '@/modules/tasks/task.types';
 
 const keepAwakeTag = 'looptodo-active-session';
@@ -21,6 +22,7 @@ export function ActiveSessionScreen({
   onComplete,
   onExit,
   onFinishRest,
+  onCountdownExpired,
 }: {
   session: ActiveSession;
   task: Task;
@@ -30,6 +32,7 @@ export function ActiveSessionScreen({
   onComplete: (completedAmount?: number, completionNote?: string) => Promise<void>;
   onExit: (reason?: string) => Promise<void>;
   onFinishRest: () => Promise<void>;
+  onCountdownExpired?: () => Promise<CountdownCompletionResult>;
 }) {
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [completedAmount, setCompletedAmount] = useState('');
@@ -37,6 +40,8 @@ export function ActiveSessionScreen({
   const [exitReason, setExitReason] = useState('');
   const [finishOpen, setFinishOpen] = useState(false);
   const [keepAwake, setKeepAwake] = useState(true);
+  const [resumeAttempt, setResumeAttempt] = useState(0);
+  const expirationSessionRef = useRef<string | null>(null);
   const { width } = useWindowDimensions();
 
   useEffect(() => {
@@ -44,10 +49,38 @@ export function ActiveSessionScreen({
     return () => clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        expirationSessionRef.current = null;
+        setCurrentTime(Date.now());
+        setResumeAttempt((value) => value + 1);
+      }
+    });
+    return () => subscription?.remove();
+  }, []);
+
   const timerSeconds = sessionTimerSeconds(session, currentTime);
   useEffect(() => {
     if (session.phase === 'rest' && session.restEndsAt && session.restEndsAt <= currentTime) void onFinishRest();
   }, [currentTime, onFinishRest, session.phase, session.restEndsAt]);
+
+  useEffect(() => {
+    if (
+      session.phase !== 'focus' ||
+      session.timerMode !== 'countdown' ||
+      session.pausedAt != null ||
+      timerSeconds !== 0 ||
+      !onCountdownExpired ||
+      expirationSessionRef.current === session.id
+    ) return;
+    expirationSessionRef.current = session.id;
+    void onCountdownExpired()
+      .then((result) => {
+        if (result === 'goal-confirmation-required') setFinishOpen(true);
+      })
+      .catch(() => undefined);
+  }, [onCountdownExpired, resumeAttempt, session.id, session.pausedAt, session.phase, session.timerMode, timerSeconds]);
 
   if (session.phase === 'rest') {
     return <RestScreen task={task} display={formatDuration(timerSeconds ?? 0)} onFinishRest={onFinishRest} />;

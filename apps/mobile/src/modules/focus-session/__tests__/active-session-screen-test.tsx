@@ -1,6 +1,9 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { AppState } from 'react-native';
 
 jest.mock('expo-keep-awake', () => ({ useKeepAwake: jest.fn() }), { virtual: true });
+
+afterEach(() => jest.restoreAllMocks());
 
 import { ActiveSessionScreen } from '../components/ActiveSessionScreen';
 import type { ActiveSession } from '../focus-session.types';
@@ -39,6 +42,48 @@ test('shows a play control for a paused session', async () => {
   const screen = await render(<ActiveSessionScreen session={{ ...session, pausedAt: Date.now() }} task={task} error={null}
     onTogglePause={jest.fn()} onComplete={jest.fn()} onExit={jest.fn()} onFinishRest={jest.fn()} />);
   expect(screen.getByLabelText('继续专注')).toBeTruthy();
+});
+
+test('requests automatic completion when a countdown is expired', async () => {
+  const onCountdownExpired = jest.fn(async () => 'completed' as const);
+  await render(<ActiveSessionScreen session={{ ...session, plannedEndAt: Date.now() - 1 }} task={task} error={null}
+    onTogglePause={jest.fn()} onComplete={jest.fn()} onExit={jest.fn()} onFinishRest={jest.fn()}
+    onCountdownExpired={onCountdownExpired} />);
+
+  await waitFor(() => expect(onCountdownExpired).toHaveBeenCalledTimes(1));
+});
+
+test('does not spin automatic completion after a persistence failure', async () => {
+  const onCountdownExpired = jest.fn(async () => 'failed' as const);
+  const expiredSession = { ...session, plannedEndAt: Date.now() - 1 };
+  const screen = await render(<ActiveSessionScreen session={expiredSession} task={task} error="事务失败"
+    onTogglePause={jest.fn()} onComplete={jest.fn()} onExit={jest.fn()} onFinishRest={jest.fn()}
+    onCountdownExpired={onCountdownExpired} />);
+
+  await waitFor(() => expect(onCountdownExpired).toHaveBeenCalledTimes(1));
+  screen.rerender(<ActiveSessionScreen session={expiredSession} task={task} error="事务失败"
+    onTogglePause={jest.fn()} onComplete={jest.fn()} onExit={jest.fn()} onFinishRest={jest.fn()}
+    onCountdownExpired={onCountdownExpired} />);
+  await Promise.resolve();
+  expect(onCountdownExpired).toHaveBeenCalledTimes(1);
+});
+
+test('retries a failed automatic completion once when the app returns to foreground', async () => {
+  let appStateListener: ((state: string) => void) | undefined;
+  const appStateSpy = jest.spyOn(AppState, 'addEventListener').mockImplementation((_event, listener) => {
+    appStateListener = listener as (state: string) => void;
+    return { remove: jest.fn() } as never;
+  });
+  const onCountdownExpired = jest.fn(async () => 'failed' as const);
+  await render(<ActiveSessionScreen session={{ ...session, plannedEndAt: Date.now() - 1 }} task={task} error="事务失败"
+    onTogglePause={jest.fn()} onComplete={jest.fn()} onExit={jest.fn()} onFinishRest={jest.fn()}
+    onCountdownExpired={onCountdownExpired} />);
+  await waitFor(() => expect(onCountdownExpired).toHaveBeenCalledTimes(1));
+
+  await act(async () => { appStateListener?.('active'); });
+
+  await waitFor(() => expect(onCountdownExpired).toHaveBeenCalledTimes(2));
+  appStateSpy.mockRestore();
 });
 
 test('submits a completion note when finishing focus', async () => {

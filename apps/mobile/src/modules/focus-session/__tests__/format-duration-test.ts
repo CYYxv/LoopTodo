@@ -1,4 +1,4 @@
-import { formatDuration, sessionElapsedMilliseconds, sessionTimerSeconds } from '../focus-session.utils';
+import { calculateRecordedDurationSeconds, formatDuration, sessionElapsedMilliseconds, sessionTimerSeconds } from '../focus-session.utils';
 import type { ActiveSession } from '../focus-session.types';
 
 describe('formatDuration', () => {
@@ -24,5 +24,23 @@ describe('session timer', () => {
 
   test('excludes all paused time from elapsed duration', () => {
     expect(sessionElapsedMilliseconds({ ...session, pausedAt: 91_000, accumulatedPausedMs: 30_000 }, 121_000)).toBe(60_000);
+  });
+
+  test('caps a delayed completed countdown at its planned focus duration', () => {
+    expect(calculateRecordedDurationSeconds(
+      { ...session, pausedAt: null, plannedFocusSeconds: 60 },
+      { estimateMinutes: 1 },
+      601_000,
+      'completed',
+    )).toBe(60);
+  });
+
+  test('keeps the actual duration for an early manual completion', () => {
+    expect(calculateRecordedDurationSeconds(
+      { ...session, pausedAt: null, plannedFocusSeconds: 60 },
+      { estimateMinutes: 1 },
+      31_000,
+      'completed',
+    )).toBe(30);
   });
 });
