@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import * as SecureStore from 'expo-secure-store';
 import { Pressable, StyleSheet, useColorScheme, Vibration, View } from 'react-native';
 import Svg, { Circle, Path, Polygon, Rect } from 'react-native-svg';
 
@@ -8,6 +9,8 @@ import type { CreateTaskResult, UpdateTaskResult } from '../task.store';
 import { getTaskExecutionState, taskExecutionReason } from '../task.execution';
 import { taskSessionStatistics } from '../task-session.statistics';
 import type { CreateTaskInput, Task, TaskCategory, TaskKind, TimerMode, UpdateTaskInput } from '../task.types';
+
+const collapsedTaskGroupsKey = 'looptodo.collapsed-task-groups';
 
 export function TasksPanel({ tasks, onCreateTask, onStart }: { tasks: Task[]; onCreateTask(input: CreateTaskInput): Promise<CreateTaskResult>; onStart(taskId: string, mode: SessionMode): void }) {
   return <View className="gap-4"><TaskCreateForm onCreate={onCreateTask} /><TaskList tasks={tasks} onStart={onStart} /></View>;
@@ -89,7 +92,68 @@ export function TaskList({ tasks, activeSession = null, onStart, onOpenActions }
   onStart(taskId: string, mode: SessionMode): void;
   onOpenActions?(taskId: string): void;
 }) {
-  return <View className="gap-2">{tasks.length === 0 ? <Card><Card.Body><Card.Title>还没有任务</Card.Title><Card.Description>创建一个最小任务，开始今天的闭环。</Card.Description></Card.Body></Card> : tasks.map((task) => <TaskCard key={task.id} task={task} activeSession={activeSession} onStart={onStart} onOpenActions={onOpenActions} />)}</View>;
+  return <View>{tasks.length === 0 ? <Card><Card.Body><Card.Title>还没有任务</Card.Title><Card.Description>创建一个最小任务，开始今天的闭环。</Card.Description></Card.Body></Card> : tasks.map((task, index) => <View key={task.id}>{index ? <View style={styles.taskDivider} /> : null}<TaskRow task={task} activeSession={activeSession} onStart={onStart} onOpenActions={onOpenActions} /></View>)}</View>;
+}
+
+export function TaskGroups({ tasks, categories, activeSession = null, onStart, onOpenActions }: {
+  tasks: Task[];
+  categories: TaskCategory[];
+  activeSession?: ActiveSession | null;
+  onStart(taskId: string, mode: SessionMode): void;
+  onOpenActions?(taskId: string): void;
+}) {
+  const pendingTasks = tasks.filter((task) => task.status !== 'completed');
+  const completedTasks = tasks.filter((task) => task.status === 'completed');
+  const tasksByCategory = new Map(categories.map((category) => [category.id, [] as Task[]]));
+  const uncategorized: Task[] = [];
+  for (const task of pendingTasks) {
+    const categoryTasks = task.categoryId ? tasksByCategory.get(task.categoryId) : null;
+    if (categoryTasks) categoryTasks.push(task);
+    else uncategorized.push(task);
+  }
+  const groups = categories.map((category) => ({ id: category.id, title: category.name, tasks: tasksByCategory.get(category.id) ?? [] }))
+    .filter((group) => group.tasks.length > 0);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set(['completed']));
+  const touchedGroupsRef = useRef(new Set<string>());
+  const preferenceWriteRef = useRef(Promise.resolve());
+
+  useEffect(() => {
+    let cancelled = false;
+    void SecureStore.getItemAsync(collapsedTaskGroupsKey).then((value) => {
+      if (!cancelled && value) {
+        const saved = new Set(JSON.parse(value) as string[]);
+        setCollapsedGroups((current) => {
+          const next = new Set(current);
+          for (const groupId of saved) if (!touchedGroupsRef.current.has(groupId)) next.add(groupId);
+          for (const groupId of current) {
+            if (!saved.has(groupId) && !touchedGroupsRef.current.has(groupId)) next.delete(groupId);
+          }
+          return next;
+        });
+      }
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
+
+  const toggleGroup = (groupId: string) => {
+    touchedGroupsRef.current.add(groupId);
+    setCollapsedGroups((current) => {
+      const next = new Set(current);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
+      preferenceWriteRef.current = preferenceWriteRef.current
+        .catch(() => undefined)
+        .then(() => SecureStore.setItemAsync(collapsedTaskGroupsKey, JSON.stringify([...next])))
+        .catch(() => undefined);
+      return next;
+    });
+  };
+
+  if (uncategorized.length) groups.push({ id: 'uncategorized', title: '未分类', tasks: uncategorized });
+
+  if (groups.length === 0 && completedTasks.length === 0) return <TaskList tasks={[]} activeSession={activeSession} onStart={onStart} onOpenActions={onOpenActions} />;
+
+  return <View className="gap-3">{groups.map((group) => <TaskGroup key={group.id} title={group.title} tasks={group.tasks} collapsed={collapsedGroups.has(group.id)} onToggle={() => toggleGroup(group.id)} activeSession={activeSession} onStart={onStart} onOpenActions={onOpenActions} />)}{completedTasks.length ? <TaskGroup title="已完成" tasks={completedTasks} collapsed={collapsedGroups.has('completed')} onToggle={() => toggleGroup('completed')} activeSession={activeSession} onStart={onStart} onOpenActions={onOpenActions} /> : null}</View>;
 }
 
 export function TaskActionPanel({ task, records, activeSession, onEdit, onConfigureFocus, onGoalProgress, onDelete }: {
@@ -110,11 +174,23 @@ export function TaskActionPanel({ task, records, activeSession, onEdit, onConfig
   return <View className="gap-4"><View className="flex-row gap-3"><Metric label="完成专注" value={`${statistics.completedSessions} 次`} /><Metric label="累计专注" value={`${statistics.completedMinutes} 分钟`} /></View><View className="flex-row gap-2"><Button className="flex-1" variant="secondary" isDisabled={!canEdit} onPress={onEdit}>编辑任务</Button><Button className="flex-1" variant="secondary" isDisabled={!canFocus} onPress={onConfigureFocus}>专注设置</Button></View>{!canEdit ? <Text type="body-xs" color="muted">任务执行中或存在同步问题，暂时不能编辑。</Text> : null}{task.kind === 'goal' && executionState === 'available' ? <View className="flex-row items-end gap-2"><View className="flex-1"><Field label={`补记完成量（${task.targetUnit}）`} value={progress} onChange={setProgress} keyboard="numeric" /></View><Button size="sm" onPress={() => void onGoalProgress(Number(progress))}>记录</Button></View> : null}{confirmDelete ? <View className="gap-2 rounded-panel-inner bg-surface-secondary p-3"><Text type="body-sm">删除后不会进入回收站，确定删除“{task.title}”吗？</Text><View className="flex-row gap-2"><Button className="flex-1" variant="danger" onPress={() => void onDelete()}>确认删除</Button><Button className="flex-1" variant="secondary" onPress={() => setConfirmDelete(false)}>取消</Button></View></View> : <Button variant="danger-soft" isDisabled={!canEdit} onPress={() => setConfirmDelete(true)}>删除任务</Button>}</View>;
 }
 
-function TaskCard({ task, activeSession, onStart, onOpenActions }: { task: Task; activeSession: ActiveSession | null; onStart(taskId: string, mode: SessionMode): void; onOpenActions?(taskId: string): void }) {
+function TaskGroup({ title, tasks, collapsed, onToggle, activeSession, onStart, onOpenActions }: {
+  title: string;
+  tasks: Task[];
+  collapsed: boolean;
+  onToggle(): void;
+  activeSession: ActiveSession | null;
+  onStart(taskId: string, mode: SessionMode): void;
+  onOpenActions?(taskId: string): void;
+}) {
+  return <View testID="task-group" accessibilityLabel={title} style={styles.taskGroup}><Pressable accessibilityRole="button" accessibilityLabel={`${collapsed ? '展开' : '折叠'}${title}任务组`} accessibilityState={{ expanded: !collapsed }} onPress={onToggle} style={({ pressed }) => [styles.groupHeader, pressed && styles.pressed]}><View className="min-w-0 flex-1 flex-row items-center gap-2"><Text type="body-sm" weight="semibold" numberOfLines={1}>{title}</Text><Text type="body-xs" color="muted">{tasks.length}</Text></View><Text type="body-sm" color="muted">{collapsed ? '›' : '⌄'}</Text></Pressable>{collapsed ? null : <View style={styles.groupRows}>{tasks.map((task, index) => <View key={task.id}>{index ? <View style={styles.taskDivider} /> : null}<TaskRow task={task} activeSession={activeSession} onStart={onStart} onOpenActions={onOpenActions} /></View>)}</View>}</View>;
+}
+
+function TaskRow({ task, activeSession, onStart, onOpenActions }: { task: Task; activeSession: ActiveSession | null; onStart(taskId: string, mode: SessionMode): void; onOpenActions?(taskId: string): void }) {
   const executionState = getTaskExecutionState(task, activeSession);
   const canStart = executionState === 'available' || executionState === 'local_active';
   const reason = taskExecutionReason(executionState);
-  return <Pressable accessible={false} delayLongPress={320} onLongPress={() => { Vibration.vibrate(20); onOpenActions?.(task.id); }}><Card style={styles.taskCard}><Card.Body style={styles.taskBody}><View className="flex-row items-center gap-2"><View className="min-w-0 flex-1 gap-1"><Text type="body-sm" weight="semibold" numberOfLines={2}>{task.title}</Text><View className="flex-row flex-wrap items-center gap-2">{task.mustDo ? <MustDoLabel time={task.forcedTriggerTime} /> : null}<Text type="body-xs" color="muted" numberOfLines={1}>{reason && executionState !== 'completed' ? reason : compactTaskMeta(task, executionState)}</Text></View></View><MoreButton label={`${task.title}更多操作`} onPress={() => onOpenActions?.(task.id)} /><StartButton label={`${executionState === 'local_active' ? '继续' : '开始'}${task.title}专注`} disabled={!canStart} onPress={() => onStart(task.id, 'focus')} /></View></Card.Body></Card></Pressable>;
+  return <Pressable testID={`task-row-${task.id}`} accessible={false} delayLongPress={320} onLongPress={() => { Vibration.vibrate(20); onOpenActions?.(task.id); }} style={styles.taskRow}><View className="min-w-0 flex-1 gap-1"><Text type="body-sm" weight="semibold" numberOfLines={1}>{task.title}</Text><View className="flex-row flex-wrap items-center gap-2">{task.mustDo ? <MustDoLabel time={task.forcedTriggerTime} /> : null}<Text type="body-xs" color="muted" numberOfLines={1}>{reason && executionState !== 'completed' ? reason : compactTaskMeta(task, executionState)}</Text></View></View><MoreButton label={`${task.title}更多操作`} onPress={() => onOpenActions?.(task.id)} /><StartButton label={`${executionState === 'local_active' ? '继续' : '开始'}${task.title}专注`} disabled={!canStart} onPress={() => onStart(task.id, 'focus')} /></Pressable>;
 }
 
 function MustDoLabel({ time }: { time: string | null }) {
@@ -155,9 +231,12 @@ function dateInputValue(value?: number | null) {
 }
 
 const styles = StyleSheet.create({
-  taskCard: { borderRadius: 8 },
-  taskBody: { paddingHorizontal: 12, paddingVertical: 10 },
-  iconButton: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', borderRadius: 8, backgroundColor: '#F1F1F1' },
+  taskGroup: { overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: '#71717A', borderRadius: 10 },
+  groupHeader: { minHeight: 44, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  groupRows: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#E4E4E7' },
+  taskRow: { minHeight: 44, paddingLeft: 12, paddingRight: 8, paddingVertical: 4, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  taskDivider: { height: StyleSheet.hairlineWidth, marginLeft: 12, backgroundColor: '#E4E4E7' },
+  iconButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 8, backgroundColor: '#F1F1F1' },
   iconButtonDark: { backgroundColor: '#30333A' },
   startButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 8, backgroundColor: '#2563EB' },
   startButtonDisabled: { backgroundColor: '#A3A3A3', opacity: 0.7 },

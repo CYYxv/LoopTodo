@@ -5,7 +5,7 @@ import { View } from 'react-native';
 import { FocusPanel } from '@/modules/focus-session/components/FocusPanel';
 import { useLockEngineStore } from '@/modules/lock-engine/lock-engine.store';
 import { localStatistics } from '@/modules/scoring/scoring.local';
-import { CategoryManager, TaskActionPanel, TaskCreateForm, TaskEditForm, TaskList } from '@/modules/tasks/components/TasksPanel';
+import { CategoryManager, TaskActionPanel, TaskCreateForm, TaskEditForm, TaskGroups } from '@/modules/tasks/components/TasksPanel';
 import { taskStore, useTaskStore } from '@/modules/tasks/task.store';
 import type { Task } from '@/modules/tasks/task.types';
 import { BottomSheetModal } from '@/ui/bottom-sheet-modal';
@@ -19,10 +19,8 @@ type TaskSheet =
 
 export default function TasksRoute() {
   const router = useRouter();
-  const [completedExpanded, setCompletedExpanded] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [categoriesOpen, setCategoriesOpen] = useState(false);
-  const [categoryFilter, setCategoryFilter] = useState('all');
   const [taskSheet, setTaskSheet] = useState<TaskSheet | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const tasks = useTaskStore((state) => state.tasks);
@@ -47,9 +45,8 @@ export default function TasksRoute() {
   const refreshCapabilities = useLockEngineStore((state) => state.refresh);
   const confirmRisk = useLockEngineStore((state) => state.confirmRisk);
   const openPermission = useLockEngineStore((state) => state.open);
-  const visibleTasks = useMemo(() => tasks.filter((task) => task.status !== 'archived' && (categoryFilter === 'all' || (categoryFilter === 'uncategorized' ? !task.categoryId : task.categoryId === categoryFilter))), [categoryFilter, tasks]);
+  const visibleTasks = useMemo(() => tasks.filter((task) => task.status !== 'archived'), [tasks]);
   const pendingTasks = visibleTasks.filter((task) => task.status !== 'completed');
-  const completedTasks = visibleTasks.filter((task) => task.status === 'completed');
   const sheetTask = taskSheet ? tasks.find((task) => task.id === taskSheet.taskId) ?? null : null;
   const completedToday = localStatistics(records).todayCompleted;
 
@@ -70,14 +67,13 @@ export default function TasksRoute() {
   return <Screen>
     <PageHeader title="任务" description={new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }).format(new Date())} action={<Button size="sm" onPress={() => setCreateOpen(true)}>创建任务</Button>} />
     <View className="flex-row gap-3"><Summary label="待办" value={`${pendingTasks.length}`} /><Summary label="今日完成" value={`${completedToday}`} /></View>
-    <View className="flex-row flex-wrap gap-2"><Button size="sm" variant={categoryFilter === 'all' ? 'primary' : 'secondary'} onPress={() => setCategoryFilter('all')}>全部</Button><Button size="sm" variant={categoryFilter === 'uncategorized' ? 'primary' : 'secondary'} onPress={() => setCategoryFilter('uncategorized')}>未分类</Button>{categories.map((category) => <Button key={category.id} size="sm" variant={categoryFilter === category.id ? 'primary' : 'secondary'} onPress={() => setCategoryFilter(category.id)}>{category.name}</Button>)}<Button size="sm" variant="secondary" onPress={() => setCategoriesOpen(true)}>管理分类</Button></View>
+    <View className="items-end"><Button size="sm" variant="secondary" onPress={() => setCategoriesOpen(true)}>管理分类</Button></View>
     {notice ? <Card variant="secondary"><Card.Body className="flex-row items-center justify-between gap-3"><Text type="body-sm">{notice}</Text><Text type="body-xs" color="muted" onPress={() => setNotice(null)}>关闭</Text></Card.Body></Card> : null}
     {error ? <Text type="body-sm" color="danger" accessibilityRole="alert">{error}</Text> : null}
-    <TaskList tasks={pendingTasks} activeSession={activeSession} onStart={(taskId, mode) => void start(taskId, mode)} onOpenActions={(taskId) => setTaskSheet({ mode: 'actions', taskId })} />
-    {completedTasks.length ? <View className="gap-3"><Button variant="secondary" onPress={() => setCompletedExpanded((value) => !value)}>{completedExpanded ? '收起已完成' : `查看已完成（${completedTasks.length}）`}</Button>{completedExpanded ? <TaskList tasks={completedTasks} activeSession={activeSession} onStart={(taskId, mode) => void start(taskId, mode)} onOpenActions={(taskId) => setTaskSheet({ mode: 'actions', taskId })} /> : null}</View> : null}
+    <TaskGroups tasks={visibleTasks} categories={categories} activeSession={activeSession} onStart={(taskId, mode) => void start(taskId, mode)} onOpenActions={(taskId) => setTaskSheet({ mode: 'actions', taskId })} />
 
     <BottomSheetModal visible={createOpen} title="创建任务" onClose={() => setCreateOpen(false)}><TaskCreateForm categories={categories} onCreate={createTask} onCreated={() => { setCreateOpen(false); setNotice('任务已创建'); }} /></BottomSheetModal>
-    <BottomSheetModal visible={categoriesOpen} title="管理分类" onClose={() => setCategoriesOpen(false)}><CategoryManager categories={categories} onCreate={createCategory} onUpdate={updateCategory} onDelete={async (id, version) => { const result = await deleteCategory(id, version); if (result.ok && categoryFilter === id) setCategoryFilter('all'); return result; }} /></BottomSheetModal>
+    <BottomSheetModal visible={categoriesOpen} title="管理分类" onClose={() => setCategoriesOpen(false)}><CategoryManager categories={categories} onCreate={createCategory} onUpdate={updateCategory} onDelete={(id, version) => deleteCategory(id, version)} /></BottomSheetModal>
     <BottomSheetModal visible={Boolean(sheetTask)} title={sheetTitle} onClose={() => setTaskSheet(null)}>
       {sheetTask && taskSheet?.mode === 'actions' ? <TaskActionPanel task={sheetTask} records={records} activeSession={activeSession}
         onEdit={() => setTaskSheet({ mode: 'edit', taskId: sheetTask.id, snapshot: { ...sheetTask } })}

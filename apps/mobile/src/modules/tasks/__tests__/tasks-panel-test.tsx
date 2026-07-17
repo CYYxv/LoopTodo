@@ -1,8 +1,16 @@
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
-import { Vibration } from 'react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { StyleSheet, Vibration } from 'react-native';
+import * as SecureStore from 'expo-secure-store';
 
-import { TaskEditForm, TaskList, TasksPanel } from '../components/TasksPanel';
-import type { Task } from '../task.types';
+import { TaskEditForm, TaskGroups, TaskList, TasksPanel } from '../components/TasksPanel';
+import type { Task, TaskCategory } from '../task.types';
+
+jest.mock('expo-secure-store', () => ({ getItemAsync: jest.fn(), setItemAsync: jest.fn() }));
+
+beforeEach(() => {
+  jest.mocked(SecureStore.getItemAsync).mockResolvedValue(null);
+  jest.mocked(SecureStore.setItemAsync).mockResolvedValue(undefined);
+});
 
 describe('task creation form', () => {
   test('clears the title only after a successful create', async () => {
@@ -61,6 +69,53 @@ test('keeps task cards compact and opens actions by long press or overflow', asy
   expect(onOpenActions).toHaveBeenLastCalledWith('forced');
   expect(vibration).toHaveBeenCalledWith(20);
   vibration.mockRestore();
+});
+
+test('keeps the compact task row and its actions at least 44dp tall', async () => {
+  const screen = await render(<TaskList tasks={[task]} onStart={jest.fn()} onOpenActions={jest.fn()} />);
+
+  const rowStyle = StyleSheet.flatten(screen.getByTestId('task-row-forced').props.style);
+  const moreStyle = StyleSheet.flatten(screen.getByLabelText('提交报告更多操作').props.style);
+
+  expect(rowStyle.minHeight).toBeGreaterThanOrEqual(44);
+  expect(moreStyle.height).toBeGreaterThanOrEqual(44);
+});
+
+test('does not force a white task group background in dark mode', async () => {
+  const categories: TaskCategory[] = [{ id: 'work', name: '工作', color: null, version: 1, syncStatus: 'synced' }];
+  const screen = await render(<TaskGroups tasks={[{ ...task, categoryId: 'work', category: '工作' }]} categories={categories} onStart={jest.fn()} />);
+
+  const groupStyle = StyleSheet.flatten(screen.getByTestId('task-group').props.style);
+  expect(groupStyle.backgroundColor).not.toBe('#FFFFFF');
+});
+
+test('restores collapsed task groups from local preferences', async () => {
+  jest.mocked(SecureStore.getItemAsync).mockResolvedValue(JSON.stringify(['work']));
+  const categories: TaskCategory[] = [{ id: 'work', name: '工作', color: null, version: 1, syncStatus: 'synced' }];
+  const screen = await render(<TaskGroups tasks={[{ ...task, categoryId: 'work', category: '工作' }]} categories={categories} onStart={jest.fn()} />);
+
+  await waitFor(() => expect(screen.queryByText(task.title)).toBeNull());
+});
+
+test('does not overwrite a user collapse while saved preferences are still loading', async () => {
+  let resolveSaved: (value: string | null) => void = () => undefined;
+  jest.mocked(SecureStore.getItemAsync).mockImplementation(() => new Promise((resolve) => { resolveSaved = resolve; }));
+  const categories: TaskCategory[] = [
+    { id: 'work', name: '工作', color: null, version: 1, syncStatus: 'synced' },
+    { id: 'life', name: '生活', color: null, version: 1, syncStatus: 'synced' },
+  ];
+  const screen = await render(<TaskGroups tasks={[
+    { ...task, id: 'work-task', title: '工作任务', categoryId: 'work', category: '工作' },
+    { ...task, id: 'life-task', title: '生活任务', categoryId: 'life', category: '生活' },
+  ]} categories={categories} onStart={jest.fn()} />);
+
+  await fireEvent.press(screen.getByRole('button', { name: '折叠工作任务组' }));
+  await act(async () => { resolveSaved(JSON.stringify(['life'])); });
+
+  await waitFor(() => {
+    expect(screen.queryByText('工作任务')).toBeNull();
+    expect(screen.queryByText('生活任务')).toBeNull();
+  });
 });
 
 test('keeps edited task input visible when saving fails', async () => {
