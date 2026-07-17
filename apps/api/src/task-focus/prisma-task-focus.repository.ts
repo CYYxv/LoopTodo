@@ -54,6 +54,7 @@ export class PrismaTaskFocusRepository implements TaskFocusRepository {
           targetAmount: input.targetAmount,
           targetUnit: input.targetUnit,
           isTodayRequired: input.isTodayRequired,
+          forcedTriggerTime: input.forcedTriggerTime,
         },
       }));
     } catch (error) {
@@ -255,5 +256,5 @@ function sameTask(task: Task, input: TaskCreate) {
     task.estimatedMinutes === input.estimatedMinutes && task.restMinutes === input.restMinutes &&
     task.categoryId === input.categoryId && (task.deadlineAt?.getTime() ?? null) === (input.deadlineAt?.getTime() ?? null) &&
     (task.targetAmount?.toNumber() ?? null) === input.targetAmount && task.targetUnit === input.targetUnit &&
-    task.isTodayRequired === input.isTodayRequired;
+    task.isTodayRequired === input.isTodayRequired && task.forcedTriggerTime === input.forcedTriggerTime;
 }

@@ -27,3 +27,6 @@ export type Task = {
 };
 
 export type CreateTaskInput = Omit<Task, 'id' | 'status' | 'completedAmount' | 'progressLabel' | 'version' | 'syncStatus' | 'remoteActive'>;
+export type UpdateTaskInput = Pick<Task,
+  'title' | 'timerMode' | 'estimateMinutes' | 'restMinutes' | 'deadlineAt' | 'targetAmount' | 'targetUnit' | 'mustDo' | 'forcedTriggerTime'
+>;

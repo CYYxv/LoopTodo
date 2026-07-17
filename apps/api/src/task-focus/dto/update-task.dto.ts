@@ -1,4 +1,4 @@
-import { IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, Length, Max, Min } from 'class-validator';
+import { IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, Length, Matches, Max, Min } from 'class-validator';
 
 export class UpdateTaskDto {
   @IsInt() @Min(1) version!: number;
@@ -11,5 +11,6 @@ export class UpdateTaskDto {
   @IsOptional() @IsNumber() @Min(0.01) targetAmount?: number | null;
   @IsOptional() @IsString() @Length(1, 40) targetUnit?: string | null;
   @IsOptional() @IsBoolean() isTodayRequired?: boolean;
+  @IsOptional() @IsString() @Matches(/^([01]\d|2[0-3]):[0-5]\d$/) forcedTriggerTime?: string | null;
   @IsOptional() @IsIn(['pending', 'completed', 'failed']) status?: 'pending' | 'completed' | 'failed';
 }

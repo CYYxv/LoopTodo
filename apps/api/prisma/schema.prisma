@@ -311,6 +311,7 @@ model Task {
   targetUnit              String?        @map("target_unit") @db.VarChar(40)
   completedAmount         Decimal        @default(0) @map("completed_amount") @db.Decimal(12, 2)
   isTodayRequired         Boolean        @default(false) @map("is_today_required")
+  forcedTriggerTime       String?        @map("forced_trigger_time") @db.Char(5)
   status                  TaskStatus     @default(pending)
   activeSessionId         String?        @map("active_session_id") @db.Uuid
   version                 Int            @default(1)

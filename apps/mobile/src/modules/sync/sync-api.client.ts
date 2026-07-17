@@ -28,7 +28,16 @@ export function createHttpSyncClient(baseUrl: string, accessToken: string): Sync
           taskType: task.kind, timerMode: task.timerMode, estimatedMinutes: task.estimateMinutes,
           restMinutes: task.restMinutes, deadlineAt: task.deadlineAt ? new Date(task.deadlineAt).toISOString() : undefined,
           targetAmount: task.targetAmount ?? undefined, targetUnit: task.targetUnit ?? undefined,
-          isTodayRequired: task.mustDo }) });
+          isTodayRequired: task.mustDo, forcedTriggerTime: task.forcedTriggerTime }) });
+        return {};
+      }
+      if (operation.type === 'task.update') {
+        const patch = operation.patch;
+        await request(`/tasks/${operation.taskId}`, { method: 'PATCH', body: JSON.stringify({ version: operation.version,
+          title: patch.title, timerMode: patch.timerMode, estimatedMinutes: patch.estimateMinutes,
+          restMinutes: patch.restMinutes, deadlineAt: patch.deadlineAt ? new Date(patch.deadlineAt).toISOString() : null,
+          targetAmount: patch.targetAmount, targetUnit: patch.targetUnit, isTodayRequired: patch.mustDo,
+          forcedTriggerTime: patch.forcedTriggerTime, status: patch.status }) });
         return {};
       }
       if (operation.type === 'session.start') {

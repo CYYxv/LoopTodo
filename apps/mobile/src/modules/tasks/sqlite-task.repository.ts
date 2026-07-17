@@ -95,6 +95,25 @@ export function createSQLiteTaskRepository(
       });
       return task;
     },
+    async update(task, previousVersion) {
+      validateInput(task);
+      const database = await getDatabase();
+      await database.withTransactionAsync(async () => {
+        const result = await database.runAsync(`UPDATE tasks SET
+          title = ?, timer_mode = ?, estimate_minutes = ?, rest_minutes = ?, deadline_at = ?, target_amount = ?,
+          target_unit = ?, must_do = ?, forced_trigger_time = ?, status = ?, version = ?, sync_status = 'pending', updated_at = ?
+          WHERE id = ? AND status != 'active' AND remote_active = 0 AND version = ?`,
+          task.title, task.timerMode, task.estimateMinutes, task.restMinutes, task.deadlineAt, task.targetAmount,
+          task.targetUnit, task.mustDo ? 1 : 0, task.forcedTriggerTime, task.status, task.version, now(), task.id, previousVersion);
+        if (result.changes !== 1) throw new Error('任务正在执行或已被其他设备更新');
+        await enqueueSyncOperation(database, { type: 'task.update', taskId: task.id, version: previousVersion,
+          patch: { title: task.title, timerMode: task.timerMode, estimateMinutes: task.estimateMinutes,
+            restMinutes: task.restMinutes, deadlineAt: task.deadlineAt, targetAmount: task.targetAmount,
+            targetUnit: task.targetUnit, mustDo: task.mustDo, forcedTriggerTime: task.forcedTriggerTime,
+            status: task.status as 'pending' | 'completed' | 'failed' } }, task.id,
+          `task-update-${task.id}-${task.version}`, now());
+      });
+    },
     async startSession(task, session) {
       const database = await getDatabase();
       await database.withTransactionAsync(async () => {

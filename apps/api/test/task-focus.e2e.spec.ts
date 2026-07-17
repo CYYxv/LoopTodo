@@ -183,8 +183,15 @@ describe('task focus API', () => {
     } })).json().data;
     expect((await app.inject({ method: 'GET', url: `/tasks/${task.id}`, headers: authTwo })).statusCode).toBe(404);
 
-    const updated = await app.inject({ method: 'PATCH', url: `/tasks/${task.id}`, headers: authOne, payload: { version: 1, title: '完成两套卷' } });
+    const updated = await app.inject({ method: 'PATCH', url: `/tasks/${task.id}`, headers: authOne, payload: { version: 1, title: '完成两套卷', isTodayRequired: true, forcedTriggerTime: '20:00' } });
     expect(updated.statusCode).toBe(200);
+    const updateReplay = await app.inject({ method: 'PATCH', url: `/tasks/${task.id}`, headers: authOne, payload: { version: 1, title: '完成两套卷', isTodayRequired: true, forcedTriggerTime: '20:00' } });
+    expect(updateReplay.statusCode).toBe(200);
+    expect(updateReplay.json().data.version).toBe(2);
+    const clearedRequiredTime = await app.inject({ method: 'PATCH', url: `/tasks/${task.id}`, headers: authOne,
+      payload: { version: 2, forcedTriggerTime: null } });
+    expect(clearedRequiredTime.statusCode).toBe(400);
+    expect(clearedRequiredTime.json().error.code).toBe('FORCED_TRIGGER_TIME_REQUIRED');
     expect((await app.inject({ method: 'PATCH', url: `/tasks/${task.id}`, headers: authOne, payload: { version: 1, title: '过期写入' } })).statusCode).toBe(409);
 
     const startHeaders = { ...authOne, 'idempotency-key': 'start-task-key-001' };
@@ -212,6 +219,21 @@ describe('task focus API', () => {
       headers: { ...authOne, 'idempotency-key': 'goal-progress-key-001' }, payload: { version: 1, amount: 5 } });
     expect(goalProgress.json().data.completedAmount).toBe(5);
     expect(goalProgress.json().data.status).toBe('completed');
+    const expandedGoal = await app.inject({ method: 'PATCH', url: `/tasks/${goalTask.id}`, headers: authOne,
+      payload: { version: 2, targetAmount: 10 } });
+    expect(expandedGoal.json().data.status).toBe('pending');
+    expect((await app.inject({ method: 'PATCH', url: `/tasks/${goalTask.id}`, headers: authOne,
+      payload: { version: 3, deadlineAt: null } })).statusCode).toBe(400);
+    expect((await app.inject({ method: 'PATCH', url: `/tasks/${goalTask.id}`, headers: authOne,
+      payload: { version: 3, targetUnit: null } })).statusCode).toBe(400);
+    expect((await app.inject({ method: 'PATCH', url: `/tasks/${goalTask.id}`, headers: authOne,
+      payload: { version: 3, timerMode: 'countup' } })).statusCode).toBe(400);
+    const correctedGoalStatus = await app.inject({ method: 'PATCH', url: `/tasks/${goalTask.id}`, headers: authOne,
+      payload: { version: 3, status: 'completed' } });
+    expect(correctedGoalStatus.statusCode).toBe(200);
+    expect(correctedGoalStatus.json().data.status).toBe('pending');
+    expect((await app.inject({ method: 'PATCH', url: `/tasks/${goalTask.id}`, headers: authOne,
+      payload: { version: 4, targetAmount: 4 } })).statusCode).toBe(400);
 
     const sync = await app.inject({ method: 'GET', url: '/sync/task-focus?since=1970-01-01T00:00:00.000Z', headers: authOne });
     expect(sync.json().data.tasks).toHaveLength(3);

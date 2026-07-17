@@ -3,7 +3,7 @@ import { View } from 'react-native';
 
 import { Button, Card, Chip, Text } from '@/ui/hero-runtime';
 import type { FocusSessionRecord } from '@/modules/focus-session/focus-session.types';
-import type { Task, TrustLevel } from '@/modules/tasks/task.types';
+import type { Task } from '@/modules/tasks/task.types';
 
 import { localStatistics } from '../scoring.local';
 import { useScoringStore } from '../scoring.store';
@@ -19,7 +19,7 @@ export function StatisticsPanel({ records, tasks }: { records: FocusSessionRecor
     .filter((record) => scope === 'all' || sameDay(record.endedAt, Date.now()))
     .sort((left, right) => right.endedAt - left.endedAt), [records, scope]);
   const failedRecords = useMemo(() => scopedRecords.filter((record) => record.outcome === 'exited'), [scopedRecords]);
-  const trustDistribution = useMemo(() => distribution(scopedRecords, taskById), [scopedRecords, taskById]);
+  const modeDistribution = useMemo(() => distribution(scopedRecords), [scopedRecords]);
   const selectedRecord = scopedRecords.find((record) => record.id === selectedRecordId) ?? null;
   const configured = useScoringStore((state) => state.configured);
   const today = useScoringStore((state) => state.today);
@@ -41,7 +41,7 @@ export function StatisticsPanel({ records, tasks }: { records: FocusSessionRecor
 
     <Card><Card.Body className="gap-3">
       <View className="flex-row flex-wrap items-center justify-between gap-2">
-        <View className="min-w-48 flex-1"><Card.Title>{scope === 'today' ? '今日数据' : '累计数据'}</Card.Title><Card.Description>本地记录即时展示，服务端仅补充可信积分</Card.Description></View>
+        <View className="min-w-48 flex-1"><Card.Title>{scope === 'today' ? '今日数据' : '累计数据'}</Card.Title><Card.Description>本地记录即时展示，积分将在联网后同步</Card.Description></View>
         <Chip color={configured && !error ? 'success' : 'warning'}>{configured && !error ? '积分已同步' : '本地数据可用'}</Chip>
       </View>
       <View className="flex-row flex-wrap gap-2">
@@ -50,7 +50,7 @@ export function StatisticsPanel({ records, tasks }: { records: FocusSessionRecor
         <Metric label="失败/退出" value={`${summary.failed} 次`} />
         {scope === 'today' ? <Metric label="连续天数" value={`${local.streakDays} 天`} /> : null}
       </View>
-      {configured ? <View className="gap-2"><Text type="body-sm" weight="semibold">今日可信积分：{today?.totalScore ?? '待刷新'}</Text><Button size="sm" variant="secondary" isDisabled={loading} onPress={() => void load()}>{loading ? '刷新中…' : '刷新服务端积分'}</Button></View> : <Text type="body-xs" color="muted">登录并同步后显示服务端可信积分；积分失败不会覆盖本地统计。</Text>}
+      {configured ? <View className="gap-2"><Text type="body-sm" weight="semibold">今日积分：{today?.totalScore ?? '待刷新'}</Text><Button size="sm" variant="secondary" isDisabled={loading} onPress={() => void load()}>{loading ? '刷新中…' : '刷新积分'}</Button></View> : <Text type="body-xs" color="muted">登录并同步后显示积分；加载失败不会覆盖本地统计。</Text>}
       {error ? <View className="gap-2"><Text type="body-xs" color="danger">积分加载失败：{error}</Text><Button size="sm" variant="secondary" onPress={() => void load()}>重试积分加载</Button></View> : null}
     </Card.Body></Card>
 
@@ -66,11 +66,11 @@ export function StatisticsPanel({ records, tasks }: { records: FocusSessionRecor
     </Card.Body></Card>
 
     <Card variant="secondary"><Card.Body className="gap-3">
-      <Card.Title>可信等级分布</Card.Title>
+      <Card.Title>专注方式分布</Card.Title>
       <View className="flex-row flex-wrap gap-2">
-        <Metric label="高可信" value={`${trustDistribution.high} 次`} />
-        <Metric label="中可信" value={`${trustDistribution.medium} 次`} />
-        <Metric label="低可信" value={`${trustDistribution.low} 次`} />
+        <Metric label="锁机" value={`${modeDistribution.lock} 次`} />
+        <Metric label="标准" value={`${modeDistribution.standard} 次`} />
+        <Metric label="自由" value={`${modeDistribution.free} 次`} />
       </View>
     </Card.Body></Card>
 
@@ -98,7 +98,6 @@ function RecordDetail({ record, task }: { record: FocusSessionRecord; task?: Tas
     <Detail label="模式" value={`${record.mode === 'lock' ? '锁机' : '专注'} · ${timerLabel(record.timerMode)}`} />
     <Detail label="时长" value={`${Math.floor(record.durationSeconds / 60)} 分钟 ${record.durationSeconds % 60} 秒`} />
     <Detail label="结果" value={record.outcome === 'completed' ? '完成' : '退出/失败'} />
-    <Detail label="可信等级" value={trustLabel(task?.trustLevel)} />
     {record.completedAmount != null ? <Detail label="完成量" value={`${record.completedAmount}${task?.targetUnit ?? ''}`} /> : null}
     {record.failureReason ? <Detail label="复盘原因" value={record.failureReason} danger /> : null}
   </Card.Body></Card>;
@@ -108,11 +107,12 @@ function Detail({ label, value, danger = false }: { label: string; value: string
   return <View className="flex-row flex-wrap justify-between gap-2"><Text type="body-xs" color="muted">{label}</Text><Text type="body-sm" color={danger ? 'danger' : 'default'}>{value}</Text></View>;
 }
 
-function distribution(records: FocusSessionRecord[], tasks: Map<string, Task>): Record<TrustLevel, number> {
-  const result = { high: 0, medium: 0, low: 0 };
+function distribution(records: FocusSessionRecord[]) {
+  const result = { lock: 0, standard: 0, free: 0 };
   for (const record of records) {
-    const level = tasks.get(record.taskId)?.trustLevel;
-    if (level) result[level] += 1;
+    if (record.mode === 'lock') result.lock += 1;
+    else if (record.timerMode === 'untimed') result.free += 1;
+    else result.standard += 1;
   }
   return result;
 }
@@ -120,4 +120,3 @@ function distribution(records: FocusSessionRecord[], tasks: Map<string, Task>): 
 function sameDay(left: number, right: number) { const first = new Date(left); const second = new Date(right); return first.getFullYear() === second.getFullYear() && first.getMonth() === second.getMonth() && first.getDate() === second.getDate(); }
 function formatDateTime(value: number) { return new Date(value).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }); }
 function timerLabel(mode: FocusSessionRecord['timerMode']) { return { countdown: '倒计时', countup: '正计时', untimed: '不计时' }[mode]; }
-function trustLabel(level?: TrustLevel) { return level ? { high: '高可信', medium: '中可信', low: '低可信' }[level] : '未知'; }

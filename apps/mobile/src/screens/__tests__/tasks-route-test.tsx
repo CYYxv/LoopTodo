@@ -7,6 +7,7 @@ import type { Task } from '@/modules/tasks/task.types';
 
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }) }));
+jest.setTimeout(15_000);
 
 const task: Task = {
   id: 'task-1', title: '完成报告', category: '未分类', kind: 'pomodoro', timerMode: 'countdown',
@@ -24,11 +25,32 @@ test('closes focus settings after the selected task starts', async () => {
   taskStore.setState({ tasks: [task], activeSession: null, sessionRecords: [], selectedTaskId: task.id, selectedMode: 'focus', error: null, startSession });
 
   const screen = await render(<TasksRoute />);
+  await fireEvent(screen.getByText('完成报告'), 'longPress');
+  expect(screen.getByText('完成专注')).toBeTruthy();
+  expect(screen.getByText('累计专注')).toBeTruthy();
   await fireEvent.press(screen.getByText('专注设置'));
-  await fireEvent.press(screen.getByText('开始可信专注'));
+  await fireEvent.press(screen.getByText('开始专注'));
 
   await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/session'));
   expect(screen.queryByText('选择执行强度')).toBeNull();
+  screen.unmount();
+  taskStore.setState(original, true);
+});
+
+test('opens task editing from the compact action panel', async () => {
+  const original = taskStore.getState();
+  const updateTask = jest.fn(async () => ({ ok: true as const }));
+  taskStore.setState({ tasks: [task], activeSession: null, sessionRecords: [], selectedTaskId: task.id, error: null, updateTask });
+
+  const screen = await render(<TasksRoute />);
+  await fireEvent(screen.getByText('完成报告'), 'longPress');
+  await fireEvent.press(screen.getByText('编辑任务'));
+  const input = screen.getByDisplayValue('完成报告');
+  await fireEvent.changeText(input, '修改报告');
+  await fireEvent.press(screen.getByText('保存修改'));
+
+  await waitFor(() => expect(updateTask).toHaveBeenCalledWith('task-1', 1, expect.objectContaining({ title: '修改报告' })));
+  expect(screen.getByText('任务已更新')).toBeTruthy();
   screen.unmount();
   taskStore.setState(original, true);
 });

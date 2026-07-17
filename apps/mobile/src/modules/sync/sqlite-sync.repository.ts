@@ -146,19 +146,21 @@ async function mergeTask(database: SQLiteDatabase, remote: SyncSnapshot['tasks']
   const remoteStatus = remote.activeSessionId ? 'active' : remote.status === 'active' ? 'pending' : remote.status;
   await database.runAsync(`INSERT INTO tasks
     (id, title, category, kind, timer_mode, estimate_minutes, rest_minutes, deadline_at, target_amount,
-     target_unit, completed_amount, must_do, trust_level, status, version, sync_status, remote_active,
+     target_unit, completed_amount, must_do, forced_trigger_time, trust_level, status, version, sync_status, remote_active,
      server_updated_at, created_at, updated_at)
-    VALUES (?, ?, '云端', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'medium', ?, ?, 'synced', ?, ?, ?, ?)
+    VALUES (?, ?, '云端', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'medium', ?, ?, 'synced', ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET title = excluded.title, kind = excluded.kind, timer_mode = excluded.timer_mode,
       estimate_minutes = excluded.estimate_minutes, rest_minutes = excluded.rest_minutes,
       deadline_at = excluded.deadline_at, target_amount = excluded.target_amount,
       target_unit = excluded.target_unit, completed_amount = excluded.completed_amount,
-      must_do = excluded.must_do, status = excluded.status, version = excluded.version,
+      must_do = excluded.must_do,
+      forced_trigger_time = COALESCE(excluded.forced_trigger_time, tasks.forced_trigger_time),
+      status = excluded.status, version = excluded.version,
       sync_status = 'synced', remote_active = excluded.remote_active,
       server_updated_at = excluded.server_updated_at, updated_at = excluded.updated_at`,
     remote.id, remote.title, remote.taskType, remote.timerMode, remote.estimatedMinutes, remote.restMinutes,
     remote.deadlineAt ? Date.parse(remote.deadlineAt) : null, remote.targetAmount, remote.targetUnit,
-    remote.completedAmount, remote.isTodayRequired ? 1 : 0, remoteStatus, remote.version, remoteActive,
+    remote.completedAmount, remote.isTodayRequired ? 1 : 0, remote.forcedTriggerTime, remoteStatus, remote.version, remoteActive,
     Date.parse(remote.updatedAt), timestamp, timestamp);
 }
 

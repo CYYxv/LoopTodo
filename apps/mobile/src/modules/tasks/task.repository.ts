@@ -9,6 +9,7 @@ export interface TaskRepository {
     activeSession: ActiveSession | null;
   }>;
   create(input: CreateTaskInput): Promise<Task>;
+  update(task: Task, previousVersion: number): Promise<void>;
   startSession(task: Task, session: ActiveSession): Promise<void>;
   finishSession(task: Task, record: FocusSessionRecord, restSession: ActiveSession | null): Promise<void>;
   finishRest(): Promise<void>;

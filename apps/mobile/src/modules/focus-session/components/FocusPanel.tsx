@@ -112,13 +112,13 @@ export function FocusPanel({
       </Card.Body></Card> : null}
 
       <Button
-        accessibilityLabel={selectedMode === 'lock' ? '开始锁机' : '开始可信专注'}
+        accessibilityLabel={selectedMode === 'lock' ? '开始锁机' : '开始专注'}
         size="lg"
         variant={selectedMode === 'lock' ? 'danger' : 'primary'}
         isDisabled={!selectedTask || (selectedMode === 'lock' && (!lockCapabilities?.notificationGranted || !lockCapabilities.notificationListenerEnabled || !lockCapabilities.riskConfirmed))}
         onPress={onStart}
       >
-        {selectedMode === 'lock' ? '开始锁机' : '开始可信专注'}
+        {selectedMode === 'lock' ? '开始锁机' : '开始专注'}
       </Button>
     </View>
   );

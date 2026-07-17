@@ -5,17 +5,23 @@ import { View } from 'react-native';
 import { FocusPanel } from '@/modules/focus-session/components/FocusPanel';
 import { useLockEngineStore } from '@/modules/lock-engine/lock-engine.store';
 import { localStatistics } from '@/modules/scoring/scoring.local';
-import { TaskCreateForm, TaskList } from '@/modules/tasks/components/TasksPanel';
+import { TaskActionPanel, TaskCreateForm, TaskEditForm, TaskList } from '@/modules/tasks/components/TasksPanel';
 import { taskStore, useTaskStore } from '@/modules/tasks/task.store';
+import type { Task } from '@/modules/tasks/task.types';
 import { BottomSheetModal } from '@/ui/bottom-sheet-modal';
 import { Button, Card, Text } from '@/ui/hero-runtime';
 import { PageHeader, Screen } from '@/ui/screen-layout';
+
+type TaskSheet =
+  | { mode: 'actions'; taskId: string }
+  | { mode: 'edit'; taskId: string; snapshot: Task }
+  | { mode: 'focus'; taskId: string };
 
 export default function TasksRoute() {
   const router = useRouter();
   const [completedExpanded, setCompletedExpanded] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
-  const [focusTaskId, setFocusTaskId] = useState<string | null>(null);
+  const [taskSheet, setTaskSheet] = useState<TaskSheet | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const tasks = useTaskStore((state) => state.tasks);
   const records = useTaskStore((state) => state.sessionRecords);
@@ -24,6 +30,7 @@ export default function TasksRoute() {
   const strictOptions = useTaskStore((state) => state.strictOptions);
   const error = useTaskStore((state) => state.error);
   const createTask = useTaskStore((state) => state.createTask);
+  const updateTask = useTaskStore((state) => state.updateTask);
   const startSession = useTaskStore((state) => state.startSession);
   const addGoalProgress = useTaskStore((state) => state.addGoalProgress);
   const selectTask = useTaskStore((state) => state.selectTask);
@@ -36,22 +43,46 @@ export default function TasksRoute() {
   const visibleTasks = useMemo(() => tasks.filter((task) => task.status !== 'archived'), [tasks]);
   const pendingTasks = visibleTasks.filter((task) => task.status !== 'completed');
   const completedTasks = visibleTasks.filter((task) => task.status === 'completed');
-  const focusTask = tasks.find((task) => task.id === focusTaskId) ?? null;
+  const sheetTask = taskSheet ? tasks.find((task) => task.id === taskSheet.taskId) ?? null : null;
   const completedToday = localStatistics(records).todayCompleted;
 
   const start = async (taskId: string, mode: 'focus' | 'lock') => {
     await startSession(taskId, mode);
     if (taskStore.getState().activeSession?.taskId !== taskId) return;
-    setFocusTaskId(null);
+    setTaskSheet(null);
     router.push('/session');
   };
   const openFocusSettings = (taskId: string) => {
     selectTask(taskId);
-    setFocusTaskId(taskId);
+    setTaskSheet({ mode: 'focus', taskId });
     void refreshCapabilities();
   };
 
-  return <Screen><PageHeader title="任务" description={new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }).format(new Date())} action={<Button size="sm" onPress={() => setCreateOpen(true)}>创建任务</Button>} /><View className="flex-row gap-3"><Summary label="待办" value={`${pendingTasks.length}`} /><Summary label="今日完成" value={`${completedToday}`} /></View>{notice ? <Card variant="secondary"><Card.Body className="flex-row items-center justify-between gap-3"><Text type="body-sm">{notice}</Text><Text type="body-xs" color="muted" onPress={() => setNotice(null)}>关闭</Text></Card.Body></Card> : null}{error ? <Text type="body-sm" color="danger" accessibilityRole="alert">{error}</Text> : null}<TaskList tasks={pendingTasks} activeSession={activeSession} onStart={(taskId, mode) => void start(taskId, mode)} onConfigureFocus={openFocusSettings} onGoalProgress={addGoalProgress} />{completedTasks.length ? <View className="gap-3"><Button variant="secondary" onPress={() => setCompletedExpanded((value) => !value)}>{completedExpanded ? '收起已完成' : `查看已完成（${completedTasks.length}）`}</Button>{completedExpanded ? <TaskList tasks={completedTasks} activeSession={activeSession} onStart={(taskId, mode) => void start(taskId, mode)} onGoalProgress={addGoalProgress} /> : null}</View> : null}<BottomSheetModal visible={createOpen} title="创建任务" onClose={() => setCreateOpen(false)}><TaskCreateForm onCreate={createTask} onCreated={() => { setCreateOpen(false); setNotice('任务已创建'); }} /></BottomSheetModal><BottomSheetModal visible={Boolean(focusTask)} title="专注设置" onClose={() => setFocusTaskId(null)}>{focusTask ? <FocusPanel selectedMode={selectedMode} strictOptions={strictOptions} selectedTask={focusTask} onModeChange={selectMode} onStrictOptionToggle={toggleStrictOption} onStart={() => void start(focusTask.id, selectedMode)} lockCapabilities={capabilities} onRefreshLockCapabilities={() => void refreshCapabilities()} onConfirmLockRisk={() => void confirmRisk()} onOpenLockPermission={(kind) => void openPermission(kind)} /> : null}</BottomSheetModal></Screen>;
+  const sheetTitle = taskSheet?.mode === 'edit' ? '编辑任务' : taskSheet?.mode === 'focus' ? '专注设置' : sheetTask?.title ?? '任务操作';
+
+  return <Screen>
+    <PageHeader title="任务" description={new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }).format(new Date())} action={<Button size="sm" onPress={() => setCreateOpen(true)}>创建任务</Button>} />
+    <View className="flex-row gap-3"><Summary label="待办" value={`${pendingTasks.length}`} /><Summary label="今日完成" value={`${completedToday}`} /></View>
+    {notice ? <Card variant="secondary"><Card.Body className="flex-row items-center justify-between gap-3"><Text type="body-sm">{notice}</Text><Text type="body-xs" color="muted" onPress={() => setNotice(null)}>关闭</Text></Card.Body></Card> : null}
+    {error ? <Text type="body-sm" color="danger" accessibilityRole="alert">{error}</Text> : null}
+    <TaskList tasks={pendingTasks} activeSession={activeSession} onStart={(taskId, mode) => void start(taskId, mode)} onOpenActions={(taskId) => setTaskSheet({ mode: 'actions', taskId })} />
+    {completedTasks.length ? <View className="gap-3"><Button variant="secondary" onPress={() => setCompletedExpanded((value) => !value)}>{completedExpanded ? '收起已完成' : `查看已完成（${completedTasks.length}）`}</Button>{completedExpanded ? <TaskList tasks={completedTasks} activeSession={activeSession} onStart={(taskId, mode) => void start(taskId, mode)} onOpenActions={(taskId) => setTaskSheet({ mode: 'actions', taskId })} /> : null}</View> : null}
+
+    <BottomSheetModal visible={createOpen} title="创建任务" onClose={() => setCreateOpen(false)}><TaskCreateForm onCreate={createTask} onCreated={() => { setCreateOpen(false); setNotice('任务已创建'); }} /></BottomSheetModal>
+    <BottomSheetModal visible={Boolean(sheetTask)} title={sheetTitle} onClose={() => setTaskSheet(null)}>
+      {sheetTask && taskSheet?.mode === 'actions' ? <TaskActionPanel task={sheetTask} records={records} activeSession={activeSession}
+        onEdit={() => setTaskSheet({ mode: 'edit', taskId: sheetTask.id, snapshot: { ...sheetTask } })}
+        onConfigureFocus={() => openFocusSettings(sheetTask.id)}
+        onGoalProgress={async (amount) => { await addGoalProgress(sheetTask.id, amount); if (!taskStore.getState().error) setNotice('目标进度已更新'); }} /> : null}
+      {taskSheet?.mode === 'edit' ? <TaskEditForm task={taskSheet.snapshot}
+        onUpdate={(input) => updateTask(taskSheet.taskId, taskSheet.snapshot.version, input)}
+        onUpdated={() => { setTaskSheet(null); setNotice('任务已更新'); }} /> : null}
+      {sheetTask && taskSheet?.mode === 'focus' ? <FocusPanel selectedMode={selectedMode} strictOptions={strictOptions} selectedTask={sheetTask}
+        onModeChange={selectMode} onStrictOptionToggle={toggleStrictOption} onStart={() => void start(sheetTask.id, selectedMode)}
+        lockCapabilities={capabilities} onRefreshLockCapabilities={() => void refreshCapabilities()}
+        onConfirmLockRisk={() => void confirmRisk()} onOpenLockPermission={(kind) => void openPermission(kind)} /> : null}
+    </BottomSheetModal>
+  </Screen>;
 }
 
 function Summary({ label, value }: { label: string; value: string }) {

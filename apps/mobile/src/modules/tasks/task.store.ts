@@ -16,7 +16,8 @@ import { createSQLiteTaskRepository } from './sqlite-task.repository';
 import { taskProgressLabel } from './task.presentation';
 import { createUuid } from '@/shared/uuid';
 import type { TaskRepository } from './task.repository';
-import type { CreateTaskInput, Task } from './task.types';
+import type { CreateTaskInput, Task, UpdateTaskInput } from './task.types';
+import { taskInputError } from './task.validation';
 import { getTaskExecutionState } from './task.execution';
 import { lockEngine } from '@/modules/lock-engine/lock-engine.store';
 import type { LockEngine } from '@/modules/lock-engine/lock-engine.port';
@@ -37,6 +38,7 @@ export type TaskStore = {
   error: string | null;
   hydrate(): Promise<void>;
   createTask(input: CreateTaskInput): Promise<CreateTaskResult>;
+  updateTask(taskId: string, expectedVersion: number, input: UpdateTaskInput): Promise<UpdateTaskResult>;
   startSession(taskId: string, mode: SessionMode): Promise<void>;
   finishSession(outcome: SessionOutcome, completedAmount?: number, exitReason?: string): Promise<void>;
   finishRest(): Promise<void>;
@@ -48,6 +50,7 @@ export type TaskStore = {
 };
 
 export type CreateTaskResult = { ok: true; taskId: string } | { ok: false; error: string };
+export type UpdateTaskResult = { ok: true } | { ok: false; error: string };
 
 const strictOptionsKey = 'looptodo.strict-options';
 
@@ -165,6 +168,8 @@ export function createTaskStore(
     },
     async createTask(input) {
       if (get().isHydrating) return { ok: false, error: '任务数据仍在恢复，请稍后重试' };
+      const validationError = taskInputError(input.kind, input);
+      if (validationError) return { ok: false, error: validationError };
       set({ error: null });
       try {
         const task = await repository.create(input);
@@ -176,6 +181,41 @@ export function createTaskStore(
         set({ error: nextError });
         return { ok: false, error: nextError };
       }
+    },
+    async updateTask(taskId, expectedVersion, input) {
+      const task = get().tasks.find((candidate) => candidate.id === taskId);
+      if (!task) return { ok: false, error: '任务不存在' };
+      if (task.version !== expectedVersion) return { ok: false, error: '任务已更新，请关闭编辑窗口后重试' };
+      if (get().activeSession?.taskId === taskId || task.status === 'active' || task.remoteActive) {
+        return { ok: false, error: '任务正在执行，结束专注后才能编辑' };
+      }
+      if (task.syncStatus === 'conflict') return { ok: false, error: '任务存在同步冲突，请先处理' };
+      const validationError = taskInputError(task.kind, input);
+      if (validationError) return { ok: false, error: validationError };
+      if (task.kind === 'goal' && (input.targetAmount == null || input.targetAmount < task.completedAmount)) {
+        return { ok: false, error: '目标量不能小于已完成量' };
+      }
+      const status = task.kind === 'goal'
+        ? task.completedAmount >= (input.targetAmount ?? Number.POSITIVE_INFINITY) ? 'completed' : 'pending'
+        : task.status;
+      const nextTask: Task = { ...task, ...input, title: input.title.trim(), targetUnit: input.targetUnit?.trim() || null,
+        status, version: task.version + 1, syncStatus: 'pending', progressLabel: '' };
+      nextTask.progressLabel = taskProgressLabel(nextTask);
+      try {
+        await repository.update(nextTask, task.version);
+        set((state) => ({ tasks: state.tasks.map((candidate) => candidate.id === taskId ? nextTask : candidate), error: null }));
+      } catch (error) {
+        const nextError = errorMessage(error);
+        set({ error: nextError });
+        return { ok: false, error: nextError };
+      }
+      try {
+        if (nextTask.mustDo && nextTask.forcedTriggerTime && nextTask.status === 'pending') await scheduleTask(forcedScheduler, nextTask);
+        else await forcedScheduler.cancel(taskRuleId(taskId));
+      } catch (error) {
+        set({ error: errorMessage(error) });
+      }
+      return { ok: true };
     },
     async startSession(taskId, mode) {
       const state = get();

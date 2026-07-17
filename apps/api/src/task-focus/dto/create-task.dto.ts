@@ -1,4 +1,4 @@
-import { IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Length, Max, Min } from 'class-validator';
+import { IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Length, Matches, Max, Min } from 'class-validator';
 
 export class CreateTaskDto {
   @IsOptional() @IsUUID() id?: string;
@@ -12,4 +12,5 @@ export class CreateTaskDto {
   @IsOptional() @IsNumber() @Min(0.01) targetAmount?: number;
   @IsOptional() @IsString() @Length(1, 40) targetUnit?: string;
   @IsOptional() @IsBoolean() isTodayRequired = false;
+  @IsOptional() @IsString() @Matches(/^([01]\d|2[0-3]):[0-5]\d$/) forcedTriggerTime?: string;
 }

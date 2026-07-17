@@ -16,4 +16,6 @@ test('shows the failure review directly in the failure list', async () => {
   const screen = await render(<StatisticsPanel records={[record]} tasks={[task]} />);
 
   expect(screen.getByText('复盘：被电话打断')).toBeTruthy();
+  expect(screen.queryByText(/可信/)).toBeNull();
+  expect(screen.getByText('专注方式分布')).toBeTruthy();
 });

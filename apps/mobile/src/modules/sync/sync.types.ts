@@ -1,8 +1,9 @@
 import type { FocusSessionRecord, SessionMode, SessionOutcome } from '@/modules/focus-session/focus-session.types';
-import type { Task } from '@/modules/tasks/task.types';
+import type { Task, UpdateTaskInput } from '@/modules/tasks/task.types';
 
 export type SyncOperation =
   | { type: 'task.create'; task: Task }
+  | { type: 'task.update'; taskId: string; version: number; patch: UpdateTaskInput & { status: 'pending' | 'completed' | 'failed' } }
   | { type: 'session.start'; taskId: string; localSessionId: string; mode: SessionMode; startedAt: number; plannedMinutes: number }
   | { type: 'session.finish'; taskId: string; localSessionId: string; outcome: SessionOutcome; record: FocusSessionRecord }
   | { type: 'task.goal-progress'; taskId: string; version: number; amount: number };
@@ -38,6 +39,7 @@ export type RemoteTask = {
   targetUnit: string | null;
   completedAmount: number;
   isTodayRequired: boolean;
+  forcedTriggerTime: string | null;
   status: 'pending' | 'active' | 'completed' | 'failed' | 'archived';
   activeSessionId: string | null;
   version: number;

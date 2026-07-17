@@ -4,7 +4,7 @@ import type { CreateTaskDto } from './dto/create-task.dto';
 import type { FinishSessionDto } from './dto/finish-session.dto';
 import type { UpdateTaskDto } from './dto/update-task.dto';
 import { DuplicateCategoryError, TASK_FOCUS_REPOSITORY, TaskIdentityConflictError, type MutationResult, type TaskFocusRepository } from './task-focus.repository';
-import type { SessionView, TaskView } from './task-focus.types';
+import type { SessionView, TaskPatch, TaskView } from './task-focus.types';
 import { ScoringService } from '../scoring/scoring.service';
 import { FamilyService } from '../family/family.service';
 
@@ -30,10 +30,13 @@ export class TaskFocusService {
   }
 
   async createTask(userId: string, input: CreateTaskDto) {
-    if (input.taskType === 'goal' && (!input.deadlineAt || !input.targetAmount || !input.targetUnit)) {
+    if (input.taskType === 'goal' && (input.timerMode !== 'countdown' || !input.deadlineAt || !input.targetAmount || !input.targetUnit?.trim())) {
       throw new BadRequestException({ code: 'GOAL_FIELDS_REQUIRED', message: '定目标任务需要截止日期、目标量和单位' });
     }
     if (input.categoryId && !(await this.repository.getCategory(userId, input.categoryId))) throw notFound();
+    if (input.isTodayRequired && !input.forcedTriggerTime) {
+      throw new BadRequestException({ code: 'FORCED_TRIGGER_TIME_REQUIRED', message: '今日必须任务需要触发时间' });
+    }
     try {
       return await this.repository.createTask(userId, {
         id: input.id,
@@ -47,6 +50,7 @@ export class TaskFocusService {
         targetAmount: input.targetAmount ?? null,
         targetUnit: input.targetUnit?.trim() || null,
         isTodayRequired: input.isTodayRequired,
+        forcedTriggerTime: input.isTodayRequired ? input.forcedTriggerTime ?? null : null,
       });
     } catch (error) {
       if (error instanceof TaskIdentityConflictError) throw new ConflictException({ code: 'TASK_IDENTITY_CONFLICT', message: '客户端任务 ID 已用于其他内容' });
@@ -55,13 +59,39 @@ export class TaskFocusService {
   }
 
   async updateTask(userId: string, id: string, input: UpdateTaskDto) {
-    if ((await this.getTask(userId, id)).createdByFamilyMemberId) throw new ConflictException({ code: 'FAMILY_TASK_CHANGE_REQUEST_REQUIRED', message: '家长下发任务只能提交修改申请' });
+    const current = await this.getTask(userId, id);
+    if (current.createdByFamilyMemberId) throw new ConflictException({ code: 'FAMILY_TASK_CHANGE_REQUEST_REQUIRED', message: '家长下发任务只能提交修改申请' });
     const { version, ...patch } = input;
     if (patch.categoryId && !(await this.repository.getCategory(userId, patch.categoryId))) throw notFound();
-    return unwrap(await this.repository.updateTask(userId, id, version, {
+    const nextRequired = patch.isTodayRequired ?? current.isTodayRequired;
+    const nextTriggerTime = nextRequired
+      ? patch.forcedTriggerTime === undefined ? current.forcedTriggerTime : patch.forcedTriggerTime
+      : null;
+    const normalized = definedTaskPatch({
       ...patch,
+      title: patch.title?.trim(),
+      targetUnit: patch.targetUnit === undefined ? undefined : patch.targetUnit?.trim() || null,
+      forcedTriggerTime: nextTriggerTime,
       deadlineAt: patch.deadlineAt === undefined ? undefined : patch.deadlineAt ? new Date(patch.deadlineAt) : null,
-    }));
+    });
+    if (nextRequired && !nextTriggerTime) {
+      throw new BadRequestException({ code: 'FORCED_TRIGGER_TIME_REQUIRED', message: '今日必须任务需要触发时间' });
+    }
+    if (current.taskType === 'goal') {
+      const timerMode = normalized.timerMode ?? current.timerMode;
+      const deadlineAt = normalized.deadlineAt === undefined ? current.deadlineAt : normalized.deadlineAt;
+      const targetAmount = normalized.targetAmount === undefined ? current.targetAmount : normalized.targetAmount;
+      const targetUnit = normalized.targetUnit === undefined ? current.targetUnit : normalized.targetUnit;
+      if (timerMode !== 'countdown' || !deadlineAt || !targetAmount || !targetUnit) {
+        throw new BadRequestException({ code: 'GOAL_FIELDS_REQUIRED', message: '定目标任务需要倒计时、截止日期、目标量和单位' });
+      }
+      if (targetAmount < current.completedAmount) {
+        throw new BadRequestException({ code: 'GOAL_TARGET_BELOW_PROGRESS', message: '目标量不能小于已完成量' });
+      }
+      normalized.status = current.completedAmount >= targetAmount ? 'completed' : 'pending';
+    }
+    if (current.version === version + 1 && taskMatchesPatch(current, normalized)) return current;
+    return unwrap(await this.repository.updateTask(userId, id, version, normalized));
   }
 
   async archiveTask(userId: string, id: string, version: number) {
@@ -127,4 +157,23 @@ function unwrap<T>(result: MutationResult<T>): T {
 function notFound() { return new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: '资源不存在' }); }
 function validateKey(key: string) {
   if (!key || key.length < 8 || key.length > 160) throw new BadRequestException({ code: 'IDEMPOTENCY_KEY_REQUIRED', message: '请提供有效的 Idempotency-Key' });
+}
+
+function definedTaskPatch(patch: TaskPatch): TaskPatch {
+  return Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined)) as TaskPatch;
+}
+
+function taskMatchesPatch(task: TaskView, patch: Parameters<TaskFocusRepository['updateTask']>[3]) {
+  if (patch.title !== undefined && task.title !== patch.title) return false;
+  if (patch.categoryId !== undefined && task.categoryId !== patch.categoryId) return false;
+  if (patch.timerMode !== undefined && task.timerMode !== patch.timerMode) return false;
+  if (patch.estimatedMinutes !== undefined && task.estimatedMinutes !== patch.estimatedMinutes) return false;
+  if (patch.restMinutes !== undefined && task.restMinutes !== patch.restMinutes) return false;
+  if (patch.deadlineAt !== undefined && (task.deadlineAt?.getTime() ?? null) !== (patch.deadlineAt?.getTime() ?? null)) return false;
+  if (patch.targetAmount !== undefined && task.targetAmount !== patch.targetAmount) return false;
+  if (patch.targetUnit !== undefined && task.targetUnit !== patch.targetUnit) return false;
+  if (patch.isTodayRequired !== undefined && task.isTodayRequired !== patch.isTodayRequired) return false;
+  if (patch.forcedTriggerTime !== undefined && task.forcedTriggerTime !== patch.forcedTriggerTime) return false;
+  if (patch.status !== undefined && task.status !== patch.status) return false;
+  return true;
 }

@@ -19,6 +19,7 @@ export type TaskView = {
   targetUnit: string | null;
   completedAmount: number;
   isTodayRequired: boolean;
+  forcedTriggerTime: string | null;
   status: 'pending' | 'active' | 'completed' | 'failed' | 'archived';
   activeSessionId: string | null;
   createdByFamilyMemberId: string | null;
@@ -52,4 +53,5 @@ export type TaskPatch = Partial<Pick<
   TaskView,
   'categoryId' | 'title' | 'timerMode' | 'estimatedMinutes' | 'restMinutes' | 'deadlineAt' |
   'targetAmount' | 'targetUnit' | 'completedAmount' | 'isTodayRequired' | 'status'
+  | 'forcedTriggerTime'
 >>;

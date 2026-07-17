@@ -47,6 +47,7 @@ function createRepository(options?: {
   createError?: Error;
   startError?: Error;
   finishError?: Error;
+  updateError?: Error;
 }) {
   let tasks = [pomodoroTask, goalTask].map((task) => ({ ...task }));
   let activeSession = options?.activeSession ?? null;
@@ -62,6 +63,10 @@ function createRepository(options?: {
       const task: Task = { ...pomodoroTask, ...input, id: 'task-created', completedAmount: 0, progressLabel: '新任务' };
       tasks = [task, ...tasks];
       return task;
+    },
+    async update(task) {
+      if (options?.updateError) throw options.updateError;
+      tasks = tasks.map((candidate) => candidate.id === task.id ? task : candidate);
     },
     async startSession(task, session) {
       if (options?.startError) throw options.startError;
@@ -85,6 +90,67 @@ function createRepository(options?: {
 }
 
 describe('task store local loop', () => {
+  test('updates a task explicitly and keeps the previous value when persistence fails', async () => {
+    const input = {
+      title: '修改后的任务', kind: 'pomodoro' as const, timerMode: 'countdown' as const,
+      estimateMinutes: 40, restMinutes: 10, deadlineAt: null, targetAmount: null, targetUnit: null,
+      mustDo: false, forcedTriggerTime: null,
+    };
+    const success = createTaskStore(createRepository().repository, [pomodoroTask]);
+    const failure = createTaskStore(createRepository({ updateError: new Error('保存失败') }).repository, [pomodoroTask]);
+
+    expect(await success.getState().updateTask('task-one', 1, input)).toEqual({ ok: true });
+    expect(success.getState().tasks[0]).toMatchObject({ title: '修改后的任务', estimateMinutes: 40, version: 2 });
+    expect(await failure.getState().updateTask('task-one', 1, input)).toEqual({ ok: false, error: '保存失败' });
+    expect(failure.getState().tasks[0].title).toBe('第一项任务');
+  });
+
+  test('does not allow a goal target below its recorded progress', async () => {
+    const store = createTaskStore(createRepository().repository, [{ ...goalTask, completedAmount: 6 }]);
+
+    const result = await store.getState().updateTask('task-goal', 1, {
+      title: goalTask.title, timerMode: 'countdown', estimateMinutes: 30, restMinutes: 5,
+      deadlineAt: goalTask.deadlineAt, targetAmount: 5, targetUnit: '页', mustDo: false, forcedTriggerTime: null,
+    });
+
+    expect(result).toEqual({ ok: false, error: '目标量不能小于已完成量' });
+    expect(store.getState().tasks[0].targetAmount).toBe(10);
+  });
+
+  test('rejects a stale edit snapshot after synchronization advances the task', async () => {
+    const store = createTaskStore(createRepository().repository, [{ ...pomodoroTask, version: 2 }]);
+    const result = await store.getState().updateTask('task-one', 1, {
+      title: '旧表单覆盖', timerMode: 'countdown', estimateMinutes: 25, restMinutes: 5,
+      deadlineAt: null, targetAmount: null, targetUnit: null, mustDo: false, forcedTriggerTime: null,
+    });
+
+    expect(result).toEqual({ ok: false, error: '任务已更新，请关闭编辑窗口后重试' });
+    expect(store.getState().tasks[0].title).toBe('第一项任务');
+  });
+
+  test('recomputes goal completion status when the target changes', async () => {
+    const completed = createTaskStore(createRepository().repository, [{ ...goalTask, completedAmount: 6, targetAmount: 6, status: 'completed' }]);
+    const pending = createTaskStore(createRepository().repository, [{ ...goalTask, completedAmount: 6, targetAmount: 10, status: 'pending' }]);
+    const base = { title: goalTask.title, timerMode: 'countdown' as const, estimateMinutes: 30, restMinutes: 5,
+      deadlineAt: goalTask.deadlineAt, targetUnit: '页', mustDo: false, forcedTriggerTime: null };
+
+    await completed.getState().updateTask('task-goal', 1, { ...base, targetAmount: 8 });
+    await pending.getState().updateTask('task-goal', 1, { ...base, targetAmount: 6 });
+
+    expect(completed.getState().tasks[0].status).toBe('pending');
+    expect(pending.getState().tasks[0].status).toBe('completed');
+  });
+
+  test('rejects edits that the server would reject', async () => {
+    const store = createTaskStore(createRepository().repository, [pomodoroTask]);
+    const result = await store.getState().updateTask('task-one', 1, {
+      title: pomodoroTask.title, timerMode: 'countdown', estimateMinutes: 181.5, restMinutes: 5,
+      deadlineAt: null, targetAmount: null, targetUnit: null, mustDo: false, forcedTriggerTime: null,
+    });
+
+    expect(result).toEqual({ ok: false, error: '专注时长必须是 1–180 分钟的整数' });
+  });
+
   test('restores native lock state into SQLite after process restart', async () => {
     const { repository } = createRepository();
     const engine: LockEngine = {

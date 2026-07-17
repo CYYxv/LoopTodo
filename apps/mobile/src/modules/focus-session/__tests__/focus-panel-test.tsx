@@ -47,4 +47,6 @@ test('does not expose the removed advanced resource feature', async () => {
   />);
 
   expect(screen.queryByText('专注资料与 AI（高级）')).toBeNull();
+  expect(screen.queryByText(/可信/)).toBeNull();
+  expect(screen.getByText('开始专注')).toBeTruthy();
 });
