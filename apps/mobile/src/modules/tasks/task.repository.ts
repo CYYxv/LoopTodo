@@ -11,6 +11,7 @@ export interface TaskRepository {
   create(input: CreateTaskInput): Promise<Task>;
   update(task: Task, previousVersion: number): Promise<void>;
   startSession(task: Task, session: ActiveSession): Promise<void>;
+  updateActiveSession(session: ActiveSession): Promise<void>;
   finishSession(task: Task, record: FocusSessionRecord, restSession: ActiveSession | null): Promise<void>;
   finishRest(): Promise<void>;
   addGoalProgress(task: Task, amount: number, idempotencyKey: string): Promise<void>;

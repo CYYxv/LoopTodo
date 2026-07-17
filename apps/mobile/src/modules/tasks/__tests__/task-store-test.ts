@@ -73,6 +73,9 @@ function createRepository(options?: {
       tasks = tasks.map((candidate) => candidate.id === task.id ? task : candidate);
       activeSession = session;
     },
+    async updateActiveSession(session) {
+      activeSession = session;
+    },
     async finishSession(task, record, restSession) {
       if (options?.finishError) throw options.finishError;
       tasks = tasks.map((candidate) => candidate.id === task.id ? task : candidate);
@@ -193,6 +196,27 @@ describe('task store local loop', () => {
     await store.getState().finishSession('completed');
 
     expect(calls).toEqual(['restrict:false:false:true', 'clear']);
+  });
+
+  test('persists pause state, extends a countdown on resume and excludes paused time', async () => {
+    const { repository, sessions } = createRepository();
+    const calls: string[] = [];
+    let time = 1_000;
+    const store = createTaskStore(repository, [pomodoroTask], () => time, testLockEngine(calls));
+
+    await store.getState().startSession('task-one', 'focus');
+    const originalEnd = store.getState().activeSession!.plannedEndAt!;
+    time = 61_000;
+    await store.getState().toggleSessionPause();
+    expect(store.getState().activeSession).toMatchObject({ pausedAt: 61_000, accumulatedPausedMs: 0 });
+    time = 121_000;
+    await store.getState().toggleSessionPause();
+    expect(store.getState().activeSession).toMatchObject({
+      pausedAt: null, accumulatedPausedMs: 60_000, plannedEndAt: originalEnd + 60_000,
+    });
+    time = 181_000;
+    await store.getState().finishSession('completed');
+    expect(sessions[0].durationSeconds).toBe(120);
   });
 
   test('clears restrictions when session persistence fails to start', async () => {

@@ -13,6 +13,8 @@ export type ActiveSession = {
   startedAt: number;
   plannedEndAt: number | null;
   restEndsAt: number | null;
+  pausedAt?: number | null;
+  accumulatedPausedMs?: number;
 };
 
 export type FocusSessionRecord = ActiveSession & {

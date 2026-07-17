@@ -9,6 +9,7 @@ import type {
   SessionOutcome,
   StrictOption,
 } from '@/modules/focus-session/focus-session.types';
+import { sessionElapsedMilliseconds } from '@/modules/focus-session/focus-session.utils';
 
 import { prototypeStrictOptions } from './prototype.data';
 import { selectedWhitelistPackages, whitelistStore } from '@/modules/focus-session/whitelist.store';
@@ -35,11 +36,13 @@ export type TaskStore = {
   isHydrating: boolean;
   isStartingSession: boolean;
   isFinishingSession: boolean;
+  isTogglingPause: boolean;
   error: string | null;
   hydrate(): Promise<void>;
   createTask(input: CreateTaskInput): Promise<CreateTaskResult>;
   updateTask(taskId: string, expectedVersion: number, input: UpdateTaskInput): Promise<UpdateTaskResult>;
   startSession(taskId: string, mode: SessionMode): Promise<void>;
+  toggleSessionPause(): Promise<void>;
   finishSession(outcome: SessionOutcome, completedAmount?: number, exitReason?: string): Promise<void>;
   finishRest(): Promise<void>;
   addGoalProgress(taskId: string, amount: number): Promise<void>;
@@ -75,6 +78,7 @@ export function createTaskStore(
     isHydrating: false,
     isStartingSession: false,
     isFinishingSession: false,
+    isTogglingPause: false,
     error: null,
     async hydrate() {
       if (get().isHydrating) return;
@@ -107,7 +111,7 @@ export function createTaskStore(
               endedAt,
               outcome: 'exited',
               failureReason: '锁机会话已在系统侧结束',
-              durationSeconds: Math.max(0, Math.floor((endedAt - recoveredSession.startedAt) / 1000)),
+              durationSeconds: Math.floor(sessionElapsedMilliseconds(recoveredSession, endedAt) / 1000),
               completedAmount: null,
             };
             await repository.finishSession(recoveredTask, record, null);
@@ -122,7 +126,8 @@ export function createTaskStore(
           const task = recoveredTasks.find((candidate) => candidate.id === nativeSession.taskId);
           if (task) {
             recoveredSession = { id: nativeSession.id, taskId: nativeSession.taskId, mode: 'lock', timerMode: task.timerMode,
-              phase: 'focus', startedAt: nativeSession.startedAt, plannedEndAt: nativeSession.endsAt, restEndsAt: null };
+              phase: 'focus', startedAt: nativeSession.startedAt, plannedEndAt: nativeSession.endsAt, restEndsAt: null,
+              pausedAt: null, accumulatedPausedMs: 0 };
             const activeTask = { ...task, status: 'active' as const, version: task.version + 1, syncStatus: 'pending' as const };
             await repository.startSession(activeTask, recoveredSession);
             recoveredTasks = recoveredTasks.map((candidate) => candidate.id === activeTask.id ? activeTask : candidate);
@@ -233,6 +238,8 @@ export function createTaskStore(
         startedAt,
         plannedEndAt: mode === 'lock' || task.timerMode === 'countdown' ? startedAt + Math.min(180, task.estimateMinutes) * 60_000 : null,
         restEndsAt: null,
+        pausedAt: null,
+        accumulatedPausedMs: 0,
       };
       const activeTask: Task = { ...task, status: 'active', version: task.version + 1, syncStatus: 'pending' };
       set({ error: null, isStartingSession: true });
@@ -267,9 +274,44 @@ export function createTaskStore(
         set({ error: errorMessage(error), isStartingSession: false });
       }
     },
+    async toggleSessionPause() {
+      const state = get();
+      const session = state.activeSession;
+      if (!session || session.phase !== 'focus' || state.isFinishingSession || state.isTogglingPause) return;
+      if (session.mode === 'lock') return set({ error: '锁机模式不可暂停' });
+      const timestamp = now();
+      const pausedDuration = session.pausedAt == null ? 0 : Math.max(0, timestamp - session.pausedAt);
+      const nextSession: ActiveSession = session.pausedAt == null
+        ? { ...session, pausedAt: timestamp, accumulatedPausedMs: session.accumulatedPausedMs ?? 0 }
+        : { ...session, pausedAt: null, accumulatedPausedMs: (session.accumulatedPausedMs ?? 0) + pausedDuration,
+            plannedEndAt: session.plannedEndAt == null ? null : session.plannedEndAt + pausedDuration };
+      set({ isTogglingPause: true, error: null });
+      try {
+        await repository.updateActiveSession(nextSession);
+        set({ activeSession: nextSession });
+        let restrictionError: string | null = null;
+        try {
+          const capabilities = await nativeLockEngine.checkCapabilities();
+          await nativeLockEngine.applyFocusRestrictions(restrictionsFor(
+            session.mode,
+            state.strictOptions,
+            capabilities,
+            selectedWhitelistPackages(),
+            nextSession.pausedAt == null
+              ? nextSession.plannedEndAt ?? timestamp + 4 * 60 * 60 * 1000
+              : timestamp + 24 * 60 * 60 * 1000,
+          ));
+        } catch (error) {
+          restrictionError = errorMessage(error);
+        }
+        set({ isTogglingPause: false, error: restrictionError });
+      } catch (error) {
+        set({ isTogglingPause: false, error: errorMessage(error) });
+      }
+    },
     async finishSession(outcome, completedAmount, exitReason) {
-      const { activeSession, isFinishingSession, tasks } = get();
-      if (!activeSession || activeSession.phase !== 'focus' || isFinishingSession) return;
+      const { activeSession, isFinishingSession, isTogglingPause, tasks } = get();
+      if (!activeSession || activeSession.phase !== 'focus' || isFinishingSession || isTogglingPause) return;
       const task = tasks.find((candidate) => candidate.id === activeSession.taskId);
       if (!task) return set({ error: '当前专注任务不存在' });
       if (outcome === 'completed' && task.kind === 'goal' && (!completedAmount || completedAmount <= 0)) {
@@ -298,12 +340,12 @@ export function createTaskStore(
         endedAt,
         outcome,
         failureReason: outcome === 'exited' ? (exitReason?.trim() || '用户主动退出专注') : null,
-        durationSeconds: Math.max(0, Math.floor((endedAt - activeSession.startedAt) / 1000)),
+        durationSeconds: Math.floor(sessionElapsedMilliseconds(activeSession, endedAt) / 1000),
         completedAmount: task.kind === 'goal' && outcome === 'completed' ? completedAmount ?? null : null,
       };
       const restSession = outcome === 'completed' && task.timerMode === 'countdown' && task.restMinutes > 0
         ? { ...activeSession, phase: 'rest' as const, startedAt: endedAt, plannedEndAt: null,
-            restEndsAt: endedAt + task.restMinutes * 60_000 }
+            restEndsAt: endedAt + task.restMinutes * 60_000, pausedAt: null, accumulatedPausedMs: 0 }
         : null;
 
       try {

@@ -39,6 +39,8 @@ type SessionRow = {
   started_at: number;
   planned_end_at: number | null;
   rest_ends_at?: number | null;
+  paused_at?: number | null;
+  accumulated_paused_ms?: number;
   ended_at?: number;
   outcome?: FocusSessionRecord['outcome'];
   failure_reason?: string | null;
@@ -131,6 +133,14 @@ export function createSQLiteTaskRepository(
           plannedMinutes: task.estimateMinutes }, task.id, `session-start-${session.id}`, now());
       });
     },
+    async updateActiveSession(session) {
+      const database = await getDatabase();
+      const result = await database.runAsync(`UPDATE active_sessions SET
+        paused_at = ?, accumulated_paused_ms = ?, planned_end_at = ?, rest_ends_at = ?
+        WHERE singleton_id = 1 AND id = ?`,
+        session.pausedAt ?? null, session.accumulatedPausedMs ?? 0, session.plannedEndAt, session.restEndsAt, session.id);
+      if (result.changes !== 1) throw new Error('当前专注状态已变化，请重新进入专注页');
+    },
     async finishSession(task, record, restSession) {
       const database = await getDatabase();
       await database.withTransactionAsync(async () => {
@@ -220,6 +230,8 @@ function mapActive(row: SessionRow): ActiveSession {
     startedAt: row.started_at,
     plannedEndAt: row.planned_end_at,
     restEndsAt: row.rest_ends_at ?? null,
+    pausedAt: row.paused_at ?? null,
+    accumulatedPausedMs: row.accumulated_paused_ms ?? 0,
   };
 }
 
@@ -260,8 +272,9 @@ function taskValues(task: Task): SQLiteBindValue[] {
 async function insertActive(database: SQLiteDatabase, session: ActiveSession) {
   await database.runAsync(
     `INSERT INTO active_sessions
-     (singleton_id, id, task_id, mode, timer_mode, phase, started_at, planned_end_at, rest_ends_at)
-     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     (singleton_id, id, task_id, mode, timer_mode, phase, started_at, planned_end_at, rest_ends_at,
+      paused_at, accumulated_paused_ms)
+     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     session.id,
     session.taskId,
     session.mode,
@@ -269,7 +282,9 @@ async function insertActive(database: SQLiteDatabase, session: ActiveSession) {
     session.phase,
     session.startedAt,
     session.plannedEndAt,
-    session.restEndsAt
+    session.restEndsAt,
+    session.pausedAt ?? null,
+    session.accumulatedPausedMs ?? 0
   );
 }
 

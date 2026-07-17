@@ -37,6 +37,9 @@ export function createMemoryTaskRepository(
       tasks = tasks.map((current) => (current.id === task.id ? { ...task } : current));
       activeSession = { ...session };
     },
+    async updateActiveSession(session) {
+      activeSession = { ...session };
+    },
     async finishSession(task, record, restSession) {
       tasks = tasks.map((current) => (current.id === task.id ? { ...task } : current));
       sessions = [{ ...record }, ...sessions];
