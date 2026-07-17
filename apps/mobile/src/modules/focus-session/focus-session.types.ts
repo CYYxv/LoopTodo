@@ -24,6 +24,7 @@ export type FocusSessionRecord = ActiveSession & {
   failureReason: string | null;
   durationSeconds: number;
   completedAmount: number | null;
+  completionNote?: string | null;
 };
 
 export type StrictOption = {

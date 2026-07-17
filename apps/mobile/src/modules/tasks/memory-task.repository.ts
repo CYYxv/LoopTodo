@@ -2,7 +2,7 @@ import type { ActiveSession, FocusSessionRecord } from '@/modules/focus-session/
 
 import { taskFromInput } from './task.presentation';
 import type { TaskRepository } from './task.repository';
-import type { Task } from './task.types';
+import type { Task, TaskCategory } from './task.types';
 
 export type MemoryTaskRepository = TaskRepository & {
   readSessions(): FocusSessionRecord[];
@@ -15,12 +15,14 @@ export function createMemoryTaskRepository(
 ): MemoryTaskRepository {
   let tasks = seedTasks.map((task) => ({ ...task }));
   let sessions: FocusSessionRecord[] = [];
+  let categories: TaskCategory[] = [];
   let activeSession: ActiveSession | null = null;
 
   return {
     async hydrate() {
       return {
         tasks: tasks.map((task) => ({ ...task })),
+        categories: categories.map((category) => ({ ...category })),
         sessionRecords: sessions.map((record) => ({ ...record })),
         activeSession: activeSession ? { ...activeSession } : null,
       };
@@ -30,7 +32,21 @@ export function createMemoryTaskRepository(
       tasks = [task, ...tasks];
       return { ...task };
     },
+    async createCategory(category) {
+      categories = [category, ...categories];
+    },
+    async updateCategory(category) {
+      categories = categories.map((current) => current.id === category.id ? category : current);
+      tasks = tasks.map((task) => task.categoryId === category.id ? { ...task, category: category.name } : task);
+    },
+    async archiveCategory(category) {
+      categories = categories.filter((current) => current.id !== category.id);
+      tasks = tasks.map((task) => task.categoryId === category.id ? { ...task, categoryId: null, category: '未分类' } : task);
+    },
     async update(task) {
+      tasks = tasks.map((current) => current.id === task.id ? { ...task } : current);
+    },
+    async archive(task) {
       tasks = tasks.map((current) => current.id === task.id ? { ...task } : current);
     },
     async startSession(task, session) {

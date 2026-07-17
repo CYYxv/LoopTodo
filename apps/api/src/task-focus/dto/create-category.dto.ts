@@ -1,6 +1,10 @@
-import { IsOptional, IsString, Length, MaxLength } from 'class-validator';
+import { IsOptional, IsString, IsUUID, Length, MaxLength } from 'class-validator';
 
 export class CreateCategoryDto {
+  @IsOptional()
+  @IsUUID()
+  id?: string;
+
   @IsString()
   @Length(1, 80)
   name!: string;

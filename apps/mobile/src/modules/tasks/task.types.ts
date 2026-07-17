@@ -4,9 +4,18 @@ export type TrustLevel = 'high' | 'medium' | 'low';
 export type TaskStatus = 'pending' | 'active' | 'completed' | 'failed' | 'archived';
 export type SyncStatus = 'pending' | 'synced' | 'conflict';
 
+export type TaskCategory = {
+  id: string;
+  name: string;
+  color: string | null;
+  version: number;
+  syncStatus: SyncStatus;
+};
+
 export type Task = {
   id: string;
   title: string;
+  categoryId?: string | null;
   category: string;
   kind: TaskKind;
   timerMode: TimerMode;
@@ -29,4 +38,4 @@ export type Task = {
 export type CreateTaskInput = Omit<Task, 'id' | 'status' | 'completedAmount' | 'progressLabel' | 'version' | 'syncStatus' | 'remoteActive'>;
 export type UpdateTaskInput = Pick<Task,
   'title' | 'timerMode' | 'estimateMinutes' | 'restMinutes' | 'deadlineAt' | 'targetAmount' | 'targetUnit' | 'mustDo' | 'forcedTriggerTime'
->;
+> & Partial<Pick<Task, 'categoryId' | 'category'>>;

@@ -40,3 +40,15 @@ test('shows a play control for a paused session', async () => {
     onTogglePause={jest.fn()} onComplete={jest.fn()} onExit={jest.fn()} onFinishRest={jest.fn()} />);
   expect(screen.getByLabelText('继续专注')).toBeTruthy();
 });
+
+test('submits a completion note when finishing focus', async () => {
+  const onComplete = jest.fn(async () => undefined);
+  const screen = await render(<ActiveSessionScreen session={session} task={task} error={null}
+    onTogglePause={jest.fn()} onComplete={onComplete as never} onExit={jest.fn()} onFinishRest={jest.fn()} />);
+
+  await fireEvent.press(screen.getByLabelText('结束专注'));
+  await fireEvent.changeText(screen.getByLabelText('本次完成内容'), '完成第一章练习');
+  await fireEvent.press(screen.getByText('完成专注'));
+
+  expect(onComplete).toHaveBeenCalledWith(undefined, '完成第一章练习');
+});

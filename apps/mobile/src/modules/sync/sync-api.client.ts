@@ -22,9 +22,21 @@ export function createHttpSyncClient(baseUrl: string, accessToken: string): Sync
   return {
     async execute(operation, key, mappedSessionId) {
       const headers = { 'idempotency-key': key };
+      if (operation.type === 'category.create') {
+        await request('/task-categories', { method: 'POST', body: JSON.stringify({ id: operation.category.id, name: operation.category.name, color: operation.category.color }) });
+        return {};
+      }
+      if (operation.type === 'category.update') {
+        await request(`/task-categories/${operation.categoryId}`, { method: 'PATCH', body: JSON.stringify({ version: operation.version, name: operation.name, color: operation.color }) });
+        return {};
+      }
+      if (operation.type === 'category.delete') {
+        await request(`/task-categories/${operation.categoryId}?version=${operation.version}`, { method: 'DELETE' });
+        return {};
+      }
       if (operation.type === 'task.create') {
         const task = operation.task;
-        await request('/tasks', { method: 'POST', body: JSON.stringify({ id: task.id, title: task.title,
+        await request('/tasks', { method: 'POST', body: JSON.stringify({ id: task.id, categoryId: task.categoryId ?? undefined, title: task.title,
           taskType: task.kind, timerMode: task.timerMode, estimatedMinutes: task.estimateMinutes,
           restMinutes: task.restMinutes, deadlineAt: task.deadlineAt ? new Date(task.deadlineAt).toISOString() : undefined,
           targetAmount: task.targetAmount ?? undefined, targetUnit: task.targetUnit ?? undefined,
@@ -34,10 +46,14 @@ export function createHttpSyncClient(baseUrl: string, accessToken: string): Sync
       if (operation.type === 'task.update') {
         const patch = operation.patch;
         await request(`/tasks/${operation.taskId}`, { method: 'PATCH', body: JSON.stringify({ version: operation.version,
-          title: patch.title, timerMode: patch.timerMode, estimatedMinutes: patch.estimateMinutes,
+          categoryId: patch.categoryId, title: patch.title, timerMode: patch.timerMode, estimatedMinutes: patch.estimateMinutes,
           restMinutes: patch.restMinutes, deadlineAt: patch.deadlineAt ? new Date(patch.deadlineAt).toISOString() : null,
           targetAmount: patch.targetAmount, targetUnit: patch.targetUnit, isTodayRequired: patch.mustDo,
           forcedTriggerTime: patch.forcedTriggerTime, status: patch.status }) });
+        return {};
+      }
+      if (operation.type === 'task.delete') {
+        await request(`/tasks/${operation.taskId}?version=${operation.version}`, { method: 'DELETE' });
         return {};
       }
       if (operation.type === 'session.start') {
@@ -52,6 +68,7 @@ export function createHttpSyncClient(baseUrl: string, accessToken: string): Sync
           body: JSON.stringify({ outcome: serverOutcome(operation.outcome, operation.record.mode),
             endedAt: new Date(operation.record.endedAt).toISOString(),
             actualMinutes: Math.ceil(operation.record.durationSeconds / 60),
+            completionNote: operation.record.completionNote,
             failureReasonText: operation.record.failureReason }) });
         return {};
       }

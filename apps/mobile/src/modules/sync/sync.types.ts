@@ -1,9 +1,13 @@
 import type { FocusSessionRecord, SessionMode, SessionOutcome } from '@/modules/focus-session/focus-session.types';
-import type { Task, UpdateTaskInput } from '@/modules/tasks/task.types';
+import type { Task, TaskCategory, UpdateTaskInput } from '@/modules/tasks/task.types';
 
 export type SyncOperation =
+  | { type: 'category.create'; category: TaskCategory }
+  | { type: 'category.update'; categoryId: string; version: number; name: string; color: string | null }
+  | { type: 'category.delete'; categoryId: string; version: number }
   | { type: 'task.create'; task: Task }
   | { type: 'task.update'; taskId: string; version: number; patch: UpdateTaskInput & { status: 'pending' | 'completed' | 'failed' } }
+  | { type: 'task.delete'; taskId: string; version: number }
   | { type: 'session.start'; taskId: string; localSessionId: string; mode: SessionMode; startedAt: number; plannedMinutes: number }
   | { type: 'session.finish'; taskId: string; localSessionId: string; outcome: SessionOutcome; record: FocusSessionRecord }
   | { type: 'task.goal-progress'; taskId: string; version: number; amount: number };
@@ -46,6 +50,15 @@ export type RemoteTask = {
   updatedAt: string;
 };
 
+export type RemoteCategory = {
+  id: string;
+  name: string;
+  color: string | null;
+  archived: boolean;
+  version: number;
+  updatedAt: string;
+};
+
 export type RemoteSession = {
   id: string;
   taskId: string;
@@ -57,7 +70,8 @@ export type RemoteSession = {
   actualMinutes: number | null;
   outcome: 'completed' | 'failed' | 'cancelled' | 'emergency_exit' | null;
   failureReasonText: string | null;
+  completionNote?: string | null;
   updatedAt: string;
 };
 
-export type SyncSnapshot = { tasks: RemoteTask[]; sessions: RemoteSession[]; cursor: string };
+export type SyncSnapshot = { categories?: RemoteCategory[]; tasks: RemoteTask[]; sessions: RemoteSession[]; cursor: string };

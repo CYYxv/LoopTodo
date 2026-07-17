@@ -7,32 +7,34 @@ import { Button, Card, Input, Label, Text, TextField } from '@/ui/hero-runtime';
 import type { CreateTaskResult, UpdateTaskResult } from '../task.store';
 import { getTaskExecutionState, taskExecutionReason } from '../task.execution';
 import { taskSessionStatistics } from '../task-session.statistics';
-import type { CreateTaskInput, Task, TaskKind, TimerMode, UpdateTaskInput } from '../task.types';
+import type { CreateTaskInput, Task, TaskCategory, TaskKind, TimerMode, UpdateTaskInput } from '../task.types';
 
 export function TasksPanel({ tasks, onCreateTask, onStart }: { tasks: Task[]; onCreateTask(input: CreateTaskInput): Promise<CreateTaskResult>; onStart(taskId: string, mode: SessionMode): void }) {
   return <View className="gap-4"><TaskCreateForm onCreate={onCreateTask} /><TaskList tasks={tasks} onStart={onStart} /></View>;
 }
 
-export function TaskCreateForm({ onCreate, onCreated }: { onCreate(input: CreateTaskInput): Promise<CreateTaskResult>; onCreated?(taskId: string): void }) {
-  return <TaskForm submitLabel="创建任务" onSubmit={onCreate} onSuccess={(result) => {
+export function TaskCreateForm({ categories = [], onCreate, onCreated }: { categories?: TaskCategory[]; onCreate(input: CreateTaskInput): Promise<CreateTaskResult>; onCreated?(taskId: string): void }) {
+  return <TaskForm categories={categories} submitLabel="创建任务" onSubmit={onCreate} onSuccess={(result) => {
     if ('taskId' in result) onCreated?.(result.taskId);
   }} />;
 }
 
-export function TaskEditForm({ task, onUpdate, onUpdated }: { task: Task; onUpdate(input: UpdateTaskInput): Promise<UpdateTaskResult>; onUpdated?(): void }) {
-  return <TaskForm initialTask={task} submitLabel="保存修改" onSubmit={(input) => {
-    const { title, timerMode, estimateMinutes, restMinutes, deadlineAt, targetAmount, targetUnit, mustDo, forcedTriggerTime } = input;
-    return onUpdate({ title, timerMode, estimateMinutes, restMinutes, deadlineAt, targetAmount, targetUnit, mustDo, forcedTriggerTime });
+export function TaskEditForm({ task, categories = [], onUpdate, onUpdated }: { task: Task; categories?: TaskCategory[]; onUpdate(input: UpdateTaskInput): Promise<UpdateTaskResult>; onUpdated?(): void }) {
+  return <TaskForm initialTask={task} categories={categories} submitLabel="保存修改" onSubmit={(input) => {
+    const { title, categoryId, category, timerMode, estimateMinutes, restMinutes, deadlineAt, targetAmount, targetUnit, mustDo, forcedTriggerTime } = input;
+    return onUpdate({ title, categoryId, category, timerMode, estimateMinutes, restMinutes, deadlineAt, targetAmount, targetUnit, mustDo, forcedTriggerTime });
   }} onSuccess={() => onUpdated?.()} />;
 }
 
-function TaskForm({ initialTask, submitLabel, onSubmit, onSuccess }: {
+function TaskForm({ initialTask, categories, submitLabel, onSubmit, onSuccess }: {
   initialTask?: Task;
+  categories?: TaskCategory[];
   submitLabel: string;
   onSubmit(input: CreateTaskInput): Promise<CreateTaskResult | UpdateTaskResult>;
   onSuccess(result: Extract<CreateTaskResult | UpdateTaskResult, { ok: true }>): void;
 }) {
   const [title, setTitle] = useState(initialTask?.title ?? '');
+  const [categoryId, setCategoryId] = useState(initialTask?.categoryId ?? '');
   const [kind, setKind] = useState<TaskKind>(initialTask?.kind ?? 'pomodoro');
   const [timerMode, setTimerMode] = useState<TimerMode>(initialTask?.timerMode ?? 'countdown');
   const [minutes, setMinutes] = useState(String(initialTask?.estimateMinutes ?? 25));
@@ -48,8 +50,9 @@ function TaskForm({ initialTask, submitLabel, onSubmit, onSuccess }: {
   const submit = async () => {
     const parsedDeadline = deadline ? Date.parse(`${deadline}T23:59:59`) : null;
     setSubmitError(null);
+    const category = categories?.find((item) => item.id === categoryId);
     const result = await onSubmit({
-      title: title.trim(), category: initialTask?.category ?? '未分类', kind,
+      title: title.trim(), categoryId: category?.id ?? null, category: category?.name ?? '未分类', kind,
       timerMode: kind === 'goal' ? 'countdown' : timerMode,
       estimateMinutes: Number(minutes), restMinutes: Number(restMinutes),
       deadlineAt: Number.isFinite(parsedDeadline) ? parsedDeadline : null,
@@ -66,7 +69,18 @@ function TaskForm({ initialTask, submitLabel, onSubmit, onSuccess }: {
     }
   };
 
-  return <View className="gap-3"><Field label="任务名" value={title} onChange={setTitle} placeholder="例如：完成物理作业" />{kind === 'goal' ? <Text type="body-sm" color="muted">计时方式：倒计时</Text> : <ChoiceRow value={timerMode} options={[["countdown", "倒计时"], ["countup", "正计时"], ["untimed", "不计时"]]} onChange={(value) => setTimerMode(value as TimerMode)} />}{timerMode === 'countdown' || kind === 'goal' ? <Field label={kind === 'goal' ? '单次专注分钟' : '专注分钟'} value={minutes} onChange={setMinutes} keyboard="numeric" /> : null}<Button variant="secondary" onPress={() => setShowMore((value) => !value)}>{showMore ? '收起更多设置' : '更多设置'}</Button>{showMore ? <View className="gap-3">{!initialTask ? <ChoiceRow value={kind} options={[["pomodoro", "普通任务"], ["goal", "定目标"]]} onChange={(value) => setKind(value as TaskKind)} /> : null}{kind === 'goal' ? <><Field label="截止日期" value={deadline} onChange={setDeadline} placeholder="YYYY-MM-DD" /><View className="flex-row gap-2"><View className="flex-1"><Field label="目标量" value={targetAmount} onChange={setTargetAmount} placeholder="例如 30" keyboard="numeric" /></View><View className="flex-1"><Field label="单位" value={targetUnit} onChange={setTargetUnit} placeholder="页/个/套/小时/次" /></View></View></> : null}<Field label="休息分钟" value={restMinutes} onChange={setRestMinutes} keyboard="numeric" /><Button variant={mustDo ? 'danger-soft' : 'secondary'} onPress={() => setMustDo((value) => !value)}>{mustDo ? '今日必须，按时强制锁机' : '设为今日必须'}</Button>{mustDo ? <Field label="强制触发时间" value={forcedTriggerTime} onChange={setForcedTriggerTime} placeholder="HH:mm" /> : null}</View> : null}{submitError ? <Text type="body-sm" color="danger" accessibilityRole="alert">{submitError}</Text> : null}<Button isDisabled={!title.trim()} onPress={() => void submit()}>{submitLabel}</Button>{!title.trim() ? <Text type="body-xs" color="muted">填写任务名后即可保存</Text> : null}</View>;
+  return <View className="gap-3"><Field label="任务名" value={title} onChange={setTitle} placeholder="例如：完成物理作业" /><View className="gap-2"><Text type="body-xs" color="muted">分类</Text><ChoiceRow value={categoryId} options={[["", "未分类"], ...(categories ?? []).map((item) => [item.id, item.name] as [string, string])]} onChange={setCategoryId} /></View>{kind === 'goal' ? <Text type="body-sm" color="muted">计时方式：倒计时</Text> : <ChoiceRow value={timerMode} options={[["countdown", "倒计时"], ["countup", "正计时"], ["untimed", "不计时"]]} onChange={(value) => setTimerMode(value as TimerMode)} />}{timerMode === 'countdown' || kind === 'goal' ? <Field label={kind === 'goal' ? '单次专注分钟' : '专注分钟'} value={minutes} onChange={setMinutes} keyboard="numeric" /> : null}<Button variant="secondary" onPress={() => setShowMore((value) => !value)}>{showMore ? '收起更多设置' : '更多设置'}</Button>{showMore ? <View className="gap-3">{!initialTask ? <ChoiceRow value={kind} options={[["pomodoro", "普通任务"], ["goal", "定目标"]]} onChange={(value) => setKind(value as TaskKind)} /> : null}{kind === 'goal' ? <><Field label="截止日期" value={deadline} onChange={setDeadline} placeholder="YYYY-MM-DD" /><View className="flex-row gap-2"><View className="flex-1"><Field label="目标量" value={targetAmount} onChange={setTargetAmount} placeholder="例如 30" keyboard="numeric" /></View><View className="flex-1"><Field label="单位" value={targetUnit} onChange={setTargetUnit} placeholder="页/个/套/小时/次" /></View></View></> : null}<Field label="休息分钟" value={restMinutes} onChange={setRestMinutes} keyboard="numeric" /><Button variant={mustDo ? 'danger-soft' : 'secondary'} onPress={() => setMustDo((value) => !value)}>{mustDo ? '今日必须，按时强制锁机' : '设为今日必须'}</Button>{mustDo ? <Field label="强制触发时间" value={forcedTriggerTime} onChange={setForcedTriggerTime} placeholder="HH:mm" /> : null}</View> : null}{submitError ? <Text type="body-sm" color="danger" accessibilityRole="alert">{submitError}</Text> : null}<Button isDisabled={!title.trim()} onPress={() => void submit()}>{submitLabel}</Button>{!title.trim() ? <Text type="body-xs" color="muted">填写任务名后即可保存</Text> : null}</View>;
+}
+
+export function CategoryManager({ categories, onCreate, onUpdate, onDelete }: {
+  categories: TaskCategory[];
+  onCreate(name: string): Promise<{ ok: boolean }>;
+  onUpdate(id: string, version: number, name: string): Promise<{ ok: boolean }>;
+  onDelete(id: string, version: number): Promise<{ ok: boolean }>;
+}) {
+  const [name, setName] = useState('');
+  const [editing, setEditing] = useState<Record<string, string>>({});
+  return <View className="gap-3"><Field label="新分类" value={name} onChange={setName} placeholder="例如：学习" /><Button isDisabled={!name.trim()} onPress={async () => { const result = await onCreate(name); if (result.ok) setName(''); }}>创建分类</Button>{categories.map((category) => <View key={category.id} className="gap-2 rounded-panel-inner bg-surface-secondary p-3"><Field label="分类名称" value={editing[category.id] ?? category.name} onChange={(value) => setEditing((current) => ({ ...current, [category.id]: value }))} /><View className="flex-row gap-2"><Button className="flex-1" size="sm" variant="secondary" onPress={() => void onUpdate(category.id, category.version, editing[category.id] ?? category.name)}>保存</Button><Button className="flex-1" size="sm" variant="danger-soft" onPress={() => void onDelete(category.id, category.version)}>删除</Button></View></View>)}</View>;
 }
 
 export function TaskList({ tasks, activeSession = null, onStart, onOpenActions }: {
@@ -78,20 +92,22 @@ export function TaskList({ tasks, activeSession = null, onStart, onOpenActions }
   return <View className="gap-2">{tasks.length === 0 ? <Card><Card.Body><Card.Title>还没有任务</Card.Title><Card.Description>创建一个最小任务，开始今天的闭环。</Card.Description></Card.Body></Card> : tasks.map((task) => <TaskCard key={task.id} task={task} activeSession={activeSession} onStart={onStart} onOpenActions={onOpenActions} />)}</View>;
 }
 
-export function TaskActionPanel({ task, records, activeSession, onEdit, onConfigureFocus, onGoalProgress }: {
+export function TaskActionPanel({ task, records, activeSession, onEdit, onConfigureFocus, onGoalProgress, onDelete }: {
   task: Task;
   records: FocusSessionRecord[];
   activeSession: ActiveSession | null;
   onEdit(): void;
   onConfigureFocus(): void;
   onGoalProgress(amount: number): Promise<void>;
+  onDelete(): Promise<void>;
 }) {
   const [progress, setProgress] = useState('1');
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const statistics = taskSessionStatistics(records, task.id);
   const executionState = getTaskExecutionState(task, activeSession);
   const canEdit = !['local_active', 'remote_active', 'stale_active', 'sync_conflict'].includes(executionState);
   const canFocus = executionState === 'available' || executionState === 'local_active';
-  return <View className="gap-4"><View className="flex-row gap-3"><Metric label="完成专注" value={`${statistics.completedSessions} 次`} /><Metric label="累计专注" value={`${statistics.completedMinutes} 分钟`} /></View><View className="flex-row gap-2"><Button className="flex-1" variant="secondary" isDisabled={!canEdit} onPress={onEdit}>编辑任务</Button><Button className="flex-1" variant="secondary" isDisabled={!canFocus} onPress={onConfigureFocus}>专注设置</Button></View>{!canEdit ? <Text type="body-xs" color="muted">任务执行中或存在同步问题，暂时不能编辑。</Text> : null}{task.kind === 'goal' && executionState === 'available' ? <View className="flex-row items-end gap-2"><View className="flex-1"><Field label={`补记完成量（${task.targetUnit}）`} value={progress} onChange={setProgress} keyboard="numeric" /></View><Button size="sm" onPress={() => void onGoalProgress(Number(progress))}>记录</Button></View> : null}</View>;
+  return <View className="gap-4"><View className="flex-row gap-3"><Metric label="完成专注" value={`${statistics.completedSessions} 次`} /><Metric label="累计专注" value={`${statistics.completedMinutes} 分钟`} /></View><View className="flex-row gap-2"><Button className="flex-1" variant="secondary" isDisabled={!canEdit} onPress={onEdit}>编辑任务</Button><Button className="flex-1" variant="secondary" isDisabled={!canFocus} onPress={onConfigureFocus}>专注设置</Button></View>{!canEdit ? <Text type="body-xs" color="muted">任务执行中或存在同步问题，暂时不能编辑。</Text> : null}{task.kind === 'goal' && executionState === 'available' ? <View className="flex-row items-end gap-2"><View className="flex-1"><Field label={`补记完成量（${task.targetUnit}）`} value={progress} onChange={setProgress} keyboard="numeric" /></View><Button size="sm" onPress={() => void onGoalProgress(Number(progress))}>记录</Button></View> : null}{confirmDelete ? <View className="gap-2 rounded-panel-inner bg-surface-secondary p-3"><Text type="body-sm">删除后不会进入回收站，确定删除“{task.title}”吗？</Text><View className="flex-row gap-2"><Button className="flex-1" variant="danger" onPress={() => void onDelete()}>确认删除</Button><Button className="flex-1" variant="secondary" onPress={() => setConfirmDelete(false)}>取消</Button></View></View> : <Button variant="danger-soft" isDisabled={!canEdit} onPress={() => setConfirmDelete(true)}>删除任务</Button>}</View>;
 }
 
 function TaskCard({ task, activeSession, onStart, onOpenActions }: { task: Task; activeSession: ActiveSession | null; onStart(taskId: string, mode: SessionMode): void; onOpenActions?(taskId: string): void }) {

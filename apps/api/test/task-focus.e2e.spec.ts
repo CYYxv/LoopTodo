@@ -25,13 +25,29 @@ class MemoryTaskFocusRepository implements TaskFocusRepository {
   tasks: Array<TaskView & { userId: string }> = [];
   sessions: Array<SessionView & { userId: string; startKey: string; finishKey: string | null }> = [];
 
-  async listCategories(userId: string) { return this.categories.filter((item) => item.userId === userId); }
-  async getCategory(userId: string, id: string) { return this.categories.find((item) => item.userId === userId && item.id === id) ?? null; }
-  async createCategory(userId: string, name: string, color: string | null) {
+  async listCategories(userId: string) { return this.categories.filter((item) => item.userId === userId && !item.archived); }
+  async getCategory(userId: string, id: string) { return this.categories.find((item) => item.userId === userId && item.id === id && !item.archived) ?? null; }
+  async createCategory(userId: string, id: string | undefined, name: string, color: string | null) {
     if (this.categories.some((item) => item.userId === userId && item.name === name)) throw new DuplicateCategoryError();
-    const value = { id: randomUUID(), userId, name, color, version: 1, updatedAt: new Date() };
+    const value = { id: id ?? randomUUID(), userId, name, color, archived: false, version: 1, updatedAt: new Date() };
     this.categories.push(value);
     return value;
+  }
+  async updateCategory(userId: string, id: string, version: number, name: string, color: string | null): Promise<MutationResult<CategoryView>> {
+    const category = this.categories.find((item) => item.userId === userId && item.id === id && !item.archived);
+    if (!category) return { status: 'not-found' };
+    if (category.version !== version) return { status: 'conflict' };
+    if (this.categories.some((item) => item.userId === userId && item.id !== id && item.name === name && !item.archived)) throw new DuplicateCategoryError();
+    Object.assign(category, { name, color, version: category.version + 1, updatedAt: new Date() });
+    return { status: 'ok', value: category };
+  }
+  async archiveCategory(userId: string, id: string, version: number): Promise<MutationResult<CategoryView>> {
+    const category = this.categories.find((item) => item.userId === userId && item.id === id && !item.archived);
+    if (!category) return { status: 'not-found' };
+    if (category.version !== version) return { status: 'conflict' };
+    Object.assign(category, { name: `${category.name}#archived`, archived: true, version: category.version + 1, updatedAt: new Date() });
+    this.tasks.filter((item) => item.userId === userId && item.categoryId === id).forEach((item) => { item.categoryId = null; item.version += 1; item.updatedAt = new Date(); });
+    return { status: 'ok', value: category };
   }
   async listTasks(userId: string) { return this.tasks.filter((item) => item.userId === userId && item.status !== 'archived'); }
   async getTask(userId: string, id: string) { return this.tasks.find((item) => item.userId === userId && item.id === id && item.status !== 'archived') ?? null; }
@@ -205,15 +221,25 @@ describe('task focus API', () => {
     expect(reusedForOtherTask.json().error.code).toBe('IDEMPOTENCY_KEY_CONFLICT');
 
     const finishHeaders = { ...authOne, 'idempotency-key': 'finish-task-key-001' };
-    const finished = (await app.inject({ method: 'POST', url: `/focus-sessions/${started.id}/finish`, headers: finishHeaders, payload: { outcome: 'completed' } })).json().data;
-    const finishReplay = (await app.inject({ method: 'POST', url: `/focus-sessions/${started.id}/finish`, headers: finishHeaders, payload: { outcome: 'completed' } })).json().data;
+    const finished = (await app.inject({ method: 'POST', url: `/focus-sessions/${started.id}/finish`, headers: finishHeaders, payload: { outcome: 'completed', completionNote: '完成两套卷并订正错题' } })).json().data;
+    const finishReplay = (await app.inject({ method: 'POST', url: `/focus-sessions/${started.id}/finish`, headers: finishHeaders, payload: { outcome: 'completed', completionNote: '完成两套卷并订正错题' } })).json().data;
     expect(finishReplay.id).toBe(finished.id);
+    expect(finished.completionNote).toBe('完成两套卷并订正错题');
     expect((await app.inject({ method: 'POST', url: `/focus-sessions/${started.id}/finish`, headers: finishHeaders, payload: { outcome: 'failed' } })).statusCode).toBe(409);
 
     const completed = await app.inject({ method: 'POST', url: `/tasks/${secondTask.id}/complete`, headers: authOne, payload: { version: 1 } });
     expect(completed.json().data.status).toBe('completed');
     const archived = await app.inject({ method: 'DELETE', url: `/tasks/${secondTask.id}?version=2`, headers: authOne });
     expect(archived.json().data.status).toBe('archived');
+
+    const renamedCategory = await app.inject({ method: 'PATCH', url: `/task-categories/${category.id}`, headers: authOne,
+      payload: { version: 1, name: '课程' } });
+    expect(renamedCategory.statusCode).toBe(200);
+    expect(renamedCategory.json().data.name).toBe('课程');
+    const deletedCategory = await app.inject({ method: 'DELETE', url: `/task-categories/${category.id}?version=2`, headers: authOne });
+    expect(deletedCategory.statusCode).toBe(200);
+    expect(deletedCategory.json().data.archived).toBe(true);
+    expect((await app.inject({ method: 'GET', url: `/tasks/${task.id}`, headers: authOne })).json().data.categoryId).toBeNull();
 
     const goalProgress = await app.inject({ method: 'POST', url: `/tasks/${goalTask.id}/progress`,
       headers: { ...authOne, 'idempotency-key': 'goal-progress-key-001' }, payload: { version: 1, amount: 5 } });
@@ -238,5 +264,6 @@ describe('task focus API', () => {
     const sync = await app.inject({ method: 'GET', url: '/sync/task-focus?since=1970-01-01T00:00:00.000Z', headers: authOne });
     expect(sync.json().data.tasks).toHaveLength(3);
     expect(sync.json().data.sessions).toHaveLength(1);
+    expect(sync.json().data.categories).toEqual(expect.arrayContaining([expect.objectContaining({ id: category.id, archived: true })]));
   });
 });

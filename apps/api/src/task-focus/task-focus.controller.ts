@@ -8,6 +8,7 @@ import { CreateTaskDto } from './dto/create-task.dto';
 import { FinishSessionDto } from './dto/finish-session.dto';
 import { StartSessionDto } from './dto/start-session.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
+import { UpdateCategoryDto } from './dto/update-category.dto';
 import { TaskFocusService } from './task-focus.service';
 
 @Controller()
@@ -20,7 +21,17 @@ export class TaskFocusController {
 
   @Post('task-categories')
   createCategory(@Req() request: AuthenticatedRequest, @Body() input: CreateCategoryDto) {
-    return this.service.createCategory(request.auth.sub, input.name, input.color);
+    return this.service.createCategory(request.auth.sub, input.id, input.name, input.color);
+  }
+
+  @Patch('task-categories/:id')
+  updateCategory(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() input: UpdateCategoryDto) {
+    return this.service.updateCategory(request.auth.sub, id, input.version, input.name, input.color);
+  }
+
+  @Delete('task-categories/:id')
+  archiveCategory(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Query('version', ParseIntPipe) version: number) {
+    return this.service.archiveCategory(request.auth.sub, id, version);
   }
 
   @Get('tasks')

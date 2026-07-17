@@ -27,12 +27,13 @@ export function ActiveSessionScreen({
   error: string | null;
   isPausePending?: boolean;
   onTogglePause: () => Promise<void>;
-  onComplete: (completedAmount?: number) => Promise<void>;
+  onComplete: (completedAmount?: number, completionNote?: string) => Promise<void>;
   onExit: (reason?: string) => Promise<void>;
   onFinishRest: () => Promise<void>;
 }) {
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [completedAmount, setCompletedAmount] = useState('');
+  const [completionNote, setCompletionNote] = useState('');
   const [exitReason, setExitReason] = useState('');
   const [finishOpen, setFinishOpen] = useState(false);
   const [keepAwake, setKeepAwake] = useState(true);
@@ -77,9 +78,10 @@ export function ActiveSessionScreen({
     </ScrollView>
     <BottomSheetModal visible={finishOpen} title="结束专注" onClose={() => setFinishOpen(false)}>
       {task.kind === 'goal' ? <TextField><Label>本次完成量（{task.targetUnit}）</Label><Input value={completedAmount} onChangeText={setCompletedAmount} keyboardType="numeric" placeholder="由你填写确认" /></TextField> : null}
+      <TextField><Label>本次完成内容</Label><Input accessibilityLabel="本次完成内容" value={completionNote} onChangeText={setCompletionNote} placeholder="例如：完成第一章练习并订正错题" /></TextField>
       <TextField><Label>{session.mode === 'lock' ? '紧急退出原因' : '退出原因（可选）'}</Label><Input value={exitReason} onChangeText={setExitReason} placeholder={session.mode === 'lock' ? '请说明紧急退出原因' : '是什么打断了这次专注？'} /></TextField>
       {error ? <Text type="body-sm" color="danger" accessibilityRole="alert">{error}</Text> : null}
-      <Button size="lg" onPress={() => void onComplete(task.kind === 'goal' ? Number(completedAmount) : undefined)}>完成专注</Button>
+      <Button size="lg" onPress={() => void onComplete(task.kind === 'goal' ? Number(completedAmount) : undefined, completionNote)}>完成专注</Button>
       <Button variant={session.mode === 'lock' ? 'danger' : 'secondary'} onPress={() => void onExit(exitReason)}>{session.mode === 'lock' ? '紧急退出锁机' : '放弃本次专注'}</Button>
     </BottomSheetModal>
   </View>;

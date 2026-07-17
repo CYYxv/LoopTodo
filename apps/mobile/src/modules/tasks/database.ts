@@ -20,7 +20,7 @@ async function openAndMigrate() {
     PRAGMA foreign_keys = ON;
     CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS tasks (
-      id TEXT PRIMARY KEY NOT NULL, title TEXT NOT NULL, category TEXT NOT NULL,
+      id TEXT PRIMARY KEY NOT NULL, title TEXT NOT NULL, category_id TEXT, category TEXT NOT NULL,
       kind TEXT NOT NULL, timer_mode TEXT NOT NULL, estimate_minutes INTEGER NOT NULL,
       rest_minutes INTEGER NOT NULL, deadline_at INTEGER, target_amount REAL, target_unit TEXT,
       completed_amount REAL NOT NULL DEFAULT 0, must_do INTEGER NOT NULL DEFAULT 0,
@@ -28,10 +28,15 @@ async function openAndMigrate() {
       sync_status TEXT NOT NULL DEFAULT 'pending', remote_active INTEGER NOT NULL DEFAULT 0,
       server_updated_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS task_categories (
+      id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, color TEXT, archived INTEGER NOT NULL DEFAULT 0,
+      version INTEGER NOT NULL DEFAULT 1, sync_status TEXT NOT NULL DEFAULT 'pending',
+      server_updated_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS focus_sessions (
       id TEXT PRIMARY KEY NOT NULL, task_id TEXT NOT NULL, mode TEXT NOT NULL, timer_mode TEXT NOT NULL,
       started_at INTEGER NOT NULL, planned_end_at INTEGER, ended_at INTEGER NOT NULL, outcome TEXT NOT NULL,
-      failure_reason TEXT, duration_seconds INTEGER NOT NULL, completed_amount REAL, synced_at INTEGER,
+      failure_reason TEXT, completion_note TEXT, duration_seconds INTEGER NOT NULL, completed_amount REAL, synced_at INTEGER,
       FOREIGN KEY(task_id) REFERENCES tasks(id)
     );
     CREATE TABLE IF NOT EXISTS active_sessions (
@@ -64,7 +69,9 @@ async function openAndMigrate() {
   await ensureColumn(database, 'tasks', 'remote_active', 'INTEGER NOT NULL DEFAULT 0');
   await ensureColumn(database, 'tasks', 'server_updated_at', 'INTEGER');
   await ensureColumn(database, 'tasks', 'forced_trigger_time', 'TEXT');
+  await ensureColumn(database, 'tasks', 'category_id', 'TEXT');
   await ensureColumn(database, 'focus_sessions', 'synced_at', 'INTEGER');
+  await ensureColumn(database, 'focus_sessions', 'completion_note', 'TEXT');
   await ensureColumn(database, 'active_sessions', 'paused_at', 'INTEGER');
   await ensureColumn(database, 'active_sessions', 'accumulated_paused_ms', 'INTEGER NOT NULL DEFAULT 0');
   await database.execAsync(`

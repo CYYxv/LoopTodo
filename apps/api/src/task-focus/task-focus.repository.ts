@@ -16,7 +16,9 @@ export type MutationResult<T> =
 export interface TaskFocusRepository {
   listCategories(userId: string): Promise<CategoryView[]>;
   getCategory(userId: string, id: string): Promise<CategoryView | null>;
-  createCategory(userId: string, name: string, color: string | null): Promise<CategoryView>;
+  createCategory(userId: string, id: string | undefined, name: string, color: string | null): Promise<CategoryView>;
+  updateCategory(userId: string, id: string, version: number, name: string, color: string | null): Promise<MutationResult<CategoryView>>;
+  archiveCategory(userId: string, id: string, version: number): Promise<MutationResult<CategoryView>>;
   listTasks(userId: string): Promise<TaskView[]>;
   getTask(userId: string, id: string): Promise<TaskView | null>;
   createTask(userId: string, input: TaskCreate): Promise<TaskView>;

@@ -17,7 +17,7 @@ import { createSQLiteTaskRepository } from './sqlite-task.repository';
 import { taskProgressLabel } from './task.presentation';
 import { createUuid } from '@/shared/uuid';
 import type { TaskRepository } from './task.repository';
-import type { CreateTaskInput, Task, UpdateTaskInput } from './task.types';
+import type { CreateTaskInput, Task, TaskCategory, UpdateTaskInput } from './task.types';
 import { taskInputError } from './task.validation';
 import { getTaskExecutionState } from './task.execution';
 import { lockEngine } from '@/modules/lock-engine/lock-engine.store';
@@ -28,6 +28,7 @@ import type { ForcedTriggerScheduler } from '@/modules/forced-trigger/forced-tri
 
 export type TaskStore = {
   tasks: Task[];
+  categories: TaskCategory[];
   activeSession: ActiveSession | null;
   sessionRecords: FocusSessionRecord[];
   selectedTaskId: string | null;
@@ -41,9 +42,13 @@ export type TaskStore = {
   hydrate(): Promise<void>;
   createTask(input: CreateTaskInput): Promise<CreateTaskResult>;
   updateTask(taskId: string, expectedVersion: number, input: UpdateTaskInput): Promise<UpdateTaskResult>;
+  deleteTask(taskId: string, expectedVersion: number): Promise<UpdateTaskResult>;
+  createCategory(name: string): Promise<CategoryMutationResult>;
+  updateCategory(categoryId: string, expectedVersion: number, name: string): Promise<UpdateTaskResult>;
+  deleteCategory(categoryId: string, expectedVersion: number): Promise<UpdateTaskResult>;
   startSession(taskId: string, mode: SessionMode): Promise<void>;
   toggleSessionPause(): Promise<void>;
-  finishSession(outcome: SessionOutcome, completedAmount?: number, exitReason?: string): Promise<void>;
+  finishSession(outcome: SessionOutcome, completedAmount?: number, exitReason?: string, completionNote?: string): Promise<void>;
   finishRest(): Promise<void>;
   addGoalProgress(taskId: string, amount: number): Promise<void>;
   selectTask(taskId: string): void;
@@ -54,6 +59,7 @@ export type TaskStore = {
 
 export type CreateTaskResult = { ok: true; taskId: string } | { ok: false; error: string };
 export type UpdateTaskResult = { ok: true } | { ok: false; error: string };
+export type CategoryMutationResult = { ok: true; categoryId: string } | { ok: false; error: string };
 
 const strictOptionsKey = 'looptodo.strict-options';
 
@@ -70,6 +76,7 @@ export function createTaskStore(
 ) {
   return createStore<TaskStore>((set, get) => ({
     tasks: initialTasks,
+    categories: [],
     activeSession: null,
     sessionRecords: [],
     selectedTaskId: initialTasks[0]?.id ?? null,
@@ -134,7 +141,7 @@ export function createTaskStore(
           }
         }
         set((state) => ({
-          ...snapshot, tasks: recoveredTasks, sessionRecords: recoveredRecords, activeSession: recoveredSession, strictOptions: savedStrictOptions,
+          ...snapshot, tasks: recoveredTasks, categories: snapshot.categories ?? [], sessionRecords: recoveredRecords, activeSession: recoveredSession, strictOptions: savedStrictOptions,
           selectedTaskId: recoveredTasks.some((task) => task.id === state.selectedTaskId)
             ? state.selectedTaskId
             : recoveredTasks.find((task) => task.status !== 'completed')?.id ?? null,
@@ -187,6 +194,48 @@ export function createTaskStore(
         return { ok: false, error: nextError };
       }
     },
+    async createCategory(name) {
+      const normalized = name.trim();
+      if (!normalized) return { ok: false, error: '请输入分类名称' };
+      if (get().categories.some((category) => category.name === normalized)) return { ok: false, error: '分类名称已存在' };
+      const category: TaskCategory = { id: createUuid(), name: normalized, color: null, version: 1, syncStatus: 'pending' };
+      try {
+        await repository.createCategory(category);
+        set((state) => ({ categories: [...state.categories, category], error: null }));
+        return { ok: true, categoryId: category.id };
+      } catch (error) {
+        const nextError = errorMessage(error); set({ error: nextError }); return { ok: false, error: nextError };
+      }
+    },
+    async updateCategory(categoryId, expectedVersion, name) {
+      const category = get().categories.find((candidate) => candidate.id === categoryId);
+      const normalized = name.trim();
+      if (!category) return { ok: false, error: '分类不存在' };
+      if (category.version !== expectedVersion) return { ok: false, error: '分类已更新，请重试' };
+      if (!normalized) return { ok: false, error: '请输入分类名称' };
+      if (get().categories.some((candidate) => candidate.id !== categoryId && candidate.name === normalized)) return { ok: false, error: '分类名称已存在' };
+      const next = { ...category, name: normalized, version: category.version + 1, syncStatus: 'pending' as const };
+      try {
+        await repository.updateCategory(next, category.version);
+        set((state) => ({ categories: state.categories.map((candidate) => candidate.id === categoryId ? next : candidate), tasks: state.tasks.map((task) => task.categoryId === categoryId ? { ...task, category: normalized } : task), error: null }));
+        return { ok: true };
+      } catch (error) {
+        const nextError = errorMessage(error); set({ error: nextError }); return { ok: false, error: nextError };
+      }
+    },
+    async deleteCategory(categoryId, expectedVersion) {
+      const category = get().categories.find((candidate) => candidate.id === categoryId);
+      if (!category) return { ok: false, error: '分类不存在' };
+      if (category.version !== expectedVersion) return { ok: false, error: '分类已更新，请重试' };
+      const archived = { ...category, version: category.version + 1, syncStatus: 'pending' as const };
+      try {
+        await repository.archiveCategory(archived, category.version);
+        set((state) => ({ categories: state.categories.filter((candidate) => candidate.id !== categoryId), tasks: state.tasks.map((task) => task.categoryId === categoryId ? { ...task, categoryId: null, category: '未分类', version: task.version + 1, syncStatus: 'pending' as const } : task), error: null }));
+        return { ok: true };
+      } catch (error) {
+        const nextError = errorMessage(error); set({ error: nextError }); return { ok: false, error: nextError };
+      }
+    },
     async updateTask(taskId, expectedVersion, input) {
       const task = get().tasks.find((candidate) => candidate.id === taskId);
       if (!task) return { ok: false, error: '任务不存在' };
@@ -203,7 +252,8 @@ export function createTaskStore(
       const status = task.kind === 'goal'
         ? task.completedAmount >= (input.targetAmount ?? Number.POSITIVE_INFINITY) ? 'completed' : 'pending'
         : task.status;
-      const nextTask: Task = { ...task, ...input, title: input.title.trim(), targetUnit: input.targetUnit?.trim() || null,
+      const nextTask: Task = { ...task, ...input, categoryId: input.categoryId === undefined ? task.categoryId ?? null : input.categoryId,
+        category: input.category ?? task.category, title: input.title.trim(), targetUnit: input.targetUnit?.trim() || null,
         status, version: task.version + 1, syncStatus: 'pending', progressLabel: '' };
       nextTask.progressLabel = taskProgressLabel(nextTask);
       try {
@@ -221,6 +271,24 @@ export function createTaskStore(
         set({ error: errorMessage(error) });
       }
       return { ok: true };
+    },
+    async deleteTask(taskId, expectedVersion) {
+      const task = get().tasks.find((candidate) => candidate.id === taskId);
+      if (!task) return { ok: false, error: '任务不存在' };
+      if (task.version !== expectedVersion) return { ok: false, error: '任务已更新，请重试' };
+      if (get().activeSession?.taskId === taskId || task.status === 'active' || task.remoteActive) return { ok: false, error: '任务执行中，暂时不能删除' };
+      if (task.syncStatus === 'conflict') return { ok: false, error: '任务存在同步冲突，请先处理' };
+      const archived = { ...task, status: 'archived' as const, version: task.version + 1, syncStatus: 'pending' as const };
+      try {
+        await repository.archive(archived, task.version);
+        await forcedScheduler.cancel(taskRuleId(taskId)).catch(() => undefined);
+        set((state) => ({ tasks: state.tasks.filter((candidate) => candidate.id !== taskId), selectedTaskId: state.selectedTaskId === taskId ? null : state.selectedTaskId, error: null }));
+        return { ok: true };
+      } catch (error) {
+        const nextError = errorMessage(error);
+        set({ error: nextError });
+        return { ok: false, error: nextError };
+      }
     },
     async startSession(taskId, mode) {
       const state = get();
@@ -309,7 +377,7 @@ export function createTaskStore(
         set({ isTogglingPause: false, error: errorMessage(error) });
       }
     },
-    async finishSession(outcome, completedAmount, exitReason) {
+    async finishSession(outcome, completedAmount, exitReason, completionNote) {
       const { activeSession, isFinishingSession, isTogglingPause, tasks } = get();
       if (!activeSession || activeSession.phase !== 'focus' || isFinishingSession || isTogglingPause) return;
       const task = tasks.find((candidate) => candidate.id === activeSession.taskId);
@@ -342,6 +410,7 @@ export function createTaskStore(
         failureReason: outcome === 'exited' ? (exitReason?.trim() || '用户主动退出专注') : null,
         durationSeconds: Math.floor(sessionElapsedMilliseconds(activeSession, endedAt) / 1000),
         completedAmount: task.kind === 'goal' && outcome === 'completed' ? completedAmount ?? null : null,
+        completionNote: outcome === 'completed' ? completionNote?.trim() || null : null,
       };
       const restSession = outcome === 'completed' && task.timerMode === 'countdown' && task.restMinutes > 0
         ? { ...activeSession, phase: 'rest' as const, startedAt: endedAt, plannedEndAt: null,

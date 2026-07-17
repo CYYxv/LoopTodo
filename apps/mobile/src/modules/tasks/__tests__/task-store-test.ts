@@ -2,7 +2,7 @@ import type { ActiveSession, FocusSessionRecord } from '@/modules/focus-session/
 
 import { createTaskStore } from '../task.store';
 import type { TaskRepository } from '../task.repository';
-import type { CreateTaskInput, Task } from '../task.types';
+import type { CreateTaskInput, Task, TaskCategory } from '../task.types';
 import type { LockEngine } from '@/modules/lock-engine/lock-engine.port';
 
 const pomodoroTask: Task = {
@@ -53,10 +53,11 @@ function createRepository(options?: {
   let activeSession = options?.activeSession ?? null;
   if (activeSession) tasks = tasks.map((task) => task.id === activeSession?.taskId ? { ...task, status: 'active' } : task);
   const sessions: FocusSessionRecord[] = [];
+  let categories: TaskCategory[] = [];
   const repository: TaskRepository = {
     async hydrate() {
       if (options?.hydrateError) throw options.hydrateError;
-      return { tasks, sessionRecords: sessions, activeSession };
+      return { tasks, categories, sessionRecords: sessions, activeSession };
     },
     async create(input: CreateTaskInput) {
       if (options?.createError) throw options.createError;
@@ -64,7 +65,20 @@ function createRepository(options?: {
       tasks = [task, ...tasks];
       return task;
     },
+    async createCategory(category) {
+      categories = [...categories, category];
+    },
+    async updateCategory(category) {
+      categories = categories.map((candidate) => candidate.id === category.id ? category : candidate);
+    },
+    async archiveCategory(category) {
+      categories = categories.filter((candidate) => candidate.id !== category.id);
+    },
     async update(task) {
+      if (options?.updateError) throw options.updateError;
+      tasks = tasks.map((candidate) => candidate.id === task.id ? task : candidate);
+    },
+    async archive(task) {
       if (options?.updateError) throw options.updateError;
       tasks = tasks.map((candidate) => candidate.id === task.id ? task : candidate);
     },
@@ -93,6 +107,43 @@ function createRepository(options?: {
 }
 
 describe('task store local loop', () => {
+  test('archives a task and removes it from the visible list', async () => {
+    const store = createTaskStore(createRepository().repository, [pomodoroTask]);
+    const state = store.getState() as typeof store.getState extends () => infer Value ? Value & { deleteTask(taskId: string, version: number): Promise<{ ok: boolean; error?: string }> } : never;
+
+    expect(typeof state.deleteTask).toBe('function');
+    expect(await state.deleteTask('task-one', 1)).toEqual({ ok: true });
+    expect(store.getState().tasks).toHaveLength(0);
+  });
+
+  test('stores the completion note with a completed focus record', async () => {
+    const { repository, sessions } = createRepository();
+    const store = createTaskStore(repository, [pomodoroTask], () => 2_000, testLockEngine([]));
+    await store.getState().startSession('task-one', 'focus');
+
+    await (store.getState().finishSession as unknown as (outcome: 'completed', amount?: number, reason?: string, note?: string) => Promise<void>)('completed', undefined, undefined, '完成第一章练习');
+
+    expect(sessions[0]).toMatchObject({ completionNote: '完成第一章练习' });
+  });
+
+  test('creates, renames and archives a task category', async () => {
+    const store = createTaskStore(createRepository().repository, [pomodoroTask]);
+    const state = store.getState() as typeof store.getState extends () => infer Value ? Value & {
+      createCategory(name: string): Promise<{ ok: boolean; categoryId?: string }>;
+      updateCategory(id: string, version: number, name: string): Promise<{ ok: boolean }>;
+      deleteCategory(id: string, version: number): Promise<{ ok: boolean }>;
+    } : never;
+
+    expect(typeof state.createCategory).toBe('function');
+    const created = await state.createCategory('学习');
+    expect(created).toMatchObject({ ok: true });
+    if (!created.ok) throw new Error(created.error);
+    const categoryId = created.categoryId!;
+    expect(await store.getState().updateCategory(categoryId, 1, '课程')).toEqual({ ok: true });
+    expect(await store.getState().deleteCategory(categoryId, 2)).toEqual({ ok: true });
+    expect(store.getState().categories).toHaveLength(0);
+  });
+
   test('updates a task explicitly and keeps the previous value when persistence fails', async () => {
     const input = {
       title: '修改后的任务', kind: 'pomodoro' as const, timerMode: 'countdown' as const,

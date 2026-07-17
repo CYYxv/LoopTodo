@@ -2,6 +2,7 @@ export type CategoryView = {
   id: string;
   name: string;
   color: string | null;
+  archived: boolean;
   version: number;
   updatedAt: Date;
 };

@@ -286,6 +286,7 @@ model TaskCategory {
   userId    String   @map("user_id") @db.Uuid
   name      String   @db.VarChar(80)
   color     String?  @db.VarChar(32)
+  archived  Boolean  @default(false)
   version   Int      @default(1)
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")

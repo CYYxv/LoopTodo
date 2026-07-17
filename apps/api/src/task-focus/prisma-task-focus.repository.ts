@@ -12,21 +12,50 @@ export class PrismaTaskFocusRepository implements TaskFocusRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async listCategories(userId: string) {
-    return (await this.prisma.taskCategory.findMany({ where: { userId }, orderBy: { createdAt: 'asc' } })).map(categoryView);
+    return (await this.prisma.taskCategory.findMany({ where: { userId, archived: false }, orderBy: { createdAt: 'asc' } })).map(categoryView);
   }
 
   async getCategory(userId: string, id: string) {
-    const category = await this.prisma.taskCategory.findFirst({ where: { id, userId } });
+    const category = await this.prisma.taskCategory.findFirst({ where: { id, userId, archived: false } });
     return category ? categoryView(category) : null;
   }
 
-  async createCategory(userId: string, name: string, color: string | null) {
+  async createCategory(userId: string, id: string | undefined, name: string, color: string | null) {
     try {
-      return categoryView(await this.prisma.taskCategory.create({ data: { userId, name, color } }));
+      const archived = await this.prisma.taskCategory.findFirst({ where: { userId, name, archived: true } });
+      if (archived && (!id || archived.id === id)) return categoryView(await this.prisma.taskCategory.update({ where: { id: archived.id }, data: { archived: false, color, version: { increment: 1 } } }));
+      return categoryView(await this.prisma.taskCategory.create({ data: { id, userId, name, color } }));
+    } catch (error) {
+      if (isUniqueConflict(error)) {
+        const existing = id ? await this.prisma.taskCategory.findFirst({ where: { id, userId } }) : null;
+        if (existing && existing.name === name && existing.color === color) return categoryView(existing);
+        throw new DuplicateCategoryError();
+      }
+      throw error;
+    }
+  }
+
+  async updateCategory(userId: string, id: string, version: number, name: string, color: string | null): Promise<MutationResult<CategoryView>> {
+    try {
+      const result = await this.prisma.taskCategory.updateMany({ where: { id, userId, version, archived: false }, data: { name, color, version: { increment: 1 } } });
+      if (result.count !== 1) return (await this.prisma.taskCategory.findFirst({ where: { id, userId, archived: false } })) ? { status: 'conflict' } : { status: 'not-found' };
+      return { status: 'ok', value: categoryView(await this.prisma.taskCategory.findUniqueOrThrow({ where: { id } })) };
     } catch (error) {
       if (isUniqueConflict(error)) throw new DuplicateCategoryError();
       throw error;
     }
+  }
+
+  async archiveCategory(userId: string, id: string, version: number): Promise<MutationResult<CategoryView>> {
+    return this.prisma.$transaction(async (transaction) => {
+      const category = await transaction.taskCategory.findFirst({ where: { id, userId, archived: false } });
+      if (!category) return { status: 'not-found' } as const;
+      if (category.version !== version) return { status: 'conflict' } as const;
+      await transaction.task.updateMany({ where: { userId, categoryId: id }, data: { categoryId: null, version: { increment: 1 } } });
+      const archivedName = `${category.name.slice(0, 65)}#${category.id.slice(0, 8)}`;
+      const archived = await transaction.taskCategory.update({ where: { id }, data: { name: archivedName, archived: true, version: { increment: 1 } } });
+      return { status: 'ok', value: categoryView(archived) } as const;
+    });
   }
 
   async listTasks(userId: string) {
@@ -226,7 +255,7 @@ export class PrismaTaskFocusRepository implements TaskFocusRepository {
 class ConcurrentSessionStateError extends Error {}
 
 function categoryView(category: TaskCategory): CategoryView {
-  return { id: category.id, name: category.name, color: category.color, version: category.version, updatedAt: category.updatedAt };
+  return { id: category.id, name: category.name, color: category.color, archived: category.archived, version: category.version, updatedAt: category.updatedAt };
 }
 
 function taskView(task: Task): TaskView {

@@ -19,7 +19,7 @@ export default function SessionRoute() {
   if (!session) return <Redirect href="/tasks" />;
   const task = tasks.find((candidate) => candidate.id === session.taskId);
   if (!task) return <Redirect href="/tasks" />;
-  const complete = async (amount?: number) => { await finishSession('completed', amount); if (!taskStore.getState().activeSession) router.replace('/tasks'); };
+  const complete = async (amount?: number, completionNote?: string) => { await finishSession('completed', amount, undefined, completionNote); if (!taskStore.getState().activeSession) router.replace('/tasks'); };
   const exit = async (reason?: string) => { await finishSession('exited', undefined, reason); if (!taskStore.getState().activeSession) router.replace('/tasks'); };
   const endRest = async () => { await finishRest(); router.replace('/tasks'); };
   return <SafeAreaView style={{ flex: 1, backgroundColor: dark ? '#101114' : '#F7F8FA' }}><StatusBar style={dark ? 'light' : 'dark'} /><ActiveSessionScreen session={session} task={task} error={error} isPausePending={isPausePending} onTogglePause={toggleSessionPause} onComplete={complete} onExit={exit} onFinishRest={endRest} /></SafeAreaView>;

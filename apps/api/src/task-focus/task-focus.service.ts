@@ -13,13 +13,24 @@ export class TaskFocusService {
   constructor(@Inject(TASK_FOCUS_REPOSITORY) private readonly repository: TaskFocusRepository, private readonly scoring: ScoringService, private readonly family: FamilyService) {}
 
   listCategories(userId: string) { return this.repository.listCategories(userId); }
-  async createCategory(userId: string, name: string, color?: string) {
+  async createCategory(userId: string, id: string | undefined, name: string, color?: string) {
     try {
-      return await this.repository.createCategory(userId, name.trim(), color?.trim() || null);
+      return await this.repository.createCategory(userId, id, name.trim(), color?.trim() || null);
     } catch (error) {
       if (error instanceof DuplicateCategoryError) throw new ConflictException({ code: 'CATEGORY_EXISTS', message: '分类名称已存在' });
       throw error;
     }
+  }
+  async updateCategory(userId: string, id: string, version: number, name: string, color?: string | null) {
+    try {
+      return unwrap(await this.repository.updateCategory(userId, id, version, name.trim(), color?.trim() || null));
+    } catch (error) {
+      if (error instanceof DuplicateCategoryError) throw new ConflictException({ code: 'CATEGORY_EXISTS', message: '分类名称已存在' });
+      throw error;
+    }
+  }
+  archiveCategory(userId: string, id: string, version: number) {
+    return this.repository.archiveCategory(userId, id, version).then(unwrap);
   }
   listTasks(userId: string) { return this.repository.listTasks(userId); }
 

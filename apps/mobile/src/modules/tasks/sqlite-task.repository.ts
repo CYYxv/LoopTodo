@@ -7,11 +7,12 @@ import { enqueueSyncOperation } from '@/modules/sync/sqlite-sync.repository';
 import { createUuid } from '@/shared/uuid';
 import { taskFromInput, taskProgressLabel } from './task.presentation';
 import type { TaskRepository } from './task.repository';
-import type { CreateTaskInput, Task } from './task.types';
+import type { CreateTaskInput, Task, TaskCategory } from './task.types';
 
 type TaskRow = {
   id: string;
   title: string;
+  category_id?: string | null;
   category: string;
   kind: Task['kind'];
   timer_mode: Task['timerMode'];
@@ -30,6 +31,8 @@ type TaskRow = {
   remote_active: number;
 };
 
+type CategoryRow = { id: string; name: string; color: string | null; archived: number; version: number; sync_status: TaskCategory['syncStatus'] };
+
 type SessionRow = {
   id: string;
   task_id: string;
@@ -44,11 +47,12 @@ type SessionRow = {
   ended_at?: number;
   outcome?: FocusSessionRecord['outcome'];
   failure_reason?: string | null;
+  completion_note?: string | null;
   duration_seconds?: number;
   completed_amount?: number | null;
 };
 
-const taskColumns = `id, title, category, kind, timer_mode, estimate_minutes, rest_minutes,
+const taskColumns = `id, title, category_id, category, kind, timer_mode, estimate_minutes, rest_minutes,
   deadline_at, target_amount, target_unit, completed_amount, must_do, forced_trigger_time, trust_level, status,
   version, sync_status, remote_active`;
 
@@ -59,8 +63,9 @@ export function createSQLiteTaskRepository(
   return {
     async hydrate() {
       const database = await getDatabase();
-      const [taskRows, recordRows, activeRow] = await Promise.all([
+      const [taskRows, categoryRows, recordRows, activeRow] = await Promise.all([
         database.getAllAsync<TaskRow>(`SELECT ${taskColumns} FROM tasks WHERE status != 'archived' ORDER BY created_at DESC`),
+        database.getAllAsync<CategoryRow>("SELECT id, name, color, archived, version, sync_status FROM task_categories WHERE archived = 0 ORDER BY created_at ASC"),
         database.getAllAsync<SessionRow>('SELECT * FROM focus_sessions ORDER BY ended_at DESC'),
         database.getFirstAsync<SessionRow>('SELECT * FROM active_sessions WHERE singleton_id = 1'),
       ]);
@@ -82,6 +87,7 @@ export function createSQLiteTaskRepository(
       }
       return {
         tasks: taskRows.map(mapTask),
+        categories: categoryRows.map((row) => ({ id: row.id, name: row.name, color: row.color, version: row.version, syncStatus: row.sync_status })),
         sessionRecords: recordRows.map(mapRecord),
         activeSession: activeRow ? mapActive(activeRow) : null,
       };
@@ -92,28 +98,69 @@ export function createSQLiteTaskRepository(
       const database = await getDatabase();
       await database.withTransactionAsync(async () => {
         await database.runAsync(`INSERT INTO tasks (${taskColumns}, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, ...taskValues(task), now(), now());
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, ...taskValues(task), now(), now());
         await enqueueSyncOperation(database, { type: 'task.create', task }, task.id, `task-create-${task.id}`, now());
       });
       return task;
+    },
+    async createCategory(category) {
+      const database = await getDatabase();
+      await database.withTransactionAsync(async () => {
+        await database.runAsync(`INSERT INTO task_categories
+          (id, name, color, archived, version, sync_status, created_at, updated_at) VALUES (?, ?, ?, 0, ?, 'pending', ?, ?)`,
+          category.id, category.name, category.color, category.version, now(), now());
+        await enqueueSyncOperation(database, { type: 'category.create', category }, category.id, `category-create-${category.id}`, now());
+      });
+    },
+    async updateCategory(category, previousVersion) {
+      const database = await getDatabase();
+      await database.withTransactionAsync(async () => {
+        const result = await database.runAsync("UPDATE task_categories SET name = ?, color = ?, version = ?, sync_status = 'pending', updated_at = ? WHERE id = ? AND version = ? AND archived = 0",
+          category.name, category.color, category.version, now(), category.id, previousVersion);
+        if (result.changes !== 1) throw new Error('分类已被其他设备更新');
+        await database.runAsync("UPDATE tasks SET category = ?, updated_at = ? WHERE category_id = ?", category.name, now(), category.id);
+        await enqueueSyncOperation(database, { type: 'category.update', categoryId: category.id, version: previousVersion, name: category.name, color: category.color }, category.id,
+          `category-update-${category.id}-${category.version}`, now());
+      });
+    },
+    async archiveCategory(category, previousVersion) {
+      const database = await getDatabase();
+      await database.withTransactionAsync(async () => {
+        const result = await database.runAsync("UPDATE task_categories SET archived = 1, version = ?, sync_status = 'pending', updated_at = ? WHERE id = ? AND version = ? AND archived = 0",
+          category.version, now(), category.id, previousVersion);
+        if (result.changes !== 1) throw new Error('分类已被其他设备更新');
+        await database.runAsync("UPDATE tasks SET category_id = NULL, category = '未分类', version = version + 1, sync_status = 'pending', updated_at = ? WHERE category_id = ?", now(), category.id);
+        await enqueueSyncOperation(database, { type: 'category.delete', categoryId: category.id, version: previousVersion }, category.id,
+          `category-delete-${category.id}-${category.version}`, now());
+      });
     },
     async update(task, previousVersion) {
       validateInput(task);
       const database = await getDatabase();
       await database.withTransactionAsync(async () => {
         const result = await database.runAsync(`UPDATE tasks SET
-          title = ?, timer_mode = ?, estimate_minutes = ?, rest_minutes = ?, deadline_at = ?, target_amount = ?,
+          title = ?, category_id = ?, category = ?, timer_mode = ?, estimate_minutes = ?, rest_minutes = ?, deadline_at = ?, target_amount = ?,
           target_unit = ?, must_do = ?, forced_trigger_time = ?, status = ?, version = ?, sync_status = 'pending', updated_at = ?
           WHERE id = ? AND status != 'active' AND remote_active = 0 AND version = ?`,
-          task.title, task.timerMode, task.estimateMinutes, task.restMinutes, task.deadlineAt, task.targetAmount,
+          task.title, task.categoryId ?? null, task.category, task.timerMode, task.estimateMinutes, task.restMinutes, task.deadlineAt, task.targetAmount,
           task.targetUnit, task.mustDo ? 1 : 0, task.forcedTriggerTime, task.status, task.version, now(), task.id, previousVersion);
         if (result.changes !== 1) throw new Error('任务正在执行或已被其他设备更新');
         await enqueueSyncOperation(database, { type: 'task.update', taskId: task.id, version: previousVersion,
-          patch: { title: task.title, timerMode: task.timerMode, estimateMinutes: task.estimateMinutes,
+          patch: { title: task.title, categoryId: task.categoryId ?? null, category: task.category, timerMode: task.timerMode, estimateMinutes: task.estimateMinutes,
             restMinutes: task.restMinutes, deadlineAt: task.deadlineAt, targetAmount: task.targetAmount,
             targetUnit: task.targetUnit, mustDo: task.mustDo, forcedTriggerTime: task.forcedTriggerTime,
             status: task.status as 'pending' | 'completed' | 'failed' } }, task.id,
           `task-update-${task.id}-${task.version}`, now());
+      });
+    },
+    async archive(task, previousVersion) {
+      const database = await getDatabase();
+      await database.withTransactionAsync(async () => {
+        const result = await database.runAsync("UPDATE tasks SET status = 'archived', version = ?, sync_status = 'pending', updated_at = ? WHERE id = ? AND version = ? AND status != 'active' AND remote_active = 0",
+          task.version, now(), task.id, previousVersion);
+        if (result.changes !== 1) throw new Error('任务正在执行或已被其他设备更新');
+        await enqueueSyncOperation(database, { type: 'task.delete', taskId: task.id, version: previousVersion }, task.id,
+          `task-delete-${task.id}-${task.version}`, now());
       });
     },
     async startSession(task, session) {
@@ -155,8 +202,8 @@ export function createSQLiteTaskRepository(
         await database.runAsync(
           `INSERT INTO focus_sessions
            (id, task_id, mode, timer_mode, started_at, planned_end_at, ended_at, outcome,
-            failure_reason, duration_seconds, completed_amount, synced_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+            failure_reason, completion_note, duration_seconds, completed_amount, synced_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
           record.id,
           record.taskId,
           record.mode,
@@ -166,6 +213,7 @@ export function createSQLiteTaskRepository(
           record.endedAt,
           record.outcome,
           record.failureReason,
+          record.completionNote ?? null,
           record.durationSeconds,
           record.completedAmount
         );
@@ -199,6 +247,7 @@ function mapTask(row: TaskRow): Task {
   const task: Task = {
     id: row.id,
     title: row.title,
+    categoryId: row.category_id ?? null,
     category: row.category,
     kind: row.kind,
     timerMode: row.timer_mode,
@@ -241,6 +290,7 @@ function mapRecord(row: SessionRow): FocusSessionRecord {
     endedAt: row.ended_at ?? row.started_at,
     outcome: row.outcome ?? 'exited',
     failureReason: row.failure_reason ?? null,
+    completionNote: row.completion_note ?? null,
     durationSeconds: row.duration_seconds ?? 0,
     completedAmount: row.completed_amount ?? null,
   };
@@ -250,6 +300,7 @@ function taskValues(task: Task): SQLiteBindValue[] {
   return [
     task.id,
     task.title,
+    task.categoryId ?? null,
     task.category,
     task.kind,
     task.timerMode,

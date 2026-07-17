@@ -12,3 +12,13 @@ test('summarizes today totals and consecutive days', () => {
   expect(result.dailyTrend).toHaveLength(7);
   expect(result.dailyTrend.at(-1)).toMatchObject({ minutes: 60, ratio: 1 });
 });
+
+test('computes daily average and time-of-day distribution', () => {
+  const morning = new Date(2026, 6, 16, 8, 30).getTime();
+  const afternoon = new Date(2026, 6, 16, 13).getTime();
+  const evening = new Date(2026, 6, 17, 20).getTime();
+  const result = localStatistics([record(morning, 1800), record(afternoon, 3600), record(evening, 1800)], new Date(2026, 6, 17, 21).getTime());
+
+  expect(result.averageMinutesPerActiveDay).toBe(60);
+  expect(result.timeOfDay).toEqual({ morning: 1, afternoon: 1, evening: 1, night: 0 });
+});

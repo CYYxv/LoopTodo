@@ -23,6 +23,7 @@ export function StatisticsPanel({ records, tasks }: { records: FocusSessionRecor
   const selectedRecord = scopedRecords.find((record) => record.id === selectedRecordId) ?? null;
   const configured = useScoringStore((state) => state.configured);
   const today = useScoringStore((state) => state.today);
+  const scoreHistory = useScoringStore((state) => state.history);
   const loading = useScoringStore((state) => state.loading);
   const error = useScoringStore((state) => state.error);
   const load = useScoringStore((state) => state.load);
@@ -48,10 +49,26 @@ export function StatisticsPanel({ records, tasks }: { records: FocusSessionRecor
         <Metric label="专注时长" value={`${summary.minutes} 分钟`} />
         <Metric label="完成闭环" value={`${summary.completed} 次`} />
         <Metric label="失败/退出" value={`${summary.failed} 次`} />
+        <Metric label="日均专注" value={`${local.averageMinutesPerActiveDay} 分钟`} />
         {scope === 'today' ? <Metric label="连续天数" value={`${local.streakDays} 天`} /> : null}
       </View>
       {configured ? <View className="gap-2"><Text type="body-sm" weight="semibold">今日积分：{today?.totalScore ?? '待刷新'}</Text><Button size="sm" variant="secondary" isDisabled={loading} onPress={() => void load()}>{loading ? '刷新中…' : '刷新积分'}</Button></View> : <Text type="body-xs" color="muted">登录并同步后显示积分；加载失败不会覆盖本地统计。</Text>}
       {error ? <View className="gap-2"><Text type="body-xs" color="danger">积分加载失败：{error}</Text><Button size="sm" variant="secondary" onPress={() => void load()}>重试积分加载</Button></View> : null}
+    </Card.Body></Card>
+
+    <Card variant="secondary"><Card.Body className="gap-3">
+      <Card.Title>专注时间段</Card.Title>
+      <View className="flex-row flex-wrap gap-2">
+        <Metric label="早晨" value={`${local.timeOfDay.morning} 次`} />
+        <Metric label="下午" value={`${local.timeOfDay.afternoon} 次`} />
+        <Metric label="晚上" value={`${local.timeOfDay.evening} 次`} />
+        <Metric label="深夜" value={`${local.timeOfDay.night} 次`} />
+      </View>
+    </Card.Body></Card>
+
+    <Card variant="secondary"><Card.Body className="gap-2">
+      <Card.Title>积分历史</Card.Title>
+      {scoreHistory.length ? scoreHistory.slice(0, 10).map((item) => <View key={item.date} className="flex-row justify-between gap-3"><Text type="body-sm">{item.date}</Text><Text type="body-sm" weight="semibold">{item.totalScore} 分</Text></View>) : <Text type="body-sm" color="muted">联网同步后显示最近积分变化</Text>}
     </Card.Body></Card>
 
     <Card variant="secondary"><Card.Body className="gap-3">
@@ -99,6 +116,7 @@ function RecordDetail({ record, task }: { record: FocusSessionRecord; task?: Tas
     <Detail label="时长" value={`${Math.floor(record.durationSeconds / 60)} 分钟 ${record.durationSeconds % 60} 秒`} />
     <Detail label="结果" value={record.outcome === 'completed' ? '完成' : '退出/失败'} />
     {record.completedAmount != null ? <Detail label="完成量" value={`${record.completedAmount}${task?.targetUnit ?? ''}`} /> : null}
+    {record.completionNote ? <Detail label="完成内容" value={record.completionNote} /> : null}
     {record.failureReason ? <Detail label="复盘原因" value={record.failureReason} danger /> : null}
   </Card.Body></Card>;
 }
