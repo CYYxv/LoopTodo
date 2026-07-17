@@ -2,7 +2,7 @@ import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 
 import { offlineFeatureMessage } from '../../shared/offline-feature-message';
-import { createFamilyClient, type FamilyClient } from './family.client';
+import { createFamilyClient, type FamilyClient, type FamilyTaskInput } from './family.client';
 import type { FamilyAssignment, FamilyChangeRequest, FamilyGroupMembership } from './family.types';
 
 type FamilyStore = {
@@ -20,7 +20,8 @@ type FamilyStore = {
   createGroup(name: string): Promise<void>;
   invite(groupId: string, role: string): Promise<void>;
   join(code: string): Promise<void>;
-  assign(groupId: string, childUserId: string, title: string, minutes: number, triggerTime?: string): Promise<void>;
+  assign(groupId: string, input: FamilyTaskInput): Promise<void>;
+  leave(groupId: string): Promise<void>;
   requestChange(id: string, type: 'update' | 'delete', reason: string, title?: string): Promise<void>;
   loadRequests(groupId: string): Promise<void>;
   review(groupId: string, id: string, decision: 'approved' | 'rejected'): Promise<void>;
@@ -48,7 +49,8 @@ export function createFamilyStore() {
       catch (error) { set({ error: message(error) }); }
     },
     async join(code) { await mutate(get, set, (client) => client.join(code)); },
-    async assign(groupId, childUserId, title, estimatedMinutes, triggerTime) { await mutate(get, set, (client) => client.assign(groupId, { childUserId, title, estimatedMinutes, triggerTime: triggerTime || undefined })); },
+    async assign(groupId, input) { await mutate(get, set, (client) => client.assign(groupId, input)); },
+    async leave(groupId) { await mutate(get, set, (client) => client.leave(groupId)); },
     async requestChange(id, type, reason, title) { await mutate(get, set, (client) => client.requestChange(id, type, reason, title)); },
     async loadRequests(groupId) {
       const client = get().client;

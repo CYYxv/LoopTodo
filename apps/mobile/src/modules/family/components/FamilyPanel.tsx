@@ -10,6 +10,13 @@ export function FamilyPanel() {
   const [childId, setChildId] = useState('');
   const [taskTitle, setTaskTitle] = useState('');
   const [minutes, setMinutes] = useState('25');
+  const [restMinutes, setRestMinutes] = useState('5');
+  const [taskType, setTaskType] = useState<'pomodoro' | 'goal'>('pomodoro');
+  const [deadline, setDeadline] = useState('');
+  const [targetAmount, setTargetAmount] = useState('');
+  const [targetUnit, setTargetUnit] = useState('页');
+  const [mustDo, setMustDo] = useState(false);
+  const [triggerTime, setTriggerTime] = useState('20:00');
   const [reason, setReason] = useState('');
   const configured = useFamilyStore((state) => state.configured);
   const groups = useFamilyStore((state) => state.groups);
@@ -24,6 +31,7 @@ export function FamilyPanel() {
   const invite = useFamilyStore((state) => state.invite);
   const join = useFamilyStore((state) => state.join);
   const assign = useFamilyStore((state) => state.assign);
+  const leave = useFamilyStore((state) => state.leave);
   const requestChange = useFamilyStore((state) => state.requestChange);
   const loadRequests = useFamilyStore((state) => state.loadRequests);
   const review = useFamilyStore((state) => state.review);
@@ -38,13 +46,20 @@ export function FamilyPanel() {
     {groups.map((membership) => <Card key={membership.id}><Card.Body className="gap-3">
       <View className="flex-row flex-wrap items-center justify-between gap-2"><View><Card.Title>{membership.familyGroup.name}</Card.Title><Card.Description>我的角色：{membership.role === 'parent' ? '家长' : '孩子'}</Card.Description></View><Chip color="accent">{membership.familyGroup.members.length} 名成员</Chip></View>
       <View className="gap-1">{membership.familyGroup.members.map((member) => <Text key={member.id} type="body-sm">{member.user.nickname} · {member.role === 'parent' ? '家长' : '孩子'}</Text>)}</View>
+      <Button size="sm" variant="danger-soft" onPress={() => void leave(membership.familyGroup.id)}>退出家庭</Button>
       {membership.role === 'parent' ? <View className="gap-3">
         <View className="flex-row flex-wrap gap-2"><Button size="sm" onPress={() => void invite(membership.familyGroup.id, 'child')}>邀请孩子</Button><Button size="sm" variant="secondary" onPress={() => void invite(membership.familyGroup.id, 'parent')}>邀请家长</Button></View>
         {inviteCode ? <Text type="body-sm" weight="semibold">新邀请码：{inviteCode}</Text> : null}
-        <TextField><Label>孩子用户 ID</Label><Input value={childId} onChangeText={setChildId} /></TextField>
+        <Text type="body-sm" weight="semibold">选择孩子</Text>
+        <View className="flex-row flex-wrap gap-2">{membership.familyGroup.members.filter((member) => member.role === 'child').map((member) => <Button key={member.id} size="sm" variant={childId === member.user.id ? 'primary' : 'secondary'} onPress={() => setChildId(member.user.id)}>{member.user.nickname}</Button>)}</View>
         <TextField><Label>下发任务</Label><Input value={taskTitle} onChangeText={setTaskTitle} /></TextField>
+        <View className="flex-row gap-2"><Button className="flex-1" size="sm" variant={taskType === 'pomodoro' ? 'primary' : 'secondary'} onPress={() => setTaskType('pomodoro')}>普通任务</Button><Button className="flex-1" size="sm" variant={taskType === 'goal' ? 'primary' : 'secondary'} onPress={() => setTaskType('goal')}>目标任务</Button></View>
         <TextField><Label>分钟</Label><Input value={minutes} onChangeText={setMinutes} keyboardType="numeric" /></TextField>
-        <Button size="sm" isDisabled={!childId.trim() || !taskTitle.trim() || Number(minutes) <= 0} onPress={() => void assign(membership.familyGroup.id, childId, taskTitle, Number(minutes))}>下发任务</Button>
+        <TextField><Label>休息分钟</Label><Input value={restMinutes} onChangeText={setRestMinutes} keyboardType="numeric" /></TextField>
+        {taskType === 'goal' ? <><TextField><Label>截止日期</Label><Input value={deadline} onChangeText={setDeadline} placeholder="YYYY-MM-DD" /></TextField><TextField><Label>目标量</Label><Input value={targetAmount} onChangeText={setTargetAmount} keyboardType="numeric" /></TextField><TextField><Label>单位</Label><Input value={targetUnit} onChangeText={setTargetUnit} /></TextField></> : null}
+        <Button size="sm" variant={mustDo ? 'danger-soft' : 'secondary'} onPress={() => setMustDo((value) => !value)}>{mustDo ? '今日必须已开启' : '设为今日必须'}</Button>
+        {mustDo ? <TextField><Label>强制触发时间</Label><Input value={triggerTime} onChangeText={setTriggerTime} placeholder="HH:mm" /></TextField> : null}
+        <Button size="sm" isDisabled={!childId.trim() || !taskTitle.trim() || Number(minutes) <= 0 || (taskType === 'goal' && (!deadline || Number(targetAmount) <= 0 || !targetUnit.trim()))} onPress={() => void assign(membership.familyGroup.id, { childUserId: childId, title: taskTitle, taskType, timerMode: taskType === 'goal' ? 'countdown' : 'countdown', estimatedMinutes: Number(minutes), restMinutes: Number(restMinutes), deadlineAt: taskType === 'goal' ? new Date(`${deadline}T23:59:59`).toISOString() : undefined, targetAmount: taskType === 'goal' ? Number(targetAmount) : undefined, targetUnit: taskType === 'goal' ? targetUnit : undefined, isTodayRequired: mustDo, triggerTime: mustDo ? triggerTime : undefined })}>下发任务</Button>
         <Button size="sm" variant="secondary" onPress={() => void loadRequests(membership.familyGroup.id)}>加载修改申请</Button>
         {(requests[membership.familyGroup.id] ?? []).map((item) => <View key={item.id} className="gap-2 rounded-panel-inner bg-surface-secondary p-3"><Text type="body-sm">{item.childMember.user.nickname}：{item.assignment.task.title}</Text><Text type="body-xs" color="muted">{item.reason}</Text><View className="flex-row gap-2"><Button size="sm" onPress={() => void review(membership.familyGroup.id, item.id, 'approved')}>批准</Button><Button size="sm" variant="secondary" onPress={() => void review(membership.familyGroup.id, item.id, 'rejected')}>拒绝</Button></View></View>)}
         <Button size="sm" variant="secondary" isDisabled={!childId.trim()} onPress={() => void loadStatus(childId)}>查看孩子状态</Button>
