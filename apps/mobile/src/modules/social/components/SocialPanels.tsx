@@ -1,13 +1,11 @@
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 
-import { CompetitionPanel } from '@/modules/competition/components/CompetitionPanel';
-import { useSettingsStore } from '@/modules/settings/settings.store';
 import { Button, Card, Chip, Input, Label, Text, TextField } from '@/ui/hero-runtime';
 
 import { useSocialStore } from '../social.store';
 
-export function SocialPanel() {
+export function SocialInteractionPanel() {
   const [email, setEmail] = useState('');
   const [roomName, setRoomName] = useState('');
   const [inviteCode, setInviteCode] = useState('');
@@ -27,28 +25,15 @@ export function SocialPanel() {
   const joinRoom = useSocialStore((state) => state.joinRoom);
   const joinByCode = useSocialStore((state) => state.joinByCode);
   const react = useSocialStore((state) => state.react);
-  const settingsConfigured = useSettingsStore((state) => state.configured);
-  const settings = useSettingsStore((state) => state.value);
-  const settingsError = useSettingsStore((state) => state.error);
-  const loadSettings = useSettingsStore((state) => state.load);
-  const socialEnabled = settings?.socialEnabled ?? false;
 
   useEffect(() => {
-    setEnabled(configured && socialEnabled);
-    if (configured && socialEnabled) void load();
-  }, [configured, load, setEnabled, socialEnabled]);
-  useEffect(() => { if (settingsConfigured && !settings) void loadSettings(); }, [loadSettings, settings, settingsConfigured]);
-
-  if (settingsConfigured && !settings) {
-    return <Card><Card.Body className="gap-3"><Card.Title>正在读取社交设置</Card.Title><Card.Description>{settingsError ?? '确认你的隐私开关后才会连接社交服务。'}</Card.Description>{settingsError ? <Button size="sm" variant="secondary" onPress={() => void loadSettings()}>重试</Button> : null}</Card.Body></Card>;
-  }
-
-  if (!socialEnabled) {
-    return <Card><Card.Body className="gap-3"><Card.Title>社交功能已关闭</Card.Title><Card.Description>好友、战队、自习室与排行榜均不会发起请求或保持实时连接。</Card.Description></Card.Body></Card>;
-  }
+    if (!configured) return;
+    setEnabled(true);
+    void load();
+    return () => setEnabled(false);
+  }, [configured, load, setEnabled]);
 
   return <View className="gap-4">
-    <CompetitionPanel />
     <Card><Card.Body className="gap-3">
       <View className="flex-row flex-wrap items-center justify-between gap-2"><Chip color="accent">好友 PK</Chip><Chip color={configured ? 'success' : 'warning'}>{configured ? '已连接' : '登录后启用'}</Chip></View>
       <Card.Title>每日专注时长 PK</Card.Title><Card.Description>只比较当日完成专注分钟，不提供聊天。</Card.Description>

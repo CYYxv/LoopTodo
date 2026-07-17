@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { randomBytes } from 'node:crypto';
@@ -36,14 +36,13 @@ export class TeamsSeasonsService implements OnModuleInit, OnModuleDestroy {
     const season = await this.currentSeason(); const range = leaderboardRange(period, season);
     const cacheKey = `leaderboard:${period}:${range.start.toISOString()}:${limit}`; const redis = await this.redis.getClient(); const cached = await redis.get(cacheKey);
     if (cached) return JSON.parse(cached);
-    const rows = await this.prisma.scoreEvent.groupBy({ by: ['userId'], where: { scoreDate: { gte: range.start, lt: range.end }, user: { socialEnabled: true } }, _sum: { totalScore: true, durationMinutes: true }, orderBy: { _sum: { totalScore: 'desc' } }, take: limit });
+    const rows = await this.prisma.scoreEvent.groupBy({ by: ['userId'], where: { scoreDate: { gte: range.start, lt: range.end } }, _sum: { totalScore: true, durationMinutes: true }, orderBy: { _sum: { totalScore: 'desc' } }, take: limit });
     const users = await this.prisma.user.findMany({ where: { id: { in: rows.map((row) => row.userId) } }, select: { id: true, nickname: true, avatarUrl: true } }); const byId = new Map(users.map((user) => [user.id, user]));
     const result = rows.map((row, index) => ({ position: index + 1, user: byId.get(row.userId), score: row._sum.totalScore ?? 0, focusMinutes: row._sum.durationMinutes ?? 0 }));
     await redis.set(cacheKey, JSON.stringify(result), 'EX', period === 'today' ? 15 : 60); return result;
   }
 
   async createTeam(userId: string, name: string) {
-    await this.ensureSocialEnabled(userId);
     try { return await this.prisma.$transaction(async (transaction) => { if (await transaction.teamMember.findUnique({ where: { userId } })) throw new ConflictException({ code: 'TEAM_MEMBERSHIP_EXISTS', message: '每个用户只能加入一个战队' });
       const team = await transaction.team.create({ data: { leaderId: userId, name: name.trim(), joinCode: randomBytes(5).toString('hex').toUpperCase(), memberCount: 1 } });
       await transaction.teamMember.create({ data: { teamId: team.id, userId, role: 'leader' } }); return team; }); }
@@ -51,7 +50,6 @@ export class TeamsSeasonsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async joinTeam(userId: string, joinCode: string) {
-    await this.ensureSocialEnabled(userId);
     return this.prisma.$transaction(async (transaction) => {
       if (await transaction.teamMember.findUnique({ where: { userId } })) throw new ConflictException({ code: 'TEAM_MEMBERSHIP_EXISTS', message: '每个用户只能加入一个战队' });
       const team = await transaction.team.findUnique({ where: { joinCode: joinCode.trim().toUpperCase() } }); if (!team) throw new NotFoundException({ code: 'TEAM_NOT_FOUND', message: '战队邀请码无效' });
@@ -77,7 +75,6 @@ export class TeamsSeasonsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private thresholds() { return JSON.parse(this.config.get<string>('RANK_THRESHOLDS_JSON') ?? '[0,500,1500,3000,5000,8000]') as number[]; }
-  private async ensureSocialEnabled(userId: string) { const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { socialEnabled: true } }); if (!user?.socialEnabled) throw new ForbiddenException({ code: 'SOCIAL_DISABLED', message: '社交与竞技功能已关闭' }); }
   private async attachCurrentScores(userId: string, season?: Awaited<ReturnType<TeamsSeasonsService['currentSeason']>>) { const current = season ?? await this.currentSeason(); await this.prisma.scoreEvent.updateMany({ where: { userId, seasonId: null, scoreDate: { gte: dateOnly(current.startsAt), lt: dateOnly(current.endsAt) } }, data: { seasonId: current.id } }); }
   private async settleExpiredSeasons() { const expired = await this.prisma.season.findMany({ where: { status: 'active', endsAt: { lte: new Date() } } }); for (const season of expired) { await this.prisma.scoreEvent.updateMany({ where: { seasonId: null, scoreDate: { gte: dateOnly(season.startsAt), lt: dateOnly(season.endsAt) } }, data: { seasonId: season.id } });
       const scores = await this.prisma.scoreEvent.groupBy({ by: ['userId'], where: { seasonId: season.id }, _sum: { totalScore: true }, orderBy: { _sum: { totalScore: 'desc' } } });

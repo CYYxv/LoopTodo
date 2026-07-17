@@ -21,7 +21,7 @@ class MemoryAuthRepository implements AuthRepository {
   }
   async findUserById(id: string) { return this.users.get(id) ?? null; }
   async createUserWithSession(input: Parameters<AuthRepository['createUserWithSession']>[0]) {
-    const user: AuthUser = { ...input.user, vipStatus: 'free', privacySettings: {}, multiDeviceFocusSync: false, socialEnabled: true, shareCurrentTask: false, shareCompletedTasks: false, networkPolicy: 'offline_first', taskRemindersEnabled: true, familyAlertsEnabled: true, rewardNotificationsEnabled: true };
+    const user: AuthUser = { ...input.user, vipStatus: 'free', privacySettings: {}, multiDeviceFocusSync: false, bottomTabs: ['habits', 'statistics'], shareCurrentTask: false, shareCompletedTasks: false, networkPolicy: 'offline_first', taskRemindersEnabled: true, familyAlertsEnabled: true, rewardNotificationsEnabled: true };
     this.users.set(user.id, user);
     this.sessions.set(input.session.id, { ...input.session, userId: user.id, revokedAt: null });
     return user;
@@ -92,6 +92,7 @@ describe('auth API', () => {
     const registered = register.json().data;
     expect(registered.user.email).toBe('user@example.com');
     expect(registered.user.passwordHash).toBeUndefined();
+    expect(registered.user.bottomTabs).toEqual(['habits', 'statistics']);
 
     const duplicate = await app.inject({
       method: 'POST',
@@ -105,8 +106,17 @@ describe('auth API', () => {
     expect(me.statusCode).toBe(200);
     expect(me.json().data.email).toBe('user@example.com');
     const settings = await app.inject({ method: 'PATCH', url: '/me/settings',
-      headers: { authorization: `Bearer ${registered.tokens.accessToken}` }, payload: { multiDeviceFocusSync: true } });
+      headers: { authorization: `Bearer ${registered.tokens.accessToken}` }, payload: { multiDeviceFocusSync: true, bottomTabs: ['social', 'habits'] } });
     expect(settings.json().data.multiDeviceFocusSync).toBe(true);
+    expect(settings.json().data.bottomTabs).toEqual(['social', 'habits']);
+
+    const duplicateTabs = await app.inject({ method: 'PATCH', url: '/me/settings',
+      headers: { authorization: `Bearer ${registered.tokens.accessToken}` }, payload: { bottomTabs: ['social', 'social'] } });
+    expect(duplicateTabs.statusCode).toBe(400);
+
+    const removedSocialSwitch = await app.inject({ method: 'PATCH', url: '/me/settings',
+      headers: { authorization: `Bearer ${registered.tokens.accessToken}` }, payload: { socialEnabled: false } });
+    expect(removedSocialSwitch.statusCode).toBe(400);
 
     const refresh = await app.inject({ method: 'POST', url: '/auth/refresh', payload: { refreshToken: registered.tokens.refreshToken } });
     expect(refresh.statusCode).toBe(201);

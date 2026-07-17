@@ -86,7 +86,7 @@ export function createSocialStore() {
     },
     async joinByCode(inviteCode) {
       const client = get().client;
-      if (!client || !get().enabled) return set({ error: '请先启用社交功能' });
+      if (!client || !get().enabled) return set({ error: '社交服务尚未连接' });
       try {
         const member = await client.joinRoom({ inviteCode });
         await get().load();
@@ -94,7 +94,7 @@ export function createSocialStore() {
       } catch (error) { set({ error: message(error) }); }
     },
     async react(roomId, emoji) {
-      if (!get().enabled) return set({ error: '请先启用社交功能' });
+      if (!get().enabled) return set({ error: '社交服务尚未连接' });
       const realtime = get().realtime;
       if (realtime?.socket.connected) realtime.socket.emit('room:reaction', { roomId, emoji });
       else await action(get, set, (client) => client.react(roomId, emoji), false);
@@ -105,7 +105,7 @@ export function createSocialStore() {
 
 async function action(get: () => SocialStore, set: (value: Partial<SocialStore>) => void, run: (client: SocialClient) => Promise<void>, reload = true) {
   const client = get().client;
-  if (!client || !get().enabled) { set({ error: '请先启用社交功能' }); return false; }
+  if (!client || !get().enabled) { set({ error: '社交服务尚未连接' }); return false; }
   try {
     await run(client);
     if (reload) await get().load();

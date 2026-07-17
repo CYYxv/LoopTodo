@@ -174,7 +174,7 @@ model User {
   vipStatus                VipStatus       @default(free) @map("vip_status")
   privacySettings          Json            @default("{}") @map("privacy_settings")
   multiDeviceFocusSync     Boolean         @default(false) @map("multi_device_focus_sync")
-  socialEnabled            Boolean         @default(true) @map("social_enabled")
+  bottomTabs               String[]        @default(["habits", "statistics"]) @map("bottom_tabs")
   shareCurrentTask         Boolean         @default(false) @map("share_current_task")
   shareCompletedTasks      Boolean         @default(false) @map("share_completed_tasks")
   isAdmin                  Boolean         @default(false) @map("is_admin")

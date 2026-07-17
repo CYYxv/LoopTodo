@@ -28,5 +28,5 @@ export function clearCloudSession() {
   rewardStore.setState({ configured: false, baseUrl: '', token: '', rewards: [], claims: [], address: null, loading: false, error: null });
   scoringStore.setState({ configured: false, client: null, today: null, history: [], loading: false, error: null });
   subscriptionStore.setState({ configured: false, client: null, entitlements: null, order: null, loading: false, error: null });
-  settingsStore.setState({ configured: false, baseUrl: '', token: '', value: null, error: null });
+  settingsStore.setState({ configured: false, baseUrl: '', token: '', value: null, loading: false, error: null });
 }

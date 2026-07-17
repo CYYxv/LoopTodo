@@ -6,6 +6,7 @@ import { Button, Card, Chip, Switch, Text } from '@/ui/hero-runtime';
 import { useLockEngineStore } from '@/modules/lock-engine/lock-engine.store';
 import { useNotificationStore } from '@/modules/notifications/notification.store';
 import { useWhitelistStore } from '@/modules/focus-session/whitelist.store';
+import { normalizeBottomTabs, optionalTabKeys, replaceBottomTab, tabLabels, type OptionalTabKey } from '@/ui/tab-navigation';
 
 import { useSettingsStore, type Settings } from '../settings.store';
 
@@ -32,7 +33,9 @@ export function SettingsPanel() {
     void hydrateWhitelist();
   }, [configured, load, refresh, hydrateWhitelist]);
 
-  const toggle = (key: keyof Settings, next: boolean) => void update({ [key]: next });
+  const bottomTabs = normalizeBottomTabs(value?.bottomTabs);
+  const moreTab = optionalTabKeys.find((key) => !bottomTabs.includes(key))!;
+  const toggle = (key: BooleanSettingKey, next: boolean) => void update({ [key]: next });
 
   return (
     <View className="gap-3">
@@ -45,10 +48,36 @@ export function SettingsPanel() {
             </Chip>
           </View>
           <Setting label="多设备同步专注/锁机" value={value?.multiDeviceFocusSync ?? false} onChange={(next) => toggle('multiDeviceFocusSync', next)} />
-          <Setting label="启用社交与竞技展示" value={value?.socialEnabled ?? true} onChange={(next) => toggle('socialEnabled', next)} />
           <Setting label="自习室可见当前待办" value={value?.shareCurrentTask ?? false} onChange={(next) => toggle('shareCurrentTask', next)} />
           <Setting label="自习室可见今日完成" value={value?.shareCompletedTasks ?? false} onChange={(next) => toggle('shareCompletedTasks', next)} />
           <Text type="body-xs" color="muted">任务内容默认仅本人可见；家庭任务仅关联家长可见。</Text>
+        </Card.Body>
+      </Card>
+
+      <Card variant="secondary">
+        <Card.Body className="gap-3">
+          <Card.Title>编辑底部导航</Card.Title>
+          <Text type="body-xs" color="muted">任务、我的和更多固定显示；习惯、统计、社交中选择两个放到底栏。</Text>
+          {bottomTabs.map((key, index) => (
+            <View key={key} className="flex-row items-center justify-between gap-3">
+              <View className="flex-1">
+                <Text type="body-sm" weight="semibold">{tabLabels[key]}</Text>
+                <Text type="body-xs" color="muted">底栏第 {index + 2} 个位置</Text>
+              </View>
+              <View className="flex-row flex-wrap gap-2">
+                <Button size="sm" variant="secondary" isDisabled={index === 0} onPress={() => void update({ bottomTabs: [bottomTabs[1], bottomTabs[0]] })}>前移</Button>
+                <Button size="sm" variant="secondary" isDisabled={index === 1} onPress={() => void update({ bottomTabs: [bottomTabs[1], bottomTabs[0]] })}>后移</Button>
+                <Button size="sm" variant="secondary" onPress={() => void update({ bottomTabs: replaceBottomTab(bottomTabs, moreTab, index) })}>移入更多</Button>
+              </View>
+            </View>
+          ))}
+          <View className="flex-row items-center justify-between gap-3">
+            <View className="flex-1">
+              <Text type="body-sm" weight="semibold">{tabLabels[moreTab]}</Text>
+              <Text type="body-xs" color="muted">当前位于更多</Text>
+            </View>
+            <Button size="sm" onPress={() => void update({ bottomTabs: replaceBottomTab(bottomTabs, moreTab) })}>固定到底栏</Button>
+          </View>
         </Card.Body>
       </Card>
 
@@ -129,6 +158,8 @@ export function SettingsPanel() {
 function Setting({ label, value, onChange }: { label: string; value: boolean; onChange(value: boolean): void }) {
   return <View className="flex-row items-center justify-between gap-3"><Text type="body-sm" className="flex-1">{label}</Text><Switch accessibilityLabel={label} isSelected={value} onSelectedChange={onChange} /></View>;
 }
+
+type BooleanSettingKey = Exclude<keyof Settings, 'bottomTabs' | 'networkPolicy'>;
 
 function yes(value?: boolean) {
   return value ? '已开启' : '未开启';

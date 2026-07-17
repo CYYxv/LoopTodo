@@ -1,4 +1,4 @@
-import type { AuthUser, DeviceSession } from './auth.types';
+import type { AuthUser, BottomTabKey, DeviceSession } from './auth.types';
 
 export const AUTH_REPOSITORY = Symbol('AUTH_REPOSITORY');
 
@@ -21,5 +21,5 @@ export interface AuthRepository {
   findSession(id: string): Promise<DeviceSession | null>;
   rotateSession(id: string, currentHash: string, nextHash: string, expiresAt: Date): Promise<boolean>;
   revokeSession(id: string, userId: string): Promise<void>;
-  updateSettings(userId: string, input: { multiDeviceFocusSync?: boolean; privacySettings?: Record<string, unknown>; socialEnabled?: boolean; shareCurrentTask?: boolean; shareCompletedTasks?: boolean; networkPolicy?: 'offline_first' | 'online_required'; taskRemindersEnabled?: boolean; familyAlertsEnabled?: boolean; rewardNotificationsEnabled?: boolean }): Promise<AuthUser | null>;
+  updateSettings(userId: string, input: { multiDeviceFocusSync?: boolean; privacySettings?: Record<string, unknown>; bottomTabs?: BottomTabKey[]; shareCurrentTask?: boolean; shareCompletedTasks?: boolean; networkPolicy?: 'offline_first' | 'online_required'; taskRemindersEnabled?: boolean; familyAlertsEnabled?: boolean; rewardNotificationsEnabled?: boolean }): Promise<AuthUser | null>;
 }

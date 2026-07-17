@@ -1,3 +1,5 @@
+export type BottomTabKey = 'habits' | 'statistics' | 'social';
+
 export type AuthUser = {
   id: string;
   email: string;
@@ -6,7 +8,8 @@ export type AuthUser = {
   vipStatus: 'free' | 'active' | 'expired';
   privacySettings: unknown;
   multiDeviceFocusSync: boolean;
-  socialEnabled: boolean; shareCurrentTask: boolean; shareCompletedTasks: boolean;
+  bottomTabs: BottomTabKey[];
+  shareCurrentTask: boolean; shareCompletedTasks: boolean;
   networkPolicy: 'offline_first' | 'online_required';
   taskRemindersEnabled: boolean; familyAlertsEnabled: boolean; rewardNotificationsEnabled: boolean;
 };

@@ -4,7 +4,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../infrastructure/prisma/prisma.service';
 
 import { EmailAlreadyExistsError, type AuthRepository } from './auth.repository';
-import type { AuthUser, DeviceSession } from './auth.types';
+import type { AuthUser, BottomTabKey, DeviceSession } from './auth.types';
 
 @Injectable()
 export class PrismaAuthRepository implements AuthRepository {
@@ -58,13 +58,13 @@ export class PrismaAuthRepository implements AuthRepository {
     });
   }
 
-  async updateSettings(userId: string, input: { multiDeviceFocusSync?: boolean; privacySettings?: Record<string, unknown>; socialEnabled?: boolean; shareCurrentTask?: boolean; shareCompletedTasks?: boolean; networkPolicy?: 'offline_first' | 'online_required'; taskRemindersEnabled?: boolean; familyAlertsEnabled?: boolean; rewardNotificationsEnabled?: boolean }) {
+  async updateSettings(userId: string, input: { multiDeviceFocusSync?: boolean; privacySettings?: Record<string, unknown>; bottomTabs?: BottomTabKey[]; shareCurrentTask?: boolean; shareCompletedTasks?: boolean; networkPolicy?: 'offline_first' | 'online_required'; taskRemindersEnabled?: boolean; familyAlertsEnabled?: boolean; rewardNotificationsEnabled?: boolean }) {
     const existing = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!existing) return null;
     return this.prisma.user.update({ where: { id: userId }, data: {
       multiDeviceFocusSync: input.multiDeviceFocusSync,
       privacySettings: input.privacySettings as Prisma.InputJsonValue | undefined,
-      socialEnabled: input.socialEnabled, shareCurrentTask: input.shareCurrentTask, shareCompletedTasks: input.shareCompletedTasks,
+      bottomTabs: input.bottomTabs, shareCurrentTask: input.shareCurrentTask, shareCompletedTasks: input.shareCompletedTasks,
       networkPolicy: input.networkPolicy, taskRemindersEnabled: input.taskRemindersEnabled,
       familyAlertsEnabled: input.familyAlertsEnabled, rewardNotificationsEnabled: input.rewardNotificationsEnabled,
     } }) as Promise<AuthUser>;

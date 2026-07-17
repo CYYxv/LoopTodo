@@ -11,13 +11,8 @@ export class SocialService {
   constructor(private readonly prisma: PrismaService, private readonly redis: RedisService) {}
 
   async inviteFriend(userId: string, email: string) {
-    const [self, addressee] = await Promise.all([
-      this.prisma.user.findUnique({ where: { id: userId }, select: { socialEnabled: true } }),
-      this.prisma.user.findUnique({ where: { email: email.trim().toLowerCase() }, select: { id: true, socialEnabled: true } }),
-    ]);
-    if (!self?.socialEnabled) throw socialDisabled();
+    const addressee = await this.prisma.user.findUnique({ where: { email: email.trim().toLowerCase() }, select: { id: true } });
     if (!addressee || addressee.id === userId) throw new NotFoundException({ code: 'FRIEND_NOT_FOUND', message: '未找到可邀请用户' });
-    if (!addressee.socialEnabled) throw new ForbiddenException({ code: 'FRIEND_SOCIAL_DISABLED', message: '对方已关闭社交功能' });
     try {
       return await this.prisma.friendship.create({ data: { requesterId: userId, addresseeId: addressee.id, pairKey: socialPairKey(userId, addressee.id) } });
     } catch (error) {
@@ -32,7 +27,7 @@ export class SocialService {
     return this.prisma.friendship.findUniqueOrThrow({ where: { id: friendshipId } });
   }
 
-  async listFriends(userId: string) { await this.ensureSocialEnabled(userId);
+  async listFriends(userId: string) {
     const rows = await this.prisma.friendship.findMany({ where: { OR: [{ requesterId: userId }, { addresseeId: userId }] },
       include: { requester: { select: { id: true, nickname: true, avatarUrl: true } }, addressee: { select: { id: true, nickname: true, avatarUrl: true } } }, orderBy: { createdAt: 'desc' } });
     return rows.map((row) => ({ id: row.id, status: row.status, direction: row.requesterId === userId ? 'outgoing' : 'incoming',
@@ -47,7 +42,7 @@ export class SocialService {
       throw new ConflictException({ code: 'PK_ALREADY_EXISTS', message: '今天已与该好友创建 PK' }); }
   }
 
-  async listTodayPk(userId: string) { await this.ensureSocialEnabled(userId);
+  async listTodayPk(userId: string) {
     const date = dateOnly(new Date()); const matches = await this.prisma.pkMatch.findMany({ where: { matchDate: date, OR: [{ challengerId: userId }, { opponentId: userId }] },
       include: { challenger: { select: { id: true, nickname: true } }, opponent: { select: { id: true, nickname: true } } } });
     return Promise.all(matches.map((match) => this.pkView(match)));
@@ -61,7 +56,6 @@ export class SocialService {
   }
 
   async createRoom(userId: string, name: string, visibility: 'public' | 'private') {
-    await this.ensureSocialEnabled(userId);
     return this.prisma.$transaction(async (transaction) => {
       const room = await transaction.studyRoom.create({ data: { ownerId: userId, name: name.trim(), visibility,
         inviteCode: visibility === 'private' ? randomBytes(5).toString('hex').toUpperCase() : null } });
@@ -72,13 +66,12 @@ export class SocialService {
 
   async joinRoom(userId: string, roomId?: string, inviteCode?: string) {
     if (!roomId && !inviteCode) throw new BadRequestException({ code: 'ROOM_REFERENCE_REQUIRED', message: '请提供公开房间 ID 或私密邀请码' });
-    await this.ensureSocialEnabled(userId);
     const room = await this.prisma.studyRoom.findFirst({ where: inviteCode ? { inviteCode: inviteCode.trim().toUpperCase() } : { id: roomId, visibility: 'public' } });
     if (!room) throw new NotFoundException({ code: 'ROOM_NOT_FOUND', message: '自习室不存在或邀请码无效' });
     return this.prisma.studyRoomMember.upsert({ where: { roomId_userId: { roomId: room.id, userId } }, update: { leftAt: null, joinedAt: new Date() }, create: { roomId: room.id, userId } });
   }
 
-  async listRooms(userId: string) { await this.ensureSocialEnabled(userId);
+  async listRooms(userId: string) {
     const rooms = await this.prisma.studyRoom.findMany({ where: { OR: [{ visibility: 'public' }, { members: { some: { userId, leftAt: null } } }] },
       include: { _count: { select: { members: { where: { leftAt: null } } } }, members: { where: { userId, leftAt: null }, select: { id: true } } }, orderBy: { createdAt: 'desc' }, take: 100 });
     return rooms.map((room) => ({ id: room.id, name: room.name, visibility: room.visibility, inviteCode: room.ownerId === userId ? room.inviteCode : null,
@@ -98,18 +91,16 @@ export class SocialService {
   }
 
   async sharedStatus(userId: string, targetUserId: string) {
-    await this.ensureSocialEnabled(userId);
     const allowed = await this.prisma.friendship.findFirst({ where: { pairKey: socialPairKey(userId, targetUserId), status: 'accepted' } }) || await this.prisma.studyRoomMember.findFirst({ where: { userId, leftAt: null, room: { members: { some: { userId: targetUserId, leftAt: null } } } } });
     if (!allowed) throw new ForbiddenException({ code: 'SOCIAL_STATUS_FORBIDDEN', message: '无权查看该用户状态' });
-    const target = await this.prisma.user.findUnique({ where: { id: targetUserId }, select: { nickname: true, socialEnabled: true, shareCurrentTask: true, shareCompletedTasks: true } });
-    if (!target?.socialEnabled) throw socialDisabled(); const today = dateOnly(new Date()); const end = new Date(today.getTime() + 86_400_000);
+    const target = await this.prisma.user.findUnique({ where: { id: targetUserId }, select: { nickname: true, shareCurrentTask: true, shareCompletedTasks: true } });
+    if (!target) throw new NotFoundException({ code: 'SOCIAL_USER_NOT_FOUND', message: '用户不存在' }); const today = dateOnly(new Date()); const end = new Date(today.getTime() + 86_400_000);
     const current = target.shareCurrentTask ? await this.prisma.task.findFirst({ where: { userId: targetUserId, activeSessionId: { not: null } }, select: { id: true, title: true } }) : null;
     const sessions = target.shareCompletedTasks ? await this.prisma.focusSession.findMany({ where: { userId: targetUserId, outcome: 'completed', endedAt: { gte: today, lt: end } }, include: { task: { select: { id: true, title: true } } } }) : [];
     return { nickname: target.nickname, currentTask: current, completedTasks: [...new Map(sessions.map((item) => [item.task.id, item.task])).values()] };
   }
 
   private async areFriends(first: string, second: string) { return Boolean(await this.prisma.friendship.findFirst({ where: { pairKey: socialPairKey(first, second), status: 'accepted' } })); }
-  async ensureSocialEnabled(userId: string) { const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { socialEnabled: true } }); if (!user?.socialEnabled) throw socialDisabled(); }
   private async pkView(match: { id: string; challengerId: string; opponentId: string; matchDate: Date; status: string; challenger: { id: string; nickname: string }; opponent: { id: string; nickname: string } }) {
     const events = await this.prisma.scoreEvent.groupBy({ by: ['userId'], where: { userId: { in: [match.challengerId, match.opponentId] }, scoreDate: match.matchDate, outcome: 'completed' }, _sum: { durationMinutes: true } });
     const minutes = new Map(events.map((event) => [event.userId, event._sum.durationMinutes ?? 0]));
@@ -119,4 +110,3 @@ export class SocialService {
 }
 
 function dateOnly(value: Date) { return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate())); }
-function socialDisabled() { return new ForbiddenException({ code: 'SOCIAL_DISABLED', message: '社交功能已关闭' }); }
