@@ -15,7 +15,7 @@ export const legacyDurationRepairSql = `
   WHERE planned_focus_seconds IS NULL AND timer_mode = 'countdown' AND planned_end_at IS NOT NULL;
   UPDATE focus_sessions
   SET duration_seconds = planned_focus_seconds
-  WHERE outcome = 'completed' AND timer_mode = 'countdown' AND planned_focus_seconds IS NOT NULL
+  WHERE timer_mode = 'countdown' AND planned_focus_seconds IS NOT NULL
     AND duration_seconds > planned_focus_seconds;
   UPDATE active_sessions
   SET planned_focus_seconds = CAST(MAX(0, COALESCE(MIN(
@@ -27,7 +27,7 @@ export const legacyDurationRepairSql = `
     (planned_end_at - started_at - COALESCE(accumulated_paused_ms, 0)) / 1000
   ), (planned_end_at - started_at - COALESCE(accumulated_paused_ms, 0)) / 1000)) AS INTEGER)
   WHERE planned_focus_seconds IS NULL AND timer_mode = 'countdown' AND planned_end_at IS NOT NULL;
-  INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (6, unixepoch() * 1000);
+  INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (7, unixepoch() * 1000);
 `;
 
 export function getLoopTodoDatabase() {

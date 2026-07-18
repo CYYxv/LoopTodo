@@ -5,5 +5,6 @@ test('repairs legacy countdown duration from the original session start payload 
   expect(legacyDurationRepairSql).toContain('MIN(');
   expect(legacyDurationRepairSql).not.toContain('estimate_minutes');
   expect(legacyDurationRepairSql).toContain('duration_seconds > planned_focus_seconds');
-  expect(legacyDurationRepairSql).toContain('version, applied_at) VALUES (6');
+  expect(legacyDurationRepairSql).not.toContain("outcome = 'completed'");
+  expect(legacyDurationRepairSql).toContain('version, applied_at) VALUES (7');
 });

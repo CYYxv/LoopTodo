@@ -26,8 +26,22 @@ def main() -> None:
 
     connection = sqlite3.connect(f"file:{args.database.as_posix()}?mode=ro", uri=True)
     connection.row_factory = sqlite3.Row
+    session_columns = {
+        row["name"] for row in connection.execute("PRAGMA table_info(focus_sessions)").fetchall()
+    }
+    planned_focus_expression = (
+        "focus_sessions.planned_focus_seconds"
+        if "planned_focus_seconds" in session_columns
+        else "CASE WHEN focus_sessions.planned_end_at IS NULL THEN NULL "
+        "ELSE MAX(0, CAST((focus_sessions.planned_end_at - focus_sessions.started_at) / 1000 AS INTEGER)) END"
+    )
+    paused_expression = (
+        "COALESCE(focus_sessions.accumulated_paused_ms, 0)"
+        if "accumulated_paused_ms" in session_columns
+        else "0"
+    )
     rows = connection.execute(
-        """
+        f"""
         SELECT
           focus_sessions.id,
           focus_sessions.task_id,
@@ -37,13 +51,13 @@ def main() -> None:
           focus_sessions.started_at,
           focus_sessions.planned_end_at,
           focus_sessions.ended_at,
-          focus_sessions.planned_focus_seconds,
+          {planned_focus_expression} AS planned_focus_seconds,
           focus_sessions.duration_seconds,
-          focus_sessions.accumulated_paused_ms,
+          {paused_expression} AS accumulated_paused_ms,
           CASE
             WHEN focus_sessions.ended_at IS NULL THEN NULL
             ELSE MAX(0, CAST((focus_sessions.ended_at - focus_sessions.started_at
-              - COALESCE(focus_sessions.accumulated_paused_ms, 0)) / 1000 AS INTEGER))
+              - {paused_expression}) / 1000 AS INTEGER))
           END AS inferred_active_seconds
         FROM focus_sessions
         LEFT JOIN tasks ON tasks.id = focus_sessions.task_id
