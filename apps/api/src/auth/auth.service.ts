@@ -102,10 +102,27 @@ export class AuthService {
   }
 
   async updateSettings(userId: string, input: UpdateSettingsDto) {
-    const user = await this.repository.updateSettings(userId, input);
+    const { themePreference, ...settings } = input;
+    let settingsInput = settings;
+    if (themePreference !== undefined) {
+      const existing = await this.repository.findUserById(userId);
+      if (!existing) throw invalidCredentials();
+      settingsInput = {
+        ...settings,
+        privacySettings: {
+          ...privacySettingsFrom(settings.privacySettings ?? existing.privacySettings),
+          themePreference,
+        },
+      };
+    }
+    const user = await this.repository.updateSettings(userId, settingsInput);
     if (!user) throw invalidCredentials();
     return publicUser(user);
   }
+}
+
+function privacySettingsFrom(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
 function normalizeEmail(email: string) { return email.trim().toLowerCase(); }

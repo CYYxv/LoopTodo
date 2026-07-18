@@ -1,25 +1,39 @@
-import { useEffect, useState, type PropsWithChildren } from 'react';
-import { AccessibilityInfo, StyleSheet } from 'react-native';
+import { useEffect, type PropsWithChildren } from 'react';
+import { StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { HeroUINativeProvider } from 'heroui-native/provider';
 
-import { HeroUINativeProvider } from '@/ui/hero-runtime';
+import { useSettingsStore } from '@/modules/settings/settings.store';
+import { applyThemePreference } from '@/ui/theme';
 
 export function AppProviders({ children }: PropsWithChildren) {
-  const [reduceMotion, setReduceMotion] = useState(false);
-  useEffect(() => {
-    void AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
-    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
-    return () => subscription.remove();
-  }, []);
   return (
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
-        <HeroUINativeProvider config={{ animation: reduceMotion ? 'disable-all' : undefined,
-          textProps: { allowFontScaling: true, maxFontSizeMultiplier: 2 } }}>{children}</HeroUINativeProvider>
+        <HeroUINativeProvider config={{
+          textProps: { allowFontScaling: true, maxFontSizeMultiplier: 2 },
+          toast: { defaultProps: { placement: 'bottom', isSwipeable: true } },
+          devInfo: { stylingPrinciples: false },
+        }}><ThemeController />{children}</HeroUINativeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
+}
+
+function ThemeController() {
+  const preference = useSettingsStore((state) => state.value?.themePreference ?? 'system');
+  const load = useSettingsStore((state) => state.load);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  useEffect(() => {
+    applyThemePreference(preference);
+  }, [preference]);
+
+  return null;
 }
 
 const styles = StyleSheet.create({

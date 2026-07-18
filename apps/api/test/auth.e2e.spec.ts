@@ -93,6 +93,7 @@ describe('auth API', () => {
     expect(registered.user.email).toBe('user@example.com');
     expect(registered.user.passwordHash).toBeUndefined();
     expect(registered.user.bottomTabs).toEqual(['habits', 'statistics']);
+    expect(registered.user.themePreference).toBe('system');
 
     const duplicate = await app.inject({
       method: 'POST',
@@ -106,9 +107,14 @@ describe('auth API', () => {
     expect(me.statusCode).toBe(200);
     expect(me.json().data.email).toBe('user@example.com');
     const settings = await app.inject({ method: 'PATCH', url: '/me/settings',
-      headers: { authorization: `Bearer ${registered.tokens.accessToken}` }, payload: { multiDeviceFocusSync: true, bottomTabs: ['social', 'habits'] } });
+      headers: { authorization: `Bearer ${registered.tokens.accessToken}` }, payload: { multiDeviceFocusSync: true, bottomTabs: ['social', 'habits'], themePreference: 'dark' } });
     expect(settings.json().data.multiDeviceFocusSync).toBe(true);
     expect(settings.json().data.bottomTabs).toEqual(['social', 'habits']);
+    expect(settings.json().data.themePreference).toBe('dark');
+
+    const invalidTheme = await app.inject({ method: 'PATCH', url: '/me/settings',
+      headers: { authorization: `Bearer ${registered.tokens.accessToken}` }, payload: { themePreference: 'sepia' } });
+    expect(invalidTheme.statusCode).toBe(400);
 
     const duplicateTabs = await app.inject({ method: 'PATCH', url: '/me/settings',
       headers: { authorization: `Bearer ${registered.tokens.accessToken}` }, payload: { bottomTabs: ['social', 'social'] } });

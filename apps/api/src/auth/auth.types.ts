@@ -1,4 +1,5 @@
 export type BottomTabKey = 'habits' | 'statistics' | 'social';
+export type ThemePreference = 'system' | 'light' | 'dark';
 
 export type AuthUser = {
   id: string;
@@ -14,7 +15,7 @@ export type AuthUser = {
   taskRemindersEnabled: boolean; familyAlertsEnabled: boolean; rewardNotificationsEnabled: boolean;
 };
 
-export type PublicUser = Omit<AuthUser, 'passwordHash'>;
+export type PublicUser = Omit<AuthUser, 'passwordHash'> & { themePreference: ThemePreference };
 
 export type DeviceSession = {
   id: string;
@@ -39,5 +40,11 @@ export type TokenPair = {
 
 export function publicUser(user: AuthUser): PublicUser {
   const { passwordHash: _passwordHash, ...safeUser } = user;
-  return safeUser;
+  return { ...safeUser, themePreference: themePreferenceFrom(user.privacySettings) };
+}
+
+function themePreferenceFrom(value: unknown): ThemePreference {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return 'system';
+  const themePreference = (value as Record<string, unknown>).themePreference;
+  return themePreference === 'light' || themePreference === 'dark' ? themePreference : 'system';
 }

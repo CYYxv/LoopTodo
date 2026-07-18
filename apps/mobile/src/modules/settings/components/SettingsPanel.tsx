@@ -8,7 +8,13 @@ import { useNotificationStore } from '@/modules/notifications/notification.store
 import { useWhitelistStore } from '@/modules/focus-session/whitelist.store';
 import { normalizeBottomTabs, optionalTabKeys, replaceBottomTab, tabLabels, type OptionalTabKey } from '@/ui/tab-navigation';
 
-import { useSettingsStore, type Settings } from '../settings.store';
+import { useSettingsStore, type Settings, type ThemePreference } from '../settings.store';
+
+const themeOptions: { value: ThemePreference; label: string; description: string }[] = [
+  { value: 'system', label: '跟随系统', description: '自动匹配设备的浅色或深色外观。' },
+  { value: 'light', label: '浅色', description: '始终使用明亮、清爽的界面。' },
+  { value: 'dark', label: '深色', description: '始终使用低亮度的深色界面。' },
+];
 
 export function SettingsPanel() {
   const configured = useSettingsStore((state) => state.configured);
@@ -35,6 +41,8 @@ export function SettingsPanel() {
 
   const bottomTabs = normalizeBottomTabs(value?.bottomTabs);
   const moreTab = optionalTabKeys.find((key) => !bottomTabs.includes(key))!;
+  const themePreference = value?.themePreference ?? 'system';
+  const activeTheme = themeOptions.find((option) => option.value === themePreference)!;
   const toggle = (key: BooleanSettingKey, next: boolean) => void update({ [key]: next });
 
   return (
@@ -82,10 +90,30 @@ export function SettingsPanel() {
       </Card>
 
       <Card variant="secondary">
-        <Card.Body className="gap-2">
-          <Card.Title>显示</Card.Title>
-          <Text type="body-sm">主题跟随系统</Text>
-          <Text type="body-xs" color="muted">自动适配浅色和深色模式，并遵循系统字体大小与减少动态效果设置。</Text>
+        <Card.Body className="gap-3">
+          <View className="flex-row items-start justify-between gap-3">
+            <View className="flex-1 gap-1">
+              <Card.Title>显示</Card.Title>
+              <Text type="body-xs" color="muted">选择应用外观，不影响系统字体大小与减少动态效果设置。</Text>
+            </View>
+            <Chip color="default" variant="soft">{activeTheme.label}</Chip>
+          </View>
+          <View className="flex-row gap-2" accessibilityRole="radiogroup">
+            {themeOptions.map((option) => (
+              <Button
+                key={option.value}
+                className="min-w-0 flex-1"
+                size="sm"
+                variant={themePreference === option.value ? 'primary' : 'secondary'}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: themePreference === option.value }}
+                onPress={() => void update({ themePreference: option.value })}
+              >
+                {option.label}
+              </Button>
+            ))}
+          </View>
+          <Text type="body-xs" color="muted">{activeTheme.description}</Text>
         </Card.Body>
       </Card>
 
@@ -159,7 +187,7 @@ function Setting({ label, value, onChange }: { label: string; value: boolean; on
   return <View className="flex-row items-center justify-between gap-3"><Text type="body-sm" className="flex-1">{label}</Text><Switch accessibilityLabel={label} isSelected={value} onSelectedChange={onChange} /></View>;
 }
 
-type BooleanSettingKey = Exclude<keyof Settings, 'bottomTabs' | 'networkPolicy'>;
+type BooleanSettingKey = Exclude<keyof Settings, 'bottomTabs' | 'networkPolicy' | 'themePreference'>;
 
 function yes(value?: boolean) {
   return value ? '已开启' : '未开启';

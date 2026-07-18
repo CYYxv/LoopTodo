@@ -1,2 +1,80 @@
 @import 'tailwindcss';
 @import 'uniwind';
+@import 'heroui-native/styles';
+
+@source './node_modules/heroui-native/lib';
+
+@layer theme {
+  @variant light {
+    --background: #f6f7f9;
+    --foreground: #17181a;
+    --surface: #ffffff;
+    --surface-foreground: #17181a;
+    --surface-secondary: #f0f2f5;
+    --surface-secondary-foreground: #25272b;
+    --surface-tertiary: #e9ecf1;
+    --surface-tertiary-foreground: #30343a;
+    --overlay: #ffffff;
+    --overlay-foreground: #17181a;
+    --backdrop: rgb(15 23 42 / 32%);
+    --muted: #686c73;
+    --default: #eef0f3;
+    --default-foreground: #34373c;
+    --accent: #2563eb;
+    --accent-foreground: #ffffff;
+    --accent-soft: #eaf1ff;
+    --segment: #eef0f3;
+    --segment-foreground: #25272b;
+    --field-background: #ffffff;
+    --field-foreground: #17181a;
+    --field-placeholder: #858a92;
+    --field-border: #dfe2e7;
+    --border: transparent;
+    --separator: #e7e9ed;
+    --focus: #2563eb;
+    --link: #1d4ed8;
+    --surface-shadow: 0 2px 5px rgb(15 23 42 / 4%), 0 1px 2px rgb(15 23 42 / 5%);
+    --overlay-shadow: 0 14px 32px rgb(15 23 42 / 12%);
+    --field-shadow: 0 1px 2px rgb(15 23 42 / 4%);
+  }
+
+  @variant dark {
+    --background: #101114;
+    --foreground: #f2f3f5;
+    --surface: #191b20;
+    --surface-foreground: #f2f3f5;
+    --surface-secondary: #22252b;
+    --surface-secondary-foreground: #e7e9ed;
+    --surface-tertiary: #292d34;
+    --surface-tertiary-foreground: #e7e9ed;
+    --overlay: #24272d;
+    --overlay-foreground: #f2f3f5;
+    --backdrop: rgb(0 0 0 / 52%);
+    --muted: #a4a8b0;
+    --default: #292d34;
+    --default-foreground: #e7e9ed;
+    --accent: #5b8cff;
+    --accent-foreground: #0d1424;
+    --accent-soft: #1c2b4d;
+    --segment: #22252b;
+    --segment-foreground: #f2f3f5;
+    --field-background: #191b20;
+    --field-foreground: #f2f3f5;
+    --field-placeholder: #7f858f;
+    --field-border: #343840;
+    --border: transparent;
+    --separator: #2d3037;
+    --focus: #5b8cff;
+    --link: #7aa2ff;
+    --surface-shadow: 0 0 0 transparent;
+    --overlay-shadow: 0 0 1px rgb(255 255 255 / 22%) inset;
+    --field-shadow: 0 0 0 transparent;
+  }
+}
+
+@theme {
+  --radius: 0.5rem;
+  --font-normal: sans-serif;
+  --font-medium: sans-serif;
+  --font-semibold: sans-serif;
+}

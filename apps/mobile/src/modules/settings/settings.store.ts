@@ -5,9 +5,12 @@ import { createStore } from 'zustand/vanilla';
 import { apiErrorMessage } from '@/shared/api-error';
 import { normalizeBottomTabs, type OptionalTabKey } from '@/ui/tab-navigation';
 
+export type ThemePreference = 'system' | 'light' | 'dark';
+
 export type Settings = {
   multiDeviceFocusSync: boolean;
   bottomTabs: [OptionalTabKey, OptionalTabKey];
+  themePreference: ThemePreference;
   shareCurrentTask: boolean;
   shareCompletedTasks: boolean;
   networkPolicy: 'offline_first' | 'online_required';
@@ -81,6 +84,7 @@ function normalizeSettings(value: unknown): Settings {
   return {
     multiDeviceFocusSync: input.multiDeviceFocusSync === true,
     bottomTabs: normalizeBottomTabs(input.bottomTabs),
+    themePreference: normalizeThemePreference(input.themePreference),
     shareCurrentTask: input.shareCurrentTask === true,
     shareCompletedTasks: input.shareCompletedTasks === true,
     networkPolicy: input.networkPolicy === 'online_required' ? 'online_required' : 'offline_first',
@@ -88,6 +92,10 @@ function normalizeSettings(value: unknown): Settings {
     familyAlertsEnabled: input.familyAlertsEnabled !== false,
     rewardNotificationsEnabled: input.rewardNotificationsEnabled !== false,
   };
+}
+
+function normalizeThemePreference(value: unknown): ThemePreference {
+  return value === 'light' || value === 'dark' ? value : 'system';
 }
 
 async function readCachedSettings() {
