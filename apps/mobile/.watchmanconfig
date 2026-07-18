@@ -1,7 +1,7 @@
 {
   "ignore_dirs": [
     ".expo",
-    "apps/mobile/android",
+    "android",
     "coverage",
     "dist"
   ]
