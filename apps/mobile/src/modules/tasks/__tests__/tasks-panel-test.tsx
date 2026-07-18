@@ -85,8 +85,16 @@ test('does not force a white task group background in dark mode', async () => {
   const categories: TaskCategory[] = [{ id: 'work', name: '工作', color: null, version: 1, syncStatus: 'synced' }];
   const screen = await render(<TaskGroups tasks={[{ ...task, categoryId: 'work', category: '工作' }]} categories={categories} onStart={jest.fn()} />);
 
-  const groupStyle = StyleSheet.flatten(screen.getByTestId('task-group').props.style);
-  expect(groupStyle.backgroundColor).not.toBe('#FFFFFF');
+  expect(screen.getByTestId('task-group-surface-work').props.className).not.toContain('bg-white');
+});
+
+test('uses HeroUI surfaces, accordion groups, and press feedback for the task hierarchy', async () => {
+  const categories: TaskCategory[] = [{ id: 'work', name: '工作', color: null, version: 1, syncStatus: 'synced' }];
+  const screen = await render(<TaskGroups tasks={[{ ...task, categoryId: 'work', category: '工作' }]} categories={categories} onStart={jest.fn()} />);
+
+  expect(screen.getByTestId('hero-accordion')).toBeTruthy();
+  expect(screen.getByTestId('task-group-surface-work')).toBeTruthy();
+  expect(screen.getByTestId('task-row-feedback-forced')).toBeTruthy();
 });
 
 test('restores collapsed task groups from local preferences', async () => {

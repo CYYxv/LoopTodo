@@ -1,10 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import * as SecureStore from 'expo-secure-store';
-import { Pressable, StyleSheet, useColorScheme, Vibration, View } from 'react-native';
+import { StyleSheet, Vibration, View } from 'react-native';
 import Svg, { Circle, Path, Polygon, Rect } from 'react-native-svg';
+import { Accordion } from 'heroui-native/accordion';
+import { PressableFeedback } from 'heroui-native/pressable-feedback';
+import { Surface } from 'heroui-native/surface';
 
 import type { ActiveSession, FocusSessionRecord, SessionMode } from '@/modules/focus-session/focus-session.types';
 import { Button, Card, Input, Label, Text, TextField } from '@/ui/hero-runtime';
+import { useLoopTodoTheme } from '@/ui/theme';
 import type { CreateTaskResult, UpdateTaskResult } from '../task.store';
 import { getTaskExecutionState, taskExecutionReason } from '../task.execution';
 import { taskSessionStatistics } from '../task-session.statistics';
@@ -153,7 +157,12 @@ export function TaskGroups({ tasks, categories, activeSession = null, onStart, o
 
   if (groups.length === 0 && completedTasks.length === 0) return <TaskList tasks={[]} activeSession={activeSession} onStart={onStart} onOpenActions={onOpenActions} />;
 
-  return <View className="gap-3">{groups.map((group) => <TaskGroup key={group.id} title={group.title} tasks={group.tasks} collapsed={collapsedGroups.has(group.id)} onToggle={() => toggleGroup(group.id)} activeSession={activeSession} onStart={onStart} onOpenActions={onOpenActions} />)}{completedTasks.length ? <TaskGroup title="已完成" tasks={completedTasks} collapsed={collapsedGroups.has('completed')} onToggle={() => toggleGroup('completed')} activeSession={activeSession} onStart={onStart} onOpenActions={onOpenActions} /> : null}</View>;
+  const expandedGroups = [...groups.map((group) => group.id), ...(completedTasks.length ? ['completed'] : [])].filter((groupId) => !collapsedGroups.has(groupId));
+  const allGroups = [...groups, ...(completedTasks.length ? [{ id: 'completed', title: '已完成', tasks: completedTasks }] : [])];
+  return <Accordion selectionMode="multiple" value={expandedGroups} onValueChange={(values: string[]) => {
+    const nextExpanded = new Set(values);
+    for (const group of allGroups) if (nextExpanded.has(group.id) === collapsedGroups.has(group.id)) toggleGroup(group.id);
+  }} variant="surface" hideSeparator className="gap-3">{allGroups.map((group) => <TaskGroup key={group.id} id={group.id} title={group.title} tasks={group.tasks} collapsed={collapsedGroups.has(group.id)} activeSession={activeSession} onStart={onStart} onOpenActions={onOpenActions} />)}</Accordion>;
 }
 
 export function TaskActionPanel({ task, records, activeSession, onEdit, onConfigureFocus, onGoalProgress, onDelete }: {
@@ -174,36 +183,39 @@ export function TaskActionPanel({ task, records, activeSession, onEdit, onConfig
   return <View className="gap-4"><View className="flex-row gap-3"><Metric label="完成专注" value={`${statistics.completedSessions} 次`} /><Metric label="累计专注" value={`${statistics.completedMinutes} 分钟`} /></View><View className="flex-row gap-2"><Button className="flex-1" variant="secondary" isDisabled={!canEdit} onPress={onEdit}>编辑任务</Button><Button className="flex-1" variant="secondary" isDisabled={!canFocus} onPress={onConfigureFocus}>专注设置</Button></View>{!canEdit ? <Text type="body-xs" color="muted">任务执行中或存在同步问题，暂时不能编辑。</Text> : null}{task.kind === 'goal' && executionState === 'available' ? <View className="flex-row items-end gap-2"><View className="flex-1"><Field label={`补记完成量（${task.targetUnit}）`} value={progress} onChange={setProgress} keyboard="numeric" /></View><Button size="sm" onPress={() => void onGoalProgress(Number(progress))}>记录</Button></View> : null}{confirmDelete ? <View className="gap-2 rounded-panel-inner bg-surface-secondary p-3"><Text type="body-sm">删除后不会进入回收站，确定删除“{task.title}”吗？</Text><View className="flex-row gap-2"><Button className="flex-1" variant="danger" onPress={() => void onDelete()}>确认删除</Button><Button className="flex-1" variant="secondary" onPress={() => setConfirmDelete(false)}>取消</Button></View></View> : <Button variant="danger-soft" isDisabled={!canEdit} onPress={() => setConfirmDelete(true)}>删除任务</Button>}</View>;
 }
 
-function TaskGroup({ title, tasks, collapsed, onToggle, activeSession, onStart, onOpenActions }: {
+function TaskGroup({ id, title, tasks, collapsed, activeSession, onStart, onOpenActions }: {
+  id: string;
   title: string;
   tasks: Task[];
   collapsed: boolean;
-  onToggle(): void;
   activeSession: ActiveSession | null;
   onStart(taskId: string, mode: SessionMode): void;
   onOpenActions?(taskId: string): void;
 }) {
-  return <View testID="task-group" accessibilityLabel={title} style={styles.taskGroup}><Pressable accessibilityRole="button" accessibilityLabel={`${collapsed ? '展开' : '折叠'}${title}任务组`} accessibilityState={{ expanded: !collapsed }} onPress={onToggle} style={({ pressed }) => [styles.groupHeader, pressed && styles.pressed]}><View className="min-w-0 flex-1 flex-row items-center gap-2"><Text type="body-sm" weight="semibold" numberOfLines={1}>{title}</Text><Text type="body-xs" color="muted">{tasks.length}</Text></View><Text type="body-sm" color="muted">{collapsed ? '›' : '⌄'}</Text></Pressable>{collapsed ? null : <View style={styles.groupRows}>{tasks.map((task, index) => <View key={task.id}>{index ? <View style={styles.taskDivider} /> : null}<TaskRow task={task} activeSession={activeSession} onStart={onStart} onOpenActions={onOpenActions} /></View>)}</View>}</View>;
+  const { colors } = useLoopTodoTheme();
+  return <Accordion.Item value={id}><Surface testID={`task-group-surface-${id}`} variant="secondary" className="overflow-hidden rounded-2xl border border-border/60"><View testID="task-group" accessibilityLabel={title}><Accordion.Trigger accessibilityRole="button" accessibilityLabel={`${collapsed ? '展开' : '折叠'}${title}任务组`} accessibilityState={{ expanded: !collapsed }} className="min-h-12 flex-row items-center gap-3 px-4"><View className="min-w-0 flex-1 flex-row items-center gap-2"><Text type="body-sm" weight="semibold" numberOfLines={1}>{title}</Text><Text type="body-xs" color="accent">{tasks.length}</Text></View><Text type="body-sm" color="muted">{collapsed ? '›' : '⌄'}</Text></Accordion.Trigger><Accordion.Content><View style={[styles.groupRows, { borderTopColor: colors.separator }]}>{tasks.map((task, index) => <View key={task.id}>{index ? <View style={[styles.taskDivider, { backgroundColor: colors.separator }]} /> : null}<TaskRow task={task} activeSession={activeSession} onStart={onStart} onOpenActions={onOpenActions} /></View>)}</View></Accordion.Content></View></Surface></Accordion.Item>;
 }
 
 function TaskRow({ task, activeSession, onStart, onOpenActions }: { task: Task; activeSession: ActiveSession | null; onStart(taskId: string, mode: SessionMode): void; onOpenActions?(taskId: string): void }) {
   const executionState = getTaskExecutionState(task, activeSession);
   const canStart = executionState === 'available' || executionState === 'local_active';
   const reason = taskExecutionReason(executionState);
-  return <Pressable testID={`task-row-${task.id}`} accessible={false} delayLongPress={320} onLongPress={() => { Vibration.vibrate(20); onOpenActions?.(task.id); }} style={styles.taskRow}><View className="min-w-0 flex-1 gap-1"><Text type="body-sm" weight="semibold" numberOfLines={1}>{task.title}</Text><View className="flex-row flex-wrap items-center gap-2">{task.mustDo ? <MustDoLabel time={task.forcedTriggerTime} /> : null}<Text type="body-xs" color="muted" numberOfLines={1}>{reason && executionState !== 'completed' ? reason : compactTaskMeta(task, executionState)}</Text></View></View><MoreButton label={`${task.title}更多操作`} onPress={() => onOpenActions?.(task.id)} /><StartButton label={`${executionState === 'local_active' ? '继续' : '开始'}${task.title}专注`} disabled={!canStart} onPress={() => onStart(task.id, 'focus')} /></Pressable>;
+  return <PressableFeedback testID={`task-row-feedback-${task.id}`} accessible={false} delayLongPress={320} onLongPress={() => { Vibration.vibrate(20); onOpenActions?.(task.id); }} animation={{ scale: { value: 0.992 } }}><View testID={`task-row-${task.id}`} style={styles.taskRow}><View className="min-w-0 flex-1 gap-1"><Text type="body-sm" weight="semibold" numberOfLines={1}>{task.title}</Text><View className="flex-row flex-wrap items-center gap-2">{task.mustDo ? <MustDoLabel time={task.forcedTriggerTime} /> : null}<Text type="body-xs" color="muted" numberOfLines={1}>{reason && executionState !== 'completed' ? reason : compactTaskMeta(task, executionState)}</Text></View></View><MoreButton label={`${task.title}更多操作`} onPress={() => onOpenActions?.(task.id)} /><StartButton label={`${executionState === 'local_active' ? '继续' : '开始'}${task.title}专注`} disabled={!canStart} onPress={() => onStart(task.id, 'focus')} /></View></PressableFeedback>;
 }
 
 function MustDoLabel({ time }: { time: string | null }) {
-  return <View className="flex-row items-center gap-1"><Svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="#B91C1C" strokeWidth={2.2}><Rect x={5} y={10} width={14} height={10} rx={2} /><Path d="M8 10V7a4 4 0 0 1 8 0v3" /></Svg><Text type="body-xs" color="danger">今日必须 {time ?? ''}</Text></View>;
+  const { colors } = useLoopTodoTheme();
+  return <View className="flex-row items-center gap-1"><Svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke={colors.danger} strokeWidth={2.2}><Rect x={5} y={10} width={14} height={10} rx={2} /><Path d="M8 10V7a4 4 0 0 1 8 0v3" /></Svg><Text type="body-xs" color="danger">今日必须 {time ?? ''}</Text></View>;
 }
 
 function MoreButton({ label, onPress }: { label: string; onPress(): void }) {
-  const dark = useColorScheme() === 'dark';
-  return <Pressable accessibilityRole="button" accessibilityLabel={label} hitSlop={6} onPress={onPress} style={({ pressed }) => [styles.iconButton, dark && styles.iconButtonDark, pressed && styles.pressed]}><Svg width={20} height={20} viewBox="0 0 24 24" fill={dark ? '#D4D4D8' : '#525252'}><Circle cx={5} cy={12} r={1.7} /><Circle cx={12} cy={12} r={1.7} /><Circle cx={19} cy={12} r={1.7} /></Svg></Pressable>;
+  const { colors } = useLoopTodoTheme();
+  return <PressableFeedback accessibilityRole="button" accessibilityLabel={label} hitSlop={6} onPress={onPress} style={[styles.iconButton, { backgroundColor: colors.surface, borderColor: colors.separator }]}><Svg width={20} height={20} viewBox="0 0 24 24" fill={colors.textMuted}><Circle cx={5} cy={12} r={1.7} /><Circle cx={12} cy={12} r={1.7} /><Circle cx={19} cy={12} r={1.7} /></Svg></PressableFeedback>;
 }
 
 function StartButton({ label, disabled, onPress }: { label: string; disabled: boolean; onPress(): void }) {
-  return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled }} disabled={disabled} hitSlop={4} onPress={onPress} style={({ pressed }) => [styles.startButton, disabled && styles.startButtonDisabled, pressed && !disabled && styles.pressed]}><Svg width={18} height={18} viewBox="0 0 24 24" fill="#FFFFFF"><Polygon points="8,5 19,12 8,19" /></Svg></Pressable>;
+  const { colors } = useLoopTodoTheme();
+  return <PressableFeedback accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled }} isDisabled={disabled} hitSlop={4} onPress={onPress} style={[styles.startButton, { backgroundColor: disabled ? colors.disabled : colors.accent }]}><Svg width={18} height={18} viewBox="0 0 24 24" fill={colors.surface}><Polygon points="8,5 19,12 8,19" /></Svg></PressableFeedback>;
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
@@ -231,14 +243,11 @@ function dateInputValue(value?: number | null) {
 }
 
 const styles = StyleSheet.create({
-  taskGroup: { overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: '#71717A', borderRadius: 10 },
   groupHeader: { minHeight: 44, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  groupRows: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#E4E4E7' },
+  groupRows: { borderTopWidth: StyleSheet.hairlineWidth },
   taskRow: { minHeight: 44, paddingLeft: 12, paddingRight: 8, paddingVertical: 4, flexDirection: 'row', alignItems: 'center', gap: 4 },
-  taskDivider: { height: StyleSheet.hairlineWidth, marginLeft: 12, backgroundColor: '#E4E4E7' },
-  iconButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 8, backgroundColor: '#F1F1F1' },
-  iconButtonDark: { backgroundColor: '#30333A' },
-  startButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 8, backgroundColor: '#2563EB' },
-  startButtonDisabled: { backgroundColor: '#A3A3A3', opacity: 0.7 },
+  taskDivider: { height: StyleSheet.hairlineWidth, marginLeft: 12 },
+  iconButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 8, borderWidth: StyleSheet.hairlineWidth },
+  startButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 8 },
   pressed: { opacity: 0.75 },
 });

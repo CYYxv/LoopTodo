@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { View } from 'react-native';
+import { Surface } from 'heroui-native/surface';
 
 import { FocusPanel } from '@/modules/focus-session/components/FocusPanel';
 import { useLockEngineStore } from '@/modules/lock-engine/lock-engine.store';
@@ -92,5 +93,5 @@ export default function TasksRoute() {
 }
 
 function Summary({ label, value }: { label: string; value: string }) {
-  return <Card style={{ flex: 1 }}><Card.Body className="gap-1"><Text type="body-xs" color="muted">{label}</Text><Text type="h4" weight="bold">{value}</Text></Card.Body></Card>;
+  return <Surface variant="secondary" style={{ flex: 1 }} className="rounded-3xl border border-border/60 p-4"><Text type="body-xs" color="muted">{label}</Text><Text type="h3" weight="bold" color="accent">{value}</Text></Surface>;
 }

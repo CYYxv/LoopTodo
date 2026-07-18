@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, useColorScheme, useWindowDimensions, View } from 'react-native';
+import { useWindowDimensions, View } from 'react-native';
+import { Skeleton } from 'heroui-native/skeleton';
+import { Surface } from 'heroui-native/surface';
+import { Tabs } from 'heroui-native/tabs';
 
 import type { FocusSessionRecord } from '@/modules/focus-session/focus-session.types';
 import type { Task } from '@/modules/tasks/task.types';
 import { getUsageAccessStatus, openUsageAccessSettings, queryAppUsage, summarizeDeviceUsage } from '@/modules/device-usage';
 import { Button, Card, Chip, Input, Text } from '@/ui/hero-runtime';
 import { BottomSheetModal } from '@/ui/bottom-sheet-modal';
+import { useLoopTodoTheme } from '@/ui/theme';
 
 import { aggregateFocusStatistics, createStatisticsRange, formatStatisticsDateInput, shiftStatisticsAnchor } from '../scoring.local';
 import { useScoringStore } from '../scoring.store';
@@ -44,7 +48,17 @@ export function StatisticsPanel({ records, tasks, usage }: StatisticsPanelProps)
   const [localUsage, setLocalUsage] = useState<UsageStatisticsData>({ status: 'unavailable', reason: '正在检测使用情况访问权限' });
   const { width } = useWindowDimensions();
   const compact = width < 380;
-  const dark = useColorScheme() === 'dark';
+  const { colors } = useLoopTodoTheme();
+  const chartColors = {
+    accent: colors.accent,
+    accentSoft: colors.accentSoft,
+    background: colors.surface,
+    grid: colors.chartGrid,
+    text: colors.text,
+    textMuted: colors.textMuted,
+    warning: colors.warning,
+    series: [colors.accent, colors.success, colors.warning, colors.danger, colors.textMuted],
+  };
   const range = useMemo(() => createStatisticsRange(rangeKind, anchor, customRange), [anchor, customRange, rangeKind]);
   const dashboard = useMemo(() => aggregateFocusStatistics({ records, tasks, range, now: anchor }), [anchor, range, records, tasks]);
   const selectedRecord = dashboard.recentRecords.find((item) => item.record.id === selectedRecordId) ?? null;
@@ -97,13 +111,19 @@ export function StatisticsPanel({ records, tasks, usage }: StatisticsPanelProps)
 
   return <View className="gap-3">
     <Card><Card.Body className="gap-3">
-      <View className="flex-row flex-wrap gap-2">
-        {RANGE_OPTIONS.map((option) => <Button key={option.kind} size="sm" variant={rangeKind === option.kind ? 'primary' : 'secondary'} style={{ minWidth: compact ? 54 : 64, flexGrow: 1 }} onPress={() => {
-          if (option.kind === 'custom') setCustomOpen(true);
-          else setRangeKind(option.kind);
-          setRangeError(null);
-        }}>{option.label}</Button>)}
-      </View>
+      <Tabs accessibilityLabel="统计范围选择" value={rangeKind} variant="secondary" onValueChange={(value: string) => {
+        const nextRange = value as StatisticsRangeKind;
+        if (nextRange === 'custom') setCustomOpen(true);
+        else setRangeKind(nextRange);
+        setRangeError(null);
+      }}>
+        <Tabs.List className="w-full">
+          <Tabs.Indicator />
+          {RANGE_OPTIONS.map((option) => <Tabs.Trigger key={option.kind} value={option.kind} className="min-w-0 flex-1 px-2">
+            <Tabs.Label>{option.label}</Tabs.Label>
+          </Tabs.Trigger>)}
+        </Tabs.List>
+      </Tabs>
       <View className="flex-row items-center gap-2">
         <Button size="sm" variant="secondary" accessibilityLabel="上一个时间范围" isDisabled={rangeKind === 'custom'} onPress={() => setAnchor((value) => shiftStatisticsAnchor(rangeKind as Exclude<StatisticsRangeKind, 'custom'>, value, -1))}>‹</Button>
         <View className="flex-1"><Text type="body-sm" color="muted" align="center">{range.label} · {granularityLabel(range.granularity)}</Text></View>
@@ -117,31 +137,33 @@ export function StatisticsPanel({ records, tasks, usage }: StatisticsPanelProps)
         <Chip color={configured && !error ? 'success' : 'warning'}>{configured && !error ? '积分已同步' : '本地数据可用'}</Chip>
       </View>
       <View className="flex-row flex-wrap gap-2">
-        <Metric compact={compact} dark={dark} label="专注时长" value={formatDuration(dashboard.summary.focusSeconds)} />
-        <Metric compact={compact} dark={dark} label="完成 / 退出" value={`${dashboard.summary.completedSessions} / ${dashboard.summary.exitedSessions} 次`} />
-        <Metric compact={compact} dark={dark} label="完成率" value={`${dashboard.summary.completionRate}%`} />
-        <Metric compact={compact} dark={dark} label="活跃天数" value={`${dashboard.summary.activeDays} 天`} />
-        <Metric compact={compact} dark={dark} label="日均专注" value={formatDuration(dashboard.summary.averageSecondsPerActiveDay)} />
-        <Metric compact={compact} dark={dark} label="连续专注" value={`${dashboard.summary.currentStreakDays} 天`} />
+        <Metric compact={compact} label="专注时长" value={formatDuration(dashboard.summary.focusSeconds)} />
+        <Metric compact={compact} label="完成 / 退出" value={`${dashboard.summary.completedSessions} / ${dashboard.summary.exitedSessions} 次`} />
+        <Metric compact={compact} label="完成率" value={`${dashboard.summary.completionRate}%`} />
+        <Metric compact={compact} label="活跃天数" value={`${dashboard.summary.activeDays} 天`} />
+        <Metric compact={compact} label="日均专注" value={formatDuration(dashboard.summary.averageSecondsPerActiveDay)} />
+        <Metric compact={compact} label="连续专注" value={`${dashboard.summary.currentStreakDays} 天`} />
       </View>
-      {configured ? <View className="flex-row flex-wrap items-center justify-between gap-2"><Text type="body-sm" weight="semibold">今日积分：{today?.totalScore ?? '待刷新'}</Text><Button size="sm" variant="secondary" isDisabled={loading} onPress={() => void load()}>{loading ? '刷新中…' : '刷新积分'}</Button></View> : <Text type="body-xs" color="muted">积分同步未配置，不影响本地专注统计。</Text>}
+      <Skeleton accessibilityLabel="积分加载占位" isLoading={loading} className="rounded-panel-inner">
+        {configured ? <View className="flex-row flex-wrap items-center justify-between gap-2"><Text type="body-sm" weight="semibold">今日积分：{today?.totalScore ?? '待刷新'}</Text><Button size="sm" variant="secondary" isDisabled={loading} onPress={() => void load()}>{loading ? '刷新中…' : '刷新积分'}</Button></View> : <Text type="body-xs" color="muted">积分同步未配置，不影响本地专注统计。</Text>}
+      </Skeleton>
       {error ? <Text type="body-xs" color="danger">积分加载失败：{error}</Text> : null}
     </Card.Body></Card>
 
     {dashboard.anomalies.length ? <Card variant="secondary"><Card.Body className="gap-2"><Card.Title>发现异常记录</Card.Title><Card.Description>这些记录已按可证明的计划时长显示，原始记录仍保留。</Card.Description>{dashboard.anomalies.slice(0, 5).map((item) => <View key={item.record.id} className="flex-row flex-wrap justify-between gap-2"><Text type="body-sm">{item.taskTitle}</Text><Text type="body-xs" color="danger">原始 {formatDuration(item.record.durationSeconds)} · 计划 {formatDuration(item.record.plannedFocusSeconds ?? 0)}</Text></View>)}</Card.Body></Card> : null}
 
-    <TrendChart items={dashboard.trend} />
+    <TrendChart items={dashboard.trend} colors={chartColors} />
     <View className={compact ? 'gap-3' : 'flex-row gap-3'}>
-      <View className="flex-1"><DistributionDonut title="任务分布" items={dashboard.distributions.task} /></View>
-      <View className="flex-1"><DistributionDonut title="分类分布" items={dashboard.distributions.category} /></View>
+      <View className="flex-1"><DistributionDonut title="任务分布" items={dashboard.distributions.task} colors={chartColors} /></View>
+      <View className="flex-1"><DistributionDonut title="分类分布" items={dashboard.distributions.category} colors={chartColors} /></View>
     </View>
-    <DistributionDonut title="模式分布" items={dashboard.distributions.mode} />
-    <WeekTimelineChart days={dashboard.weekTimeline} />
-    <StartTimeChart hours={dashboard.startTime.hours} bestHour={dashboard.startTime.bestHour} />
-    <YearHeatmap year={dashboard.year} days={dashboard.yearHeatmap} />
+    <DistributionDonut title="模式分布" items={dashboard.distributions.mode} colors={chartColors} />
+    <WeekTimelineChart days={dashboard.weekTimeline} colors={chartColors} />
+    <StartTimeChart hours={dashboard.startTime.hours} bestHour={dashboard.startTime.bestHour} colors={chartColors} />
+    <YearHeatmap year={dashboard.year} days={dashboard.yearHeatmap} colors={chartColors} />
     <RecentRecords records={dashboard.recentRecords} selectedRecordId={selectedRecordId} onSelect={setSelectedRecordId} />
     {selectedRecord ? <RecordDetail item={selectedRecord} /> : null}
-    <UsageCard usage={usage ?? localUsage} compact={compact} dark={dark}
+    <UsageCard usage={usage ?? localUsage} compact={compact}
       onRequestAccess={() => void openUsageAccessSettings()} onRefresh={() => setUsageRefresh((value) => value + 1)} />
     <BottomSheetModal visible={customOpen} title="自定义统计范围" onClose={() => setCustomOpen(false)}>
       <View className={compact ? 'gap-2' : 'flex-row gap-2'}>
@@ -154,8 +176,8 @@ export function StatisticsPanel({ records, tasks, usage }: StatisticsPanelProps)
   </View>;
 }
 
-function Metric({ label, value, compact, dark }: { label: string; value: string; compact: boolean; dark: boolean }) {
-  return <View style={[styles.metric, dark && styles.metricDark, { width: compact ? '100%' : '31%' }]}><Text type="body-xs" color="muted">{label}</Text><Text type="body-sm" weight="semibold">{value}</Text></View>;
+function Metric({ label, value, compact }: { label: string; value: string; compact: boolean }) {
+  return <Surface accessibilityLabel="统计指标" variant="secondary" className="grow gap-1 rounded-panel-inner px-3 py-2.5" style={{ width: compact ? '100%' : '31%' }}><Text type="body-xs" color="muted">{label}</Text><Text type="body-sm" weight="semibold">{value}</Text></Surface>;
 }
 
 function RecentRecords({ records, selectedRecordId, onSelect }: { records: StatisticsRecentRecord[]; selectedRecordId: string | null; onSelect: (id: string) => void }) {
@@ -184,14 +206,14 @@ function RecordDetail({ item }: { item: StatisticsRecentRecord }) {
   </Card.Body></Card>;
 }
 
-function UsageCard({ usage, compact, dark, onRequestAccess, onRefresh }: { usage?: UsageStatisticsData; compact: boolean; dark: boolean; onRequestAccess(): void; onRefresh(): void }) {
+function UsageCard({ usage, compact, onRequestAccess, onRefresh }: { usage?: UsageStatisticsData; compact: boolean; onRequestAccess(): void; onRefresh(): void }) {
   return <Card variant="secondary"><Card.Body className="gap-3"><View><Card.Title>屏幕使用统计</Card.Title><Card.Description>数据仅在本机读取和聚合，不上传服务器</Card.Description></View>
     {usage?.status === 'authorized' ? <>
-      <Metric compact={compact} dark={dark} label="所选范围屏幕使用" value={formatDuration(usage.totalSeconds)} />
+      <Metric compact={compact} label="所选范围屏幕使用" value={formatDuration(usage.totalSeconds)} />
       {usage.apps.length ? usage.apps.slice(0, 5).map((app) => <View key={app.packageName} className="flex-row items-center justify-between gap-2"><Text type="body-sm" numberOfLines={1} style={{ flex: 1 }}>{app.label || app.packageName}</Text><Text type="body-sm" color="muted">{formatDuration(app.durationSeconds)}</Text></View>) : <Text type="body-sm" color="muted">已授权，但当前范围没有应用使用数据</Text>}
       <View className="gap-2"><Text type="body-sm" weight="semibold">专注中断 {usage.interruptionCount} 次</Text>{usage.interruptionApps.slice(0, 3).map((app) => <View key={app.packageName} className="flex-row justify-between gap-2"><Text type="body-xs" color="muted">{app.label || app.packageName}</Text><Text type="body-xs" color="muted">{app.count} 次</Text></View>)}</View>
       <Button size="sm" variant="secondary" onPress={onRefresh}>刷新应用使用数据</Button>
-    </> : usage?.status === 'loading' ? <Text type="body-sm" color="muted">正在读取本机应用使用数据…</Text> : <View style={[styles.usagePlaceholder, dark && styles.usagePlaceholderDark]}><Text type="body-sm" color="muted">屏幕使用统计未授权或当前平台不可用。</Text>{usage?.reason ? <Text type="body-xs" color="muted">{usage.reason}</Text> : null}<View className="flex-row flex-wrap gap-2">{usage?.status === 'denied' ? <Button size="sm" onPress={onRequestAccess}>开启使用情况访问</Button> : null}<Button size="sm" variant="secondary" onPress={onRefresh}>重新检测</Button></View></View>}
+    </> : usage?.status === 'loading' ? <Skeleton isLoading accessibilityLabel="使用统计加载占位" className="h-20 rounded-panel-inner" /> : <Surface variant="tertiary" className="gap-1 rounded-panel-inner p-3"><Text type="body-sm" color="muted">屏幕使用统计未授权或当前平台不可用。</Text>{usage?.reason ? <Text type="body-xs" color="muted">{usage.reason}</Text> : null}<View className="flex-row flex-wrap gap-2">{usage?.status === 'denied' ? <Button size="sm" onPress={onRequestAccess}>开启使用情况访问</Button> : null}<Button size="sm" variant="secondary" onPress={onRefresh}>重新检测</Button></View></Surface>}
   </Card.Body></Card>;
 }
 
@@ -220,10 +242,3 @@ function modeLabel(record: FocusSessionRecord) {
 function granularityLabel(granularity: 'hour' | 'day' | 'month' | 'year') {
   return { hour: '按小时', day: '按天', month: '按月', year: '按年' }[granularity];
 }
-
-const styles = StyleSheet.create({
-  metric: { flexGrow: 1, borderRadius: 12, backgroundColor: '#EEF2FF', paddingHorizontal: 12, paddingVertical: 10, gap: 2 },
-  metricDark: { backgroundColor: '#252B3A' },
-  usagePlaceholder: { borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: '#D1D5DB', backgroundColor: '#FFFFFF', padding: 12, gap: 4 },
-  usagePlaceholderDark: { borderColor: '#4A4E57', backgroundColor: '#1B1D22' },
-});

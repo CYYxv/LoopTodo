@@ -1,5 +1,9 @@
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
+import { Avatar } from 'heroui-native/avatar';
+import { ListGroup } from 'heroui-native/list-group';
+import { Skeleton } from 'heroui-native/skeleton';
+import { Surface } from 'heroui-native/surface';
 
 import { Button, Card, Chip, Input, Label, Text, TextField } from '@/ui/hero-runtime';
 import { useFamilyStore } from '../family.store';
@@ -40,12 +44,12 @@ export function FamilyPanel() {
   useEffect(() => { if (configured) void load(); }, [configured, load]);
 
   return <View className="gap-3">
-    {loading ? <Card><Card.Body><Text type="body-sm" color="muted">正在加载家庭信息…</Text></Card.Body></Card> : null}
+    {loading ? <Skeleton accessibilityLabel="家庭数据加载占位" accessibilityState={{ busy: true }} className="h-40 rounded-2xl" /> : null}
     {!loading && groups.length === 0 ? <Card><Card.Body className="gap-2"><Card.Title>尚未加入家庭组</Card.Title><Card.Description>家庭管理属于 VIP 扩展权益。你仍可使用全部个人任务与专注功能。</Card.Description></Card.Body></Card> : null}
 
-    {groups.map((membership) => <Card key={membership.id}><Card.Body className="gap-3">
-      <View className="flex-row flex-wrap items-center justify-between gap-2"><View><Card.Title>{membership.familyGroup.name}</Card.Title><Card.Description>我的角色：{membership.role === 'parent' ? '家长' : '孩子'}</Card.Description></View><Chip color="accent">{membership.familyGroup.members.length} 名成员</Chip></View>
-      <View className="gap-1">{membership.familyGroup.members.map((member) => <Text key={member.id} type="body-sm">{member.user.nickname} · {member.role === 'parent' ? '家长' : '孩子'}</Text>)}</View>
+    {groups.map((membership) => <Surface accessibilityLabel="家庭概览" key={membership.id} className="gap-3 rounded-2xl p-4">
+      <View className="flex-row flex-wrap items-center justify-between gap-2"><View className="gap-1"><Text type="body-lg" weight="semibold">{membership.familyGroup.name}</Text><Text type="body-sm" color="muted">我的角色：{membership.role === 'parent' ? '家长' : '孩子'}</Text></View><Chip color="accent" variant="soft">{membership.familyGroup.members.length} 名成员</Chip></View>
+      <ListGroup accessibilityLabel="家庭成员" variant="secondary">{membership.familyGroup.members.map((member) => <ListGroup.Item key={member.id} disabled><ListGroup.ItemPrefix><Avatar color="accent" variant="soft" size="sm"><Avatar.Fallback>{initials(member.user.nickname)}</Avatar.Fallback></Avatar></ListGroup.ItemPrefix><ListGroup.ItemContent><ListGroup.ItemTitle>{member.user.nickname}</ListGroup.ItemTitle></ListGroup.ItemContent><ListGroup.ItemSuffix><Chip color={member.role === 'parent' ? 'accent' : 'default'} variant="soft">{member.role === 'parent' ? '家长' : '孩子'}</Chip></ListGroup.ItemSuffix></ListGroup.Item>)}</ListGroup>
       <Button size="sm" variant="danger-soft" onPress={() => void leave(membership.familyGroup.id)}>退出家庭</Button>
       {membership.role === 'parent' ? <View className="gap-3">
         <View className="flex-row flex-wrap gap-2"><Button size="sm" onPress={() => void invite(membership.familyGroup.id, 'child')}>邀请孩子</Button><Button size="sm" variant="secondary" onPress={() => void invite(membership.familyGroup.id, 'parent')}>邀请家长</Button></View>
@@ -65,11 +69,15 @@ export function FamilyPanel() {
         <Button size="sm" variant="secondary" isDisabled={!childId.trim()} onPress={() => void loadStatus(childId)}>查看孩子状态</Button>
         {childStatus ? <Text type="body-xs">任务 {childStatus.tasks.length} · 专注记录 {childStatus.sessions.length}</Text> : null}
       </View> : null}
-    </Card.Body></Card>)}
+    </Surface>)}
 
     {assignments.map((item) => <Card key={item.id} variant="secondary"><Card.Body className="gap-2"><Card.Title>家长任务：{item.task.title}</Card.Title><TextField><Label>申请原因</Label><Input value={reason} onChangeText={setReason} /></TextField><View className="flex-row flex-wrap gap-2"><Button size="sm" isDisabled={!reason.trim()} onPress={() => void requestChange(item.id, 'update', reason, `${item.task.title}（申请修改）`)}>申请修改</Button><Button size="sm" variant="secondary" isDisabled={!reason.trim()} onPress={() => void requestChange(item.id, 'delete', reason)}>申请删除</Button></View></Card.Body></Card>)}
 
     <Card variant="secondary"><Card.Body className="gap-3"><Card.Title>创建或加入家庭</Card.Title><Card.Description>创建家庭需要 VIP；使用有效邀请码加入已有家庭。</Card.Description><TextField><Label>新家庭名称</Label><Input value={name} onChangeText={setName} /></TextField><Button size="sm" isDisabled={!configured || !name.trim()} onPress={() => void createGroup(name)}>创建家庭组</Button><TextField><Label>加入邀请码</Label><Input value={code} onChangeText={setCode} autoCapitalize="characters" /></TextField><Button size="sm" variant="secondary" isDisabled={!configured || !code.trim()} onPress={() => void join(code)}>加入家庭组</Button></Card.Body></Card>
     {error ? <Card variant="secondary"><Card.Body className="gap-2"><Text type="body-sm" color="danger">{error}</Text><Button size="sm" variant="secondary" onPress={() => void load()}>重试加载</Button></Card.Body></Card> : null}
   </View>;
+}
+
+function initials(name: string) {
+  return name.trim().slice(0, 2).toUpperCase() || 'LT';
 }

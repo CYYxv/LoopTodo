@@ -5,5 +5,5 @@ import { PageHeader, Screen } from '@/ui/screen-layout';
 export default function StatisticsRoute() {
   const records = useTaskStore((state) => state.sessionRecords);
   const tasks = useTaskStore((state) => state.tasks);
-  return <Screen><PageHeader title="统计" description="查看专注趋势、记录与失败复盘" /><StatisticsPanel records={records} tasks={tasks} /></Screen>;
+  return <Screen><PageHeader title="统计" description="用专注数据看见节奏、趋势与进步" /><StatisticsPanel records={records} tasks={tasks} /></Screen>;
 }

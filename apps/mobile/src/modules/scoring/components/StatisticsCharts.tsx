@@ -1,7 +1,9 @@
-import { useColorScheme, useWindowDimensions, View } from 'react-native';
+import { useWindowDimensions, View } from 'react-native';
+import { Surface } from 'heroui-native/surface';
 import Svg, { Circle, Line, Polyline, Rect, Text as SvgText } from 'react-native-svg';
 
-import { Card, Text } from '@/ui/hero-runtime';
+import { Text } from '@/ui/hero-runtime';
+import { useLoopTodoTheme } from '@/ui/theme';
 
 import type {
   StatisticsBucket,
@@ -11,8 +13,21 @@ import type {
   StatisticsWeekTimelineDay,
 } from '../scoring.types';
 
-export function TrendChart({ items }: { items: StatisticsBucket[] }) {
-  const dark = useColorScheme() === 'dark';
+export type StatisticsChartColors = {
+  accent: string;
+  accentSoft: string;
+  background: string;
+  grid: string;
+  text: string;
+  textMuted: string;
+  warning: string;
+  series: string[];
+};
+
+type ChartColorsProp = { colors?: StatisticsChartColors };
+
+export function TrendChart({ items, colors: injectedColors }: { items: StatisticsBucket[] } & ChartColorsProp) {
+  const colors = useStatisticsChartColors(injectedColors);
   const maxSeconds = Math.max(0, ...items.map((item) => item.seconds));
   const chartItems = sampleItems(items, 96);
   const points = chartItems.map((item, index) => {
@@ -24,17 +39,17 @@ export function TrendChart({ items }: { items: StatisticsBucket[] }) {
   return <ChartCard title="专注趋势" description="范围内专注时长随时间变化">
     {maxSeconds ? <>
       <Svg width="100%" height={140} viewBox="0 0 320 140" accessibilityLabel="专注趋势折线图">
-        {[28, 72, 116].map((y) => <Line key={y} x1={16} x2={304} y1={y} y2={y} stroke={dark ? '#343841' : '#E5E7EB'} strokeWidth={1} />)}
-        <Polyline points={points.map((point) => `${point.x},${point.y}`).join(' ')} fill="none" stroke="#2563EB" strokeWidth={3} strokeLinejoin="round" strokeLinecap="round" />
-        {points.length <= 32 ? points.map((point, index) => <Circle key={`${point.x}-${index}`} cx={point.x} cy={point.y} r={3} fill="#2563EB" stroke={dark ? '#1B1D22' : '#FFFFFF'} strokeWidth={1.5} />) : null}
+        {[28, 72, 116].map((y, index) => <Line testID={`trend-grid-${index}`} key={y} x1={16} x2={304} y1={y} y2={y} stroke={colors.grid} strokeWidth={1} />)}
+        <Polyline testID="trend-line" points={points.map((point) => `${point.x},${point.y}`).join(' ')} fill="none" stroke={colors.accent} strokeWidth={3} strokeLinejoin="round" strokeLinecap="round" />
+        {points.length <= 32 ? points.map((point, index) => <Circle testID={`trend-point-${index}`} key={`${point.x}-${index}`} cx={point.x} cy={point.y} r={3} fill={colors.accent} stroke={colors.background} strokeWidth={1.5} />) : null}
       </Svg>
       <AxisLabels items={items} />
     </> : <EmptyChart />}
   </ChartCard>;
 }
 
-export function DistributionDonut({ title, items }: { title: string; items: StatisticsDistributionItem[] }) {
-  const dark = useColorScheme() === 'dark';
+export function DistributionDonut({ title, items, colors: injectedColors }: { title: string; items: StatisticsDistributionItem[] } & ChartColorsProp) {
+  const colors = useStatisticsChartColors(injectedColors);
   const total = items.reduce((sum, item) => sum + item.seconds, 0);
   const radius = 42;
   const circumference = Math.PI * 2 * radius;
@@ -43,19 +58,19 @@ export function DistributionDonut({ title, items }: { title: string; items: Stat
   return <ChartCard title={title} description="按实际专注时长计算">
     {total ? <View className="flex-row flex-wrap items-center gap-4">
       <Svg width={124} height={124} viewBox="0 0 124 124" accessibilityLabel={`${title}圆环图`}>
-        <Circle cx={62} cy={62} r={radius} fill="none" stroke={dark ? '#343841' : '#E5E7EB'} strokeWidth={18} />
-        {items.map((item) => {
+        <Circle cx={62} cy={62} r={radius} fill="none" stroke={colors.grid} strokeWidth={18} />
+        {items.map((item, index) => {
           const length = item.seconds / total * circumference;
           const dashOffset = -offset;
           offset += length;
-          return <Circle key={item.key} cx={62} cy={62} r={radius} fill="none" stroke={item.color} strokeWidth={18} strokeDasharray={`${length} ${circumference - length}`} strokeDashoffset={dashOffset} rotation={-90} origin="62,62" />;
+          return <Circle testID={`distribution-segment-${index}`} key={item.key} cx={62} cy={62} r={radius} fill="none" stroke={seriesColor(colors, index)} strokeWidth={18} strokeDasharray={`${length} ${circumference - length}`} strokeDashoffset={dashOffset} rotation={-90} origin="62,62" />;
         })}
-        <SvgText x={62} y={59} textAnchor="middle" fontSize={13} fontWeight="600" fill={dark ? '#F5F5F5' : '#171717'}>{formatCompactDuration(total)}</SvgText>
-        <SvgText x={62} y={76} textAnchor="middle" fontSize={10} fill={dark ? '#A7ABB4' : '#666666'}>{items.reduce((sum, item) => sum + item.sessions, 0)} 次</SvgText>
+        <SvgText x={62} y={59} textAnchor="middle" fontSize={13} fontWeight="600" fill={colors.text}>{formatCompactDuration(total)}</SvgText>
+        <SvgText x={62} y={76} textAnchor="middle" fontSize={10} fill={colors.textMuted}>{items.reduce((sum, item) => sum + item.sessions, 0)} 次</SvgText>
       </Svg>
       <View className="min-w-40 flex-1 gap-2">
-        {items.slice(0, 6).map((item) => <View key={item.key} className="flex-row items-center justify-between gap-2">
-          <View className="flex-row min-w-0 flex-1 items-center gap-2"><View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: item.color }} /><Text type="body-xs" numberOfLines={1}>{item.label}</Text></View>
+        {items.slice(0, 6).map((item, index) => <View key={item.key} className="flex-row items-center justify-between gap-2">
+          <View className="flex-row min-w-0 flex-1 items-center gap-2"><View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: seriesColor(colors, index) }} /><Text type="body-xs" numberOfLines={1}>{item.label}</Text></View>
           <Text type="body-xs" color="muted">{Math.round(item.seconds / total * 100)}%</Text>
         </View>)}
         {items.length > 6 ? <Text type="body-xs" color="muted">另有 {items.length - 6} 项</Text> : null}
@@ -64,8 +79,8 @@ export function DistributionDonut({ title, items }: { title: string; items: Stat
   </ChartCard>;
 }
 
-export function WeekTimelineChart({ days }: { days: StatisticsWeekTimelineDay[] }) {
-  const dark = useColorScheme() === 'dark';
+export function WeekTimelineChart({ days, colors: injectedColors }: { days: StatisticsWeekTimelineDay[] } & ChartColorsProp) {
+  const colors = useStatisticsChartColors(injectedColors);
   const { width } = useWindowDimensions();
   const compact = width < 380;
   const slots = compact ? 12 : 24;
@@ -77,7 +92,7 @@ export function WeekTimelineChart({ days }: { days: StatisticsWeekTimelineDay[] 
       {grouped.map((day) => <View key={day.day} className="flex-row items-center gap-2">
         <Text type="body-xs" color="muted" style={{ width: 22 }}>{day.label.slice(1)}</Text>
         <View className="flex-1 flex-row gap-1">
-          {day.values.map((item, index) => <View key={index} accessibilityLabel={`${day.label}${item.hour}时 ${formatCompactDuration(item.seconds)}`} className="flex-1 rounded-sm" style={{ height: 13, backgroundColor: item.seconds ? '#2563EB' : dark ? '#343841' : '#E5E7EB', opacity: item.seconds ? 0.28 + item.seconds / maxSeconds * 0.72 : 1 }} />)}
+          {day.values.map((item, index) => <View key={index} accessibilityLabel={`${day.label}${item.hour}时 ${formatCompactDuration(item.seconds)}`} className="flex-1 rounded-sm" style={{ height: 13, backgroundColor: item.seconds ? colors.accent : colors.grid, opacity: item.seconds ? 0.28 + item.seconds / maxSeconds * 0.72 : 1 }} />)}
         </View>
       </View>)}
       <View className="ml-8 flex-row justify-between"><Text type="body-xs" color="muted">0 时</Text><Text type="body-xs" color="muted">12 时</Text><Text type="body-xs" color="muted">24 时</Text></View>
@@ -85,39 +100,57 @@ export function WeekTimelineChart({ days }: { days: StatisticsWeekTimelineDay[] 
   </ChartCard>;
 }
 
-export function StartTimeChart({ hours, bestHour }: { hours: StatisticsHourBucket[]; bestHour: number | null }) {
-  const dark = useColorScheme() === 'dark';
+export function StartTimeChart({ hours, bestHour, colors: injectedColors }: { hours: StatisticsHourBucket[]; bestHour: number | null } & ChartColorsProp) {
+  const colors = useStatisticsChartColors(injectedColors);
   const maxSeconds = Math.max(0, ...hours.map((item) => item.seconds));
   return <ChartCard title="最佳开始时段" description={bestHour == null ? '完成几次专注后即可识别' : `${bestHour}:00 - ${bestHour + 1}:00 的累计专注最多`}>
     {maxSeconds ? <>
       <Svg width="100%" height={132} viewBox="0 0 320 132" accessibilityLabel="最佳开始时段柱图">
-        <Line x1={12} x2={308} y1={104} y2={104} stroke={dark ? '#4A4E57' : '#D1D5DB'} strokeWidth={1} />
+        <Line x1={12} x2={308} y1={104} y2={104} stroke={colors.grid} strokeWidth={1} />
         {hours.map((item) => {
           const barHeight = item.seconds / maxSeconds * 82;
           const x = 14 + item.hour * 12.2;
-          return <Rect key={item.hour} x={x} y={104 - barHeight} width={7.5} height={Math.max(2, barHeight)} rx={2} fill={item.hour === bestHour ? '#F59E0B' : '#2563EB'} opacity={item.seconds ? 1 : 0.18} />;
+          return <Rect key={item.hour} x={x} y={104 - barHeight} width={7.5} height={Math.max(2, barHeight)} rx={2} fill={item.hour === bestHour ? colors.warning : colors.accent} opacity={item.seconds ? 1 : 0.18} />;
         })}
-        {[0, 6, 12, 18, 23].map((hour) => <SvgText key={hour} x={18 + hour * 12.2} y={124} textAnchor="middle" fontSize={9} fill={dark ? '#A7ABB4' : '#666666'}>{hour}</SvgText>)}
+        {[0, 6, 12, 18, 23].map((hour) => <SvgText key={hour} x={18 + hour * 12.2} y={124} textAnchor="middle" fontSize={9} fill={colors.textMuted}>{hour}</SvgText>)}
       </Svg>
     </> : <EmptyChart />}
   </ChartCard>;
 }
 
-export function YearHeatmap({ year, days }: { year: number; days: StatisticsHeatmapDay[] }) {
-  const dark = useColorScheme() === 'dark';
+export function YearHeatmap({ year, days, colors: injectedColors }: { year: number; days: StatisticsHeatmapDay[] } & ChartColorsProp) {
+  const colors = useStatisticsChartColors(injectedColors);
   const maxSeconds = Math.max(0, ...days.map((item) => item.seconds));
   return <ChartCard title="年度专注热力图" description={`${year} 年每日专注强度`}>
     {maxSeconds ? <>
       <Svg width="100%" height={62} viewBox="0 0 326 62" accessibilityLabel={`${year}年度专注热力图`}>
-        {days.map((item) => <Rect key={item.date} x={item.week * 6 + 4} y={item.weekday * 8 + 3} width={5} height={6} rx={1} fill={item.seconds ? '#2563EB' : dark ? '#343841' : '#E5E7EB'} opacity={item.seconds ? 0.24 + item.seconds / maxSeconds * 0.76 : 1} />)}
+        {days.map((item) => <Rect key={item.date} x={item.week * 6 + 4} y={item.weekday * 8 + 3} width={5} height={6} rx={1} fill={item.seconds ? colors.accent : colors.grid} opacity={item.seconds ? 0.24 + item.seconds / maxSeconds * 0.76 : 1} />)}
       </Svg>
-      <View className="flex-row items-center justify-end gap-1"><Text type="body-xs" color="muted">少</Text>{[0.18, 0.4, 0.62, 0.84, 1].map((opacity) => <View key={opacity} style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: '#2563EB', opacity }} />)}<Text type="body-xs" color="muted">多</Text></View>
+      <View className="flex-row items-center justify-end gap-1"><Text type="body-xs" color="muted">少</Text>{[0.18, 0.4, 0.62, 0.84, 1].map((opacity) => <View key={opacity} style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: colors.accent, opacity }} />)}<Text type="body-xs" color="muted">多</Text></View>
     </> : <EmptyChart />}
   </ChartCard>;
 }
 
 function ChartCard({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
-  return <Card variant="secondary"><Card.Body className="gap-3"><View><Card.Title>{title}</Card.Title><Card.Description>{description}</Card.Description></View>{children}</Card.Body></Card>;
+  return <Surface variant="secondary" className="gap-3 rounded-panel p-4"><View><Text type="body-lg" weight="semibold">{title}</Text><Text type="body-sm" color="muted">{description}</Text></View>{children}</Surface>;
+}
+
+function useStatisticsChartColors(injectedColors?: StatisticsChartColors): StatisticsChartColors {
+  const { colors } = useLoopTodoTheme();
+  return injectedColors ?? {
+    accent: colors.accent,
+    accentSoft: colors.accentSoft,
+    background: colors.surface,
+    grid: colors.chartGrid,
+    text: colors.text,
+    textMuted: colors.textMuted,
+    warning: colors.warning,
+    series: [colors.accent, colors.success, colors.warning, colors.danger, colors.textMuted],
+  };
+}
+
+function seriesColor(colors: StatisticsChartColors, index: number) {
+  return colors.series[index % colors.series.length] ?? colors.accent;
 }
 
 function EmptyChart() {

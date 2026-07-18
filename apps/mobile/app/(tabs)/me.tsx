@@ -1,8 +1,12 @@
 import { useRouter } from 'expo-router';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
+import { Avatar } from 'heroui-native/avatar';
+import { ListGroup } from 'heroui-native/list-group';
+import { Separator } from 'heroui-native/separator';
+import { Surface } from 'heroui-native/surface';
 
 import { useAuthStore } from '@/modules/auth/auth.store';
-import { Button, Card, Chip, Text } from '@/ui/hero-runtime';
+import { Button, Chip, Text } from '@/ui/hero-runtime';
 import { PageHeader, Screen } from '@/ui/screen-layout';
 
 const entries = [
@@ -17,7 +21,47 @@ export default function MeRoute() {
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
-  return <Screen><PageHeader title="我的" description="账号、同步、权限和扩展功能集中在这里。" /><Card><Card.Body className="gap-3"><View className="flex-row items-center justify-between gap-3"><View className="flex-1"><Card.Title>{user?.nickname ?? 'LoopTodo 用户'}</Card.Title><Card.Description>{user?.email}</Card.Description></View><Chip color={user?.vipStatus === 'active' ? 'success' : 'default'}>{user?.vipStatus === 'active' ? 'VIP' : '免费版'}</Chip></View><Button size="sm" variant="secondary" onPress={() => void logout()}>退出登录</Button></Card.Body></Card><Card><View>{entries.map(([path, title, description], index) => <Pressable key={path} accessibilityRole="button" onPress={() => router.push(path)} style={[styles.row, index > 0 && styles.divider]}><View style={styles.copy}><Text type="body-sm" weight="semibold">{title}</Text><Text type="body-xs" color="muted">{description}</Text></View><Text type="h4" color="muted">›</Text></Pressable>)}</View></Card></Screen>;
-}
+  const displayName = user?.nickname ?? 'LoopTodo 用户';
+  const initials = displayName.slice(0, 2).toUpperCase();
 
-const styles = StyleSheet.create({ row: { minHeight: 64, paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 12 }, divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#D4D4D4' }, copy: { flex: 1, gap: 3 } });
+  return (
+    <Screen>
+      <PageHeader title="我的" description="管理账号、同步与应用设置" />
+      <Surface className="rounded-2xl p-4">
+        <View className="flex-row items-center gap-3">
+          <Avatar color="accent" variant="soft" size="lg">
+            <Avatar.Fallback>{initials}</Avatar.Fallback>
+          </Avatar>
+          <View className="flex-1 gap-1">
+            <View className="flex-row items-center gap-2">
+              <Text type="h4" weight="semibold" className="flex-shrink">{displayName}</Text>
+              <Chip color={user?.vipStatus === 'active' ? 'success' : 'default'} variant="soft">
+                {user?.vipStatus === 'active' ? 'VIP' : '免费版'}
+              </Chip>
+            </View>
+            <Text type="body-sm" color="muted">{user?.email}</Text>
+          </View>
+        </View>
+        <Button className="mt-4" size="sm" variant="secondary" onPress={() => void logout()}>退出登录</Button>
+      </Surface>
+
+      <View className="gap-2">
+        <Text type="body-xs" color="muted" className="px-2">设置与服务</Text>
+        <ListGroup>
+          {entries.map(([path, title, description], index) => (
+            <View key={path}>
+              {index > 0 ? <Separator className="mx-4" /> : null}
+              <ListGroup.Item accessibilityRole="button" onPress={() => router.push(path)}>
+                <ListGroup.ItemContent>
+                  <ListGroup.ItemTitle>{title}</ListGroup.ItemTitle>
+                  <ListGroup.ItemDescription>{description}</ListGroup.ItemDescription>
+                </ListGroup.ItemContent>
+                <ListGroup.ItemSuffix />
+              </ListGroup.Item>
+            </View>
+          ))}
+        </ListGroup>
+      </View>
+    </Screen>
+  );
+}

@@ -1,6 +1,6 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 
-import { HabitEditForm } from '../components/HabitsPanel';
+import { HabitEditForm, HabitList } from '../components/HabitsPanel';
 import type { Habit } from '../habit.types';
 
 const habit: Habit = {
@@ -23,4 +23,16 @@ test('keeps the edit form open and shows the save error', async () => {
   await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
   expect(screen.getByText('保存失败')).toBeTruthy();
   expect(onSaved).not.toHaveBeenCalled();
+});
+
+test('uses HeroUI surface and press feedback without changing habit actions', async () => {
+  const onProgress = jest.fn(async () => undefined);
+  const onOpen = jest.fn();
+  const screen = await render(<HabitList habits={[habit]} onProgress={onProgress} onArchive={jest.fn()} onOpen={onOpen} />);
+
+  expect(screen.getByTestId('habit-surface-habit-1')).toBeTruthy();
+  await fireEvent.press(screen.getByTestId('habit-feedback-habit-1'));
+  expect(onOpen).toHaveBeenCalledWith('habit-1');
+  await fireEvent.press(screen.getByText('+5 分钟'));
+  expect(onProgress).toHaveBeenCalledWith('habit-1', 5);
 });

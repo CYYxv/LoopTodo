@@ -1,10 +1,9 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { View } from 'react-native';
+import { Tabs } from 'heroui-native/tabs';
 
 import { CompetitionPanel } from '@/modules/competition/components/CompetitionPanel';
 import { FamilyPanel } from '@/modules/family/components/FamilyPanel';
 import { SocialInteractionPanel } from '@/modules/social/components/SocialPanels';
-import { Button } from '@/ui/hero-runtime';
 import { PageHeader, Screen } from '@/ui/screen-layout';
 
 const sections = ['interaction', 'ranking', 'family'] as const;
@@ -20,13 +19,12 @@ export default function SocialRoute() {
   return (
     <Screen>
       <PageHeader title="社交" description="互动、排行和家庭功能按需加载。" />
-      <View className="flex-row gap-2">
-        {sections.map((item) => (
-          <Button key={item} size="sm" className="flex-1" variant={section === item ? 'primary' : 'secondary'} onPress={() => router.setParams({ section: item })}>
-            {sectionLabels[item]}
-          </Button>
-        ))}
-      </View>
+      <Tabs value={section} onValueChange={(value) => router.setParams({ section: value })} accessibilityLabel="社交分区">
+        <Tabs.List className="w-full">
+          <Tabs.Indicator />
+          {sections.map((item) => <Tabs.Trigger key={item} value={item} className="flex-1"><Tabs.Label>{sectionLabels[item]}</Tabs.Label></Tabs.Trigger>)}
+        </Tabs.List>
+      </Tabs>
       {section === 'interaction' ? <SocialInteractionPanel /> : null}
       {section === 'ranking' ? <CompetitionPanel /> : null}
       {section === 'family' ? <FamilyPanel /> : null}
