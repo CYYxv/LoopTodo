@@ -18,6 +18,8 @@ export function configureCloudSession(baseUrl: string, accessToken: string) {
   configureFamily(baseUrl, accessToken);
   configureRewards(baseUrl, accessToken);
   configureSettings(baseUrl, accessToken);
+  void subscriptionStore.getState().load();
+  void settingsStore.getState().load();
 }
 
 export function clearCloudSession() {

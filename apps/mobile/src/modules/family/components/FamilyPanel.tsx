@@ -7,6 +7,7 @@ import { Surface } from 'heroui-native/surface';
 
 import { BottomSheetModal } from '@/ui/bottom-sheet-modal';
 import { Button, Chip, Input, Label, Text, TextField } from '@/ui/hero-runtime';
+import { useSubscriptionStore } from '@/modules/subscription/subscription.store';
 import { useFamilyStore } from '../family.store';
 import type { FamilyChildStatus } from '../family.types';
 
@@ -46,10 +47,17 @@ export function FamilyPanel() {
   const loadRequests = useFamilyStore((state) => state.loadRequests);
   const review = useFamilyStore((state) => state.review);
   const loadStatus = useFamilyStore((state) => state.loadStatus);
+  const familyManagement = useSubscriptionStore((state) => state.entitlements?.familyManagement === true);
+  const loadEntitlements = useSubscriptionStore((state) => state.load);
+  const subscriptionConfigured = useSubscriptionStore((state) => state.configured);
 
   useEffect(() => {
     if (configured) void load();
   }, [configured, load]);
+
+  useEffect(() => {
+    if (subscriptionConfigured) void loadEntitlements();
+  }, [subscriptionConfigured, loadEntitlements]);
 
   useEffect(() => {
     groups.filter((item) => item.role === 'parent').forEach((item) => {
@@ -78,7 +86,7 @@ export function FamilyPanel() {
       {groups.length === 0 ? (
         <Surface className="gap-3 rounded-2xl p-4">
           <Text type="body-lg" weight="semibold">家庭</Text>
-          <Text type="body-sm" color="muted">创建家庭需要 VIP；使用邀请码加入已有家庭。</Text>
+          <Text type="body-sm" color="muted">创建家庭需要 VIP；免费用户可用邀请码加入已有家庭。</Text>
           <Button size="sm" isDisabled={!configured} onPress={() => setJoinOpen(true)}>创建或加入家庭</Button>
         </Surface>
       ) : null}
@@ -193,7 +201,7 @@ export function FamilyPanel() {
 
       <BottomSheetModal visible={joinOpen} title="创建或加入家庭" onClose={() => setJoinOpen(false)}>
         <TextField><Label>新家庭名称</Label><Input value={name} onChangeText={setName} /></TextField>
-        <Button size="sm" isDisabled={!configured || !name.trim()} onPress={() => { void createGroup(name).then(() => { setName(''); setJoinOpen(false); }); }}>创建家庭组</Button>
+        <Button size="sm" isDisabled={!configured || !name.trim() || !familyManagement} onPress={() => { void createGroup(name).then(() => { setName(''); setJoinOpen(false); }); }}>创建家庭组</Button>
         <TextField><Label>加入邀请码</Label><Input value={code} onChangeText={setCode} autoCapitalize="characters" /></TextField>
         <Button size="sm" variant="secondary" isDisabled={!configured || !code.trim()} onPress={() => { void join(code).then(() => { setCode(''); setJoinOpen(false); }); }}>加入家庭组</Button>
       </BottomSheetModal>

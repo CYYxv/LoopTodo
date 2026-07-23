@@ -6,6 +6,7 @@ import type { HabitRepository } from './habit.repository';
 import type { CreateHabitInput, Habit, HabitProgressDay, UpdateHabitInput } from './habit.types';
 import { createNativeForcedTriggerScheduler } from '@/modules/forced-trigger/native-forced-trigger.scheduler';
 import type { ForcedTriggerScheduler } from '@/modules/forced-trigger/forced-trigger.scheduler';
+import { subscriptionStore } from '@/modules/subscription/subscription.store';
 
 export type CreateHabitResult = { ok: true; habitId: string } | { ok: false; error: string };
 export type UpdateHabitResult = { ok: true } | { ok: false; error: string };
@@ -25,8 +26,12 @@ export type HabitStore = {
   clearError(): void;
 };
 
-export function createHabitStore(repository: HabitRepository, now: () => number = Date.now,
-  forcedScheduler: ForcedTriggerScheduler = createNativeForcedTriggerScheduler()) {
+export function createHabitStore(
+  repository: HabitRepository,
+  now: () => number = Date.now,
+  forcedScheduler: ForcedTriggerScheduler = createNativeForcedTriggerScheduler(),
+  getHabitLimit: () => number | null = defaultHabitLimit,
+) {
   return createStore<HabitStore>((set, get) => ({
     habits: [], historyByHabit: {}, isHydrating: false, error: null,
     async hydrate() {
@@ -41,6 +46,15 @@ export function createHabitStore(repository: HabitRepository, now: () => number 
     },
     async createHabit(input) {
       try {
+        const limit = getHabitLimit();
+        if (limit !== null) {
+          const activeCount = get().habits.filter((habit) => habit.status === 'active').length;
+          if (activeCount >= limit) {
+            const nextError = `免费版最多创建 ${limit} 个习惯，开通 VIP 可解除上限`;
+            set({ error: nextError });
+            return { ok: false, error: nextError };
+          }
+        }
         const habit = await repository.create(input); set((state) => ({ habits: [...state.habits, habit], error: null }));
         if (habit.forceEnabled && habit.triggerTime) try { await scheduleHabit(forcedScheduler, habit); } catch (error) { set({ error: message(error) }); }
         return { ok: true, habitId: habit.id };
@@ -118,4 +132,10 @@ function scheduleHabit(scheduler: ForcedTriggerScheduler, habit: Habit) {
   const [hour, minute] = habit.triggerTime!.split(':').map(Number);
   return scheduler.schedule({ id: ruleId(habit.id), sourceId: habit.id, title: habit.name,
     durationMinutes: habit.targetMinutes, dailyMinute: hour * 60 + minute, recurring: true });
+}
+
+function defaultHabitLimit(): number | null {
+  const entitlements = subscriptionStore.getState().entitlements;
+  if (!entitlements) return 3;
+  return entitlements.habitLimit;
 }

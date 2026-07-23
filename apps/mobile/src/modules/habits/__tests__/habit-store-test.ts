@@ -110,4 +110,61 @@ describe('habit store', () => {
     expect(store.getState().habits).toHaveLength(0);
     expect(store.getState().error).toBe('取消触发失败');
   });
+
+
+  test('blocks free users beyond habit limit', async () => {
+    const seed = [1, 2, 3].map((index) => ({
+      id: `habit-${index}`,
+      name: `习惯${index}`,
+      targetMinutes: 20,
+      todayMinutes: 0,
+      forceEnabled: false,
+      triggerTime: null,
+      status: 'active' as const,
+    }));
+    const noopScheduler: ForcedTriggerScheduler = {
+      async schedule() { return undefined; },
+      async cancel() { return undefined; },
+      async markSatisfied() { return undefined; },
+    };
+    const store = createHabitStore(repository(seed), Date.now, noopScheduler, () => 3);
+    await store.getState().hydrate();
+    const result = await store.getState().createHabit({
+      name: '第四个习惯',
+      targetMinutes: 15,
+      forceEnabled: false,
+      triggerTime: null,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain('3');
+    expect(store.getState().habits).toHaveLength(3);
+  });
+
+  test('allows unlimited habits when limit is null', async () => {
+    const seed = [1, 2, 3].map((index) => ({
+      id: `habit-${index}`,
+      name: `习惯${index}`,
+      targetMinutes: 20,
+      todayMinutes: 0,
+      forceEnabled: false,
+      triggerTime: null,
+      status: 'active' as const,
+    }));
+    const noopScheduler: ForcedTriggerScheduler = {
+      async schedule() { return undefined; },
+      async cancel() { return undefined; },
+      async markSatisfied() { return undefined; },
+    };
+    const store = createHabitStore(repository(seed), Date.now, noopScheduler, () => null);
+    await store.getState().hydrate();
+    const result = await store.getState().createHabit({
+      name: '第四个习惯',
+      targetMinutes: 15,
+      forceEnabled: false,
+      triggerTime: null,
+    });
+    expect(result.ok).toBe(true);
+    expect(store.getState().habits).toHaveLength(4);
+  });
+
 });

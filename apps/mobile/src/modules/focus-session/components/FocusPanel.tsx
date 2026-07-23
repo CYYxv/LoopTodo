@@ -29,6 +29,24 @@ export function FocusPanel({
   onConfirmLockRisk: () => void;
   onOpenLockPermission: (kind: 'notifications' | 'notificationListener' | 'accessibility' | 'battery') => void;
 }) {
+  if (selectedTask?.remoteActive) {
+    return (
+      <View className="gap-4">
+        <Card variant="secondary">
+          <Card.Body className="gap-3">
+            <Card.Title>其他设备执行中</Card.Title>
+            <Card.Description>
+              「{selectedTask.title}」正在其他设备专注。本机保持只读同步，不会启动本机计时或锁机。
+            </Card.Description>
+            <Text type="body-xs" color="muted">
+              可在设置中开启多设备同步专注；其他设备结束后，本机可再次开始。
+            </Text>
+          </Card.Body>
+        </Card>
+      </View>
+    );
+  }
+
   return (
     <View className="gap-4">
       <Card>

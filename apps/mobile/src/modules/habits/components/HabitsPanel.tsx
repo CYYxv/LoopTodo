@@ -7,7 +7,7 @@ import { Button, Card, Chip, Input, Label, Text, TextField } from '@/ui/hero-run
 import type { ArchiveHabitResult, CreateHabitResult, UpdateHabitResult } from '../habit.store';
 import type { CreateHabitInput, Habit, UpdateHabitInput } from '../habit.types';
 
-export function HabitCreateForm({ onCreate, onCreated }: { onCreate(input: CreateHabitInput): Promise<CreateHabitResult>; onCreated?(habitId: string): void }) {
+export function HabitCreateForm({ onCreate, onCreated, limitHint }: { onCreate(input: CreateHabitInput): Promise<CreateHabitResult>; onCreated?(habitId: string): void; limitHint?: string }) {
   const [name, setName] = useState('');
   const [target, setTarget] = useState('30');
   const [forceEnabled, setForceEnabled] = useState(false);
@@ -19,7 +19,7 @@ export function HabitCreateForm({ onCreate, onCreated }: { onCreate(input: Creat
     if (result.ok) { setName(''); onCreated?.(result.habitId); }
     else setSubmitError(result.error);
   };
-  return <Card variant="secondary"><Card.Body className="gap-3"><Card.Title>创建习惯</Card.Title><Field label="习惯名称" value={name} onChange={setName} placeholder="例如：英语晨读" /><Field label="每日目标分钟" value={target} onChange={setTarget} keyboard="numeric" /><Button variant={forceEnabled ? 'danger-soft' : 'secondary'} onPress={() => setForceEnabled((value) => !value)}>{forceEnabled ? '已参与强制约束' : '不参与强制约束'}</Button>{forceEnabled ? <Field label="触发时间" value={triggerTime} onChange={setTriggerTime} placeholder="HH:mm" /> : null}{submitError ? <Text type="body-sm" color="danger" accessibilityRole="alert">{submitError}</Text> : null}<Button isDisabled={!name.trim()} onPress={() => void create()}>保存习惯</Button>{!name.trim() ? <Text type="body-xs" color="muted">填写习惯名称后即可保存</Text> : null}</Card.Body></Card>;
+  return <Card variant="secondary"><Card.Body className="gap-3"><Card.Title>创建习惯</Card.Title><Field label="习惯名称" value={name} onChange={setName} placeholder="例如：英语晨读" /><Field label="每日目标分钟" value={target} onChange={setTarget} keyboard="numeric" /><Button variant={forceEnabled ? 'danger-soft' : 'secondary'} onPress={() => setForceEnabled((value) => !value)}>{forceEnabled ? '已参与强制约束' : '不参与强制约束'}</Button>{forceEnabled ? <Field label="触发时间" value={triggerTime} onChange={setTriggerTime} placeholder="HH:mm" /> : null}{limitHint ? <Text type="body-sm" color="muted">{limitHint}</Text> : null}{submitError ? <Text type="body-sm" color="danger" accessibilityRole="alert">{submitError}</Text> : null}<Button isDisabled={!name.trim() || Boolean(limitHint)} onPress={() => void create()}>保存习惯</Button>{!name.trim() && !limitHint ? <Text type="body-xs" color="muted">填写习惯名称后即可保存</Text> : null}</Card.Body></Card>;
 }
 
 export function HabitEditForm({ habit, onSave, onSaved }: { habit: Habit; onSave(input: UpdateHabitInput): Promise<UpdateHabitResult>; onSaved?(): void }) {
