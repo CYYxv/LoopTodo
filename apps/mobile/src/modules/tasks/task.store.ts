@@ -25,7 +25,7 @@ import type { LockEngine } from '@/modules/lock-engine/lock-engine.port';
 import type { FocusRestrictionOptions, LockCapabilities } from '@/modules/lock-engine/lock-engine.types';
 import { createNativeForcedTriggerScheduler } from '@/modules/forced-trigger/native-forced-trigger.scheduler';
 import type { ForcedTriggerScheduler } from '@/modules/forced-trigger/forced-trigger.scheduler';
-import { calculateSessionStars } from '../competition/star-rank';
+import { calculateSessionStars, mapTrustToMode } from '../competition/star-rank';
 
 export type TaskStore = {
   tasks: Task[];
@@ -462,22 +462,23 @@ export function createTaskStore(
         const restrictionError = await nativeLockEngine.clearFocusRestrictions()
           .then(() => null)
           .catch((error) => errorMessage(error));
-        // Preview only; server settles with trustLevel. Align modes: lock > whitelist open > strict.
+        // Preview uses same trust→mode mapping as server; server remains source of truth after sync.
         const hasWhitelist = selectedWhitelistPackages().length > 0;
-        const starMode = activeSession.mode === 'lock'
-          ? 'lock'
-          : hasWhitelist
-            ? 'whitelist'
-            : 'strict';
+        const trustLevel = activeSession.mode === 'lock' ? 'high' : hasWhitelist ? 'open' : 'normal';
+        const starMode = mapTrustToMode(trustLevel, task.timerMode);
         const starOutcome = outcome === 'completed'
           ? 'completed'
           : outcome === 'exited' && activeSession.mode === 'lock'
             ? 'emergency_exit'
             : 'failed';
+        const priorMinutes = Math.floor(
+          statePriorMinutes(get().sessionRecords, endedAt),
+        );
         const lastStarDelta = calculateSessionStars({
           outcome: starOutcome,
           effectiveMinutes: Math.floor(record.durationSeconds / 60),
-          mode: task.timerMode === 'untimed' ? 'untimed' : starMode,
+          mode: starMode,
+          priorEffectiveMinutesToday: priorMinutes,
         });
         set((state) => ({
           tasks: state.tasks.map((candidate) => candidate.id === nextTask.id ? nextTask : candidate),
@@ -599,4 +600,19 @@ function restrictionsFor(
 
 function strictEnabled(options: StrictOption[], id: string) {
   return options.some((option) => option.id === id && option.enabled);
+}
+
+
+function statePriorMinutes(records: FocusSessionRecord[], endedAt: number) {
+  const day = new Date(endedAt);
+  const y = day.getFullYear();
+  const m = day.getMonth();
+  const d = day.getDate();
+  return records.reduce((sum, item) => {
+    if (item.outcome !== 'completed' || !item.endedAt || item.id === undefined) return sum;
+    const at = new Date(item.endedAt);
+    if (at.getFullYear() !== y || at.getMonth() !== m || at.getDate() !== d) return sum;
+    // exclude current session which is not yet in records
+    return sum + Math.floor((item.durationSeconds ?? 0) / 60);
+  }, 0);
 }

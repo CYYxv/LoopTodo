@@ -35,6 +35,7 @@ export const modeCoefficients: Record<Exclude<FocusModeForStars, 'untimed'>, num
 };
 
 export const MIN_STAR_MINUTES = 25;
+export const IDLE_STAR_GAP_DAYS = 3;
 export const MAX_STARS_PER_SESSION = 4;
 
 export type SessionStarInput = {

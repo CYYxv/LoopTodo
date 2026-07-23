@@ -7,10 +7,11 @@ import { EventBusService } from '../common/event-bus.module';
 import { PrismaService } from '../infrastructure/prisma/prisma.service';
 import { RedisService } from '../infrastructure/redis/redis.service';
 import { demoteTier, formatStarBar, rankFromStars, teamScore, tierForScore, tierNames } from './ranking.policy';
+import { ScoringService } from '../scoring/scoring.service';
 
 @Injectable()
 export class TeamsSeasonsService implements OnModuleInit, OnModuleDestroy {
-  constructor(private readonly prisma: PrismaService, private readonly redis: RedisService, private readonly config: ConfigService, private readonly events: EventBusService) {}
+  constructor(private readonly prisma: PrismaService, private readonly redis: RedisService, private readonly config: ConfigService, private readonly events: EventBusService, private readonly scoring: ScoringService) {}
   private readonly logger = new Logger(TeamsSeasonsService.name);
   private readonly scoreListener = (userId: string) => { void this.attachCurrentScores(userId).catch((error) => this.logger.error('Failed to attach score event to season', error)); };
   onModuleInit() { this.events.on('score.settled', this.scoreListener); }
@@ -24,6 +25,7 @@ export class TeamsSeasonsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async currentRank(userId: string) {
+    await this.scoring.applyIdleStarPenalty(userId);
     const season = await this.currentSeason(); await this.attachCurrentScores(userId, season);
     const aggregate = await this.prisma.scoreEvent.aggregate({ where: { userId, seasonId: season.id }, _sum: { totalScore: true } });
     const score = aggregate._sum.totalScore ?? 0;

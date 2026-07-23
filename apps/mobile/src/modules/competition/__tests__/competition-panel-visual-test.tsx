@@ -7,6 +7,7 @@ const mockCompetitionState: any = {
   leaderboard: [],
   membership: null,
   teams: [],
+  recentEvents: [],
   loading: false,
   error: null,
   load: jest.fn(async () => undefined),
@@ -51,6 +52,7 @@ beforeEach(() => {
   mockCompetitionState.leaderboard = [];
   mockCompetitionState.membership = null;
   mockCompetitionState.teams = [];
+  mockCompetitionState.recentEvents = [];
   mockCompetitionState.loading = false;
   mockCompetitionState.error = null;
   jest.clearAllMocks();

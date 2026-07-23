@@ -41,6 +41,11 @@ test('settles whole stars per session without partial carry', () => {
   expect(calculateSessionStars({ outcome: 'failed', effectiveMinutes: 50, mode: 'strict' })).toBe(0);
 });
 
+test('decays star credit after three hours prior effective focus', () => {
+  expect(calculateSessionStars({ outcome: 'completed', effectiveMinutes: 25, mode: 'whitelist', priorEffectiveMinutesToday: 180 })).toBe(0);
+  expect(calculateSessionStars({ outcome: 'completed', effectiveMinutes: 100, mode: 'whitelist', priorEffectiveMinutesToday: 100 })).toBe(3);
+});
+
 test('whitelist earns stars but fewer than lock at same duration', () => {
   const minutes = 75;
   const white = calculateSessionStars({ outcome: 'completed', effectiveMinutes: minutes, mode: 'whitelist' });

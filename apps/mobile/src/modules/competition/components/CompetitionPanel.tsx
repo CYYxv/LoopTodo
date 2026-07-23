@@ -25,6 +25,7 @@ export function CompetitionPanel() {
   const leaderboard = useCompetitionStore((state) => state.leaderboard);
   const membership = useCompetitionStore((state) => state.membership);
   const teams = useCompetitionStore((state) => state.teams);
+  const recentEvents = useCompetitionStore((state) => state.recentEvents);
   const loading = useCompetitionStore((state) => state.loading);
   const error = useCompetitionStore((state) => state.error);
   const load = useCompetitionStore((state) => state.load);
@@ -166,6 +167,21 @@ export function CompetitionPanel() {
         </ListGroup>
       </Surface>
 
+      
+      <Surface className="gap-3 rounded-2xl p-4">
+        <Text type="body-lg" weight="semibold">最近排位记录</Text>
+        {recentEvents.length === 0 ? (
+          <Text type="body-sm" color="muted">完成专注后，这里会显示 +星 / -星 与原因。</Text>
+        ) : recentEvents.slice(0, 8).map((event) => (
+          <View key={event.id} className="flex-row items-center justify-between">
+            <Text type="body-sm" color="muted">{scoreEventLabel(event)}</Text>
+            <Text type="body-sm" weight="semibold" color={event.totalScore >= 0 ? 'accent' : 'danger'}>
+              {event.totalScore > 0 ? `+${event.totalScore}` : `${event.totalScore}`} 星
+            </Text>
+          </View>
+        ))}
+      </Surface>
+
       {error ? (
         <View className="gap-2">
           <Text type="body-xs" color="danger">{error}</Text>
@@ -177,7 +193,8 @@ export function CompetitionPanel() {
       <BottomSheetModal visible={rulesOpen} title="排位规则" onClose={() => setRulesOpen(false)}>
         <Text type="body-sm">· 有效专注满 25 分钟才记星，当次整星结算，不跨次保留进度。</Text>
         <Text type="body-sm">· 白名单可加星但最少；严格更高；锁机最高。</Text>
-        <Text type="body-sm">· 锁机提前退出 -1 星；PK 按分钟结算，胜负不加星。</Text>
+        <Text type="body-sm">· 锁机提前退出 -1 星；连续 3 天无记星 -1 星；PK 按分钟结算，胜负不加星。</Text>
+        <Text type="body-sm">· 当日有效专注超过约 3 小时后，继续计星的收益会衰减。</Text>
         <Text type="body-sm">· 大段：青铜→白银→黄金→铂金→钻石→星耀→闭环。</Text>
         <Text type="body-sm">· 赛季约 6 个月；新赛季按上赛季下降 3 个大段。</Text>
       </BottomSheetModal>
@@ -199,6 +216,17 @@ export function CompetitionPanel() {
       </BottomSheetModal>
     </View>
   );
+}
+
+function scoreEventLabel(event: { outcome: string; formulaVersion: string; durationMinutes: number; trustLevel: string; totalScore: number }) {
+  if (event.formulaVersion.includes('idle')) return '连续多日无记星';
+  if (event.outcome === 'emergency_exit') return '提前退出锁机';
+  if (event.totalScore === 0 && event.outcome === 'completed') return `专注 ${event.durationMinutes} 分钟未达门槛`;
+  if (event.outcome === 'completed') {
+    const mode = event.trustLevel === 'high' ? '锁机' : event.trustLevel === 'open' ? '白名单' : '严格';
+    return `${mode}专注 ${event.durationMinutes} 分钟`;
+  }
+  return '专注未完成';
 }
 
 function initials(name: string) {
