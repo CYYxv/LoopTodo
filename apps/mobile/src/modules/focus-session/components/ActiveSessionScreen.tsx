@@ -17,6 +17,7 @@ export function ActiveSessionScreen({
   session,
   task,
   error,
+  lastStarDelta = null,
   isPausePending = false,
   onTogglePause,
   onComplete,
@@ -27,6 +28,7 @@ export function ActiveSessionScreen({
   session: ActiveSession;
   task: Task;
   error: string | null;
+  lastStarDelta?: number | null;
   isPausePending?: boolean;
   onTogglePause: () => Promise<void>;
   onComplete: (completedAmount?: number, completionNote?: string) => Promise<void>;
@@ -95,7 +97,16 @@ export function ActiveSessionScreen({
       <IconButton label={keepAwake ? '关闭屏幕常亮' : '开启屏幕常亮'} selected={keepAwake}
         onPress={() => setKeepAwake((value) => !value)}><SunIcon active={keepAwake} /></IconButton>
     </View>
-    <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    
+      {typeof lastStarDelta === 'number' ? (
+        <View className="mx-4 mt-3 rounded-2xl bg-accent/10 p-3" accessibilityLabel="星结算">
+          <Text type="body-lg" weight="semibold" color="accent">
+            {lastStarDelta > 0 ? `本次 +${lastStarDelta} 星` : lastStarDelta < 0 ? `本次 ${lastStarDelta} 星` : '本次 +0 星'}
+          </Text>
+          {lastStarDelta === 0 ? <Text type="body-xs" color="muted">有效专注满 25 分钟才记星</Text> : null}
+        </View>
+      ) : null}
+<ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <View style={styles.timerSection}>
         <TimerRing session={session} task={task} now={currentTime} size={ringSize} />
         <Text type="h3" weight="semibold" align="center" numberOfLines={2}>{task.title}</Text>

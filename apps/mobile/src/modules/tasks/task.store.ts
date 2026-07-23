@@ -25,6 +25,7 @@ import type { LockEngine } from '@/modules/lock-engine/lock-engine.port';
 import type { FocusRestrictionOptions, LockCapabilities } from '@/modules/lock-engine/lock-engine.types';
 import { createNativeForcedTriggerScheduler } from '@/modules/forced-trigger/native-forced-trigger.scheduler';
 import type { ForcedTriggerScheduler } from '@/modules/forced-trigger/forced-trigger.scheduler';
+import { calculateSessionStars } from '../competition/star-rank';
 
 export type TaskStore = {
   tasks: Task[];
@@ -39,6 +40,7 @@ export type TaskStore = {
   isFinishingSession: boolean;
   isTogglingPause: boolean;
   error: string | null;
+  lastStarDelta: number | null;
   hydrate(): Promise<void>;
   createTask(input: CreateTaskInput): Promise<CreateTaskResult>;
   updateTask(taskId: string, expectedVersion: number, input: UpdateTaskInput): Promise<UpdateTaskResult>;
@@ -90,6 +92,7 @@ export function createTaskStore(
     isFinishingSession: false,
     isTogglingPause: false,
     error: null,
+    lastStarDelta: null,
     async hydrate() {
       if (get().isHydrating) return;
       const existingSessionId = get().activeSession?.id ?? null;
@@ -459,12 +462,32 @@ export function createTaskStore(
         const restrictionError = await nativeLockEngine.clearFocusRestrictions()
           .then(() => null)
           .catch((error) => errorMessage(error));
+        const hasStrict = get().strictOptions.some((option) => option.enabled && option.id !== 'allow-whitelist');
+        const hasWhitelist = selectedWhitelistPackages().length > 0;
+        const starMode = activeSession.mode === 'lock'
+          ? 'lock'
+          : hasWhitelist
+            ? 'whitelist'
+            : hasStrict
+              ? 'strict'
+              : 'strict';
+        const starOutcome = outcome === 'completed'
+          ? 'completed'
+          : outcome === 'exited' && activeSession.mode === 'lock'
+            ? 'emergency_exit'
+            : 'failed';
+        const lastStarDelta = calculateSessionStars({
+          outcome: starOutcome,
+          effectiveMinutes: Math.floor(record.durationSeconds / 60),
+          mode: starMode as 'lock' | 'strict' | 'whitelist',
+        });
         set((state) => ({
           tasks: state.tasks.map((candidate) => candidate.id === nextTask.id ? nextTask : candidate),
           sessionRecords: [record, ...state.sessionRecords],
           activeSession: restSession,
           isFinishingSession: false,
           error: restrictionError,
+          lastStarDelta,
         }));
       } catch (error) {
         set({ isFinishingSession: false, error: errorMessage(error) });

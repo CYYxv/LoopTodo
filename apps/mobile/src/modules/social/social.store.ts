@@ -80,7 +80,11 @@ export function createSocialStore() {
     async invite(email) { await action(get, set, (client) => client.invite(email)); },
     async accept(id) { await action(get, set, (client) => client.accept(id)); },
     async createPk(userId) { await action(get, set, (client) => client.createPk(userId)); },
-    async createRoom(name, visibility) { await action(get, set, (client) => client.createRoom(name, visibility)); },
+    async createRoom(name, visibility) {
+      const trimmed = name.trim();
+      if (trimmed.length < 1 || trimmed.length > 15) return set({ error: '房间名称需要 1–15 个字' });
+      await action(get, set, (client) => client.createRoom(trimmed, visibility));
+    },
     async joinRoom(room) {
       if (await action(get, set, async (client) => { await client.joinRoom({ roomId: room.id }); })) get().realtime?.joinRoom(room.id);
     },

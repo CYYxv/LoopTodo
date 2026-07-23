@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+﻿import { ConflictException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { randomBytes } from 'node:crypto';
@@ -6,7 +6,7 @@ import { randomBytes } from 'node:crypto';
 import { EventBusService } from '../common/event-bus.module';
 import { PrismaService } from '../infrastructure/prisma/prisma.service';
 import { RedisService } from '../infrastructure/redis/redis.service';
-import { demoteTier, teamScore, tierForScore, tierNames } from './ranking.policy';
+import { demoteTier, formatStarBar, rankFromStars, teamScore, tierForScore, tierNames } from './ranking.policy';
 
 @Injectable()
 export class TeamsSeasonsService implements OnModuleInit, OnModuleDestroy {
@@ -25,11 +25,33 @@ export class TeamsSeasonsService implements OnModuleInit, OnModuleDestroy {
 
   async currentRank(userId: string) {
     const season = await this.currentSeason(); await this.attachCurrentScores(userId, season);
-    const aggregate = await this.prisma.scoreEvent.aggregate({ where: { userId, seasonId: season.id }, _sum: { totalScore: true } }); const score = aggregate._sum.totalScore ?? 0;
+    const aggregate = await this.prisma.scoreEvent.aggregate({ where: { userId, seasonId: season.id }, _sum: { totalScore: true } });
+    const score = aggregate._sum.totalScore ?? 0;
     const previous = await this.prisma.rankSnapshot.findFirst({ where: { userId, season: { endsAt: { lte: season.startsAt } } }, orderBy: { season: { endsAt: 'desc' } } });
-    const earned = tierForScore(score, this.thresholds()); const starting = previous ? demoteTier(previous.tier) : tierNames[0];
-    const tier = tierNames[Math.max(tierNames.indexOf(earned), tierNames.indexOf(starting))]!;
-    return { season, score, tier, startingTier: starting, nextThreshold: this.thresholds()[tierNames.indexOf(tier) + 1] ?? null };
+    const earnedProgress = rankFromStars(score);
+    const starting = previous ? demoteTier(previous.tier) : tierNames[0];
+    const floorIndex = Math.max(tierNames.indexOf(earnedProgress.tier), tierNames.indexOf(starting as typeof tierNames[number]));
+    // Season demotion only raises the floor for major tier when earned is lower than demoted start.
+    const progress = floorIndex > tierNames.indexOf(earnedProgress.tier)
+      ? rankFromStars(this.thresholds()[floorIndex] ?? score)
+      : earnedProgress;
+    return {
+      season,
+      score,
+      stars: score,
+      tier: progress.tier,
+      startingTier: starting,
+      subTier: progress.subTier,
+      starsInSub: progress.starsInSub,
+      starCapacity: Number.isFinite(progress.capacity) ? progress.capacity : null,
+      starsToNext: progress.starsToNext,
+      displayName: progress.displayName,
+      nextDisplayName: progress.nextDisplayName,
+      starBar: Number.isFinite(progress.capacity)
+        ? formatStarBar(progress.starsInSub, progress.capacity)
+        : formatStarBar(progress.starsInSub, Number.POSITIVE_INFINITY),
+      nextThreshold: this.thresholds()[tierNames.indexOf(progress.tier) + 1] ?? null,
+    };
   }
 
   async leaderboard(period: 'today' | 'week' | 'month' | 'season', limit: number) {
@@ -74,7 +96,7 @@ export class TeamsSeasonsService implements OnModuleInit, OnModuleDestroy {
       score: teamScore(total, team.member_count, averageWeight, totalWeight) }; }).sort((first, second) => second.score - first.score).slice(0, limit).map((team, index) => ({ ...team, position: index + 1 }));
   }
 
-  private thresholds() { return JSON.parse(this.config.get<string>('RANK_THRESHOLDS_JSON') ?? '[0,500,1500,3000,5000,8000]') as number[]; }
+  private thresholds() { return [0, 9, 21, 36, 51, 66, 81]; }
   private async attachCurrentScores(userId: string, season?: Awaited<ReturnType<TeamsSeasonsService['currentSeason']>>) { const current = season ?? await this.currentSeason(); await this.prisma.scoreEvent.updateMany({ where: { userId, seasonId: null, scoreDate: { gte: dateOnly(current.startsAt), lt: dateOnly(current.endsAt) } }, data: { seasonId: current.id } }); }
   private async settleExpiredSeasons() { const expired = await this.prisma.season.findMany({ where: { status: 'active', endsAt: { lte: new Date() } } }); for (const season of expired) { await this.prisma.scoreEvent.updateMany({ where: { seasonId: null, scoreDate: { gte: dateOnly(season.startsAt), lt: dateOnly(season.endsAt) } }, data: { seasonId: season.id } });
       const scores = await this.prisma.scoreEvent.groupBy({ by: ['userId'], where: { seasonId: season.id }, _sum: { totalScore: true }, orderBy: { _sum: { totalScore: 'desc' } } });
@@ -85,3 +107,4 @@ function seasonRange(now: Date) { const year = now.getUTCFullYear(); const half 
 function dateOnly(value: Date) { return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate())); }
 function leaderboardRange(period: string, season: { startsAt: Date; endsAt: Date }) { const now = new Date(); if (period === 'season') return { start: dateOnly(season.startsAt), end: dateOnly(season.endsAt) }; const start = dateOnly(now);
   if (period === 'week') start.setUTCDate(start.getUTCDate() - ((start.getUTCDay() + 6) % 7)); if (period === 'month') start.setUTCDate(1); return { start, end: period === 'today' ? new Date(start.getTime() + 86_400_000) : new Date() }; }
+

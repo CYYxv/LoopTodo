@@ -1,18 +1,26 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { Avatar } from 'heroui-native/avatar';
 import { ListGroup } from 'heroui-native/list-group';
 import { Skeleton } from 'heroui-native/skeleton';
 import { Surface } from 'heroui-native/surface';
 
-import { Button, Chip, Input, Label, Text, TextField } from '@/ui/hero-runtime';
+import { BottomSheetModal } from '@/ui/bottom-sheet-modal';
+import { Button, Input, Label, Text, TextField } from '@/ui/hero-runtime';
 
 import { useSocialStore } from '../social.store';
+import type { Friend, PkMatch, StudyRoom } from '../social.types';
 
-export function SocialInteractionPanel() {
+/** Challenge tab: PK-first. Friends/invites and room list live in sheets/secondary pages. */
+export function SocialChallengePanel() {
+  const [friendsOpen, setFriendsOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [roomsOpen, setRoomsOpen] = useState(false);
+  const [pkPickOpen, setPkPickOpen] = useState(false);
   const [email, setEmail] = useState('');
   const [roomName, setRoomName] = useState('');
   const [inviteCode, setInviteCode] = useState('');
+
   const configured = useSocialStore((state) => state.configured);
   const friends = useSocialStore((state) => state.friends);
   const matches = useSocialStore((state) => state.matches);
@@ -37,49 +45,296 @@ export function SocialInteractionPanel() {
     return () => setEnabled(false);
   }, [configured, load, setEnabled]);
 
-  if (loading) {
-    return <Skeleton accessibilityLabel="社交数据加载占位" accessibilityState={{ busy: true }} className="h-48 rounded-2xl" />;
+  const accepted = useMemo(() => friends.filter((item) => item.status === 'accepted'), [friends]);
+  const pendingIncoming = useMemo(
+    () => friends.filter((item) => item.status === 'pending' && item.direction === 'incoming'),
+    [friends],
+  );
+  const activeMatch = matches[0] ?? null;
+  const currentRoom = rooms.find((room) => room.joined) ?? null;
+  const record = useMemo(() => summarizeMatches(matches), [matches]);
+
+  if (loading && friends.length === 0 && matches.length === 0) {
+    return <Skeleton accessibilityLabel="挑战数据加载占位" accessibilityState={{ busy: true }} className="h-48 rounded-2xl" />;
   }
 
-  return <View className="gap-4">
-    <Surface accessibilityLabel="互动概览" className="gap-4 rounded-2xl p-4">
-      <View className="flex-row flex-wrap items-center justify-between gap-2"><Chip color="accent" variant="soft">好友 PK</Chip><Chip color={configured ? 'success' : 'warning'} variant="soft">{configured ? '已连接' : '登录后启用'}</Chip></View>
-      <View className="gap-1"><Text type="body-lg" weight="semibold">每日专注时长 PK</Text><Text type="body-sm" color="muted">只比较当日完成专注分钟，不提供聊天。</Text></View>
-      <View className="flex-row gap-2"><Metric label="好友" value={friends.filter((item) => item.status === 'accepted').length} /><Metric label="今日 PK" value={matches.length} /></View>
-      <TextField><Label>好友邮箱</Label><Input value={email} onChangeText={setEmail} autoCapitalize="none" placeholder="friend@example.com" /></TextField>
-      <Button size="sm" isDisabled={!configured || !email.trim()} onPress={() => void invite(email)}>发送好友邀请</Button>
-      <ListGroup accessibilityLabel="好友与邀请" variant="secondary">
-        {friends.length === 0 ? <ListGroup.Item disabled><ListGroup.ItemContent><ListGroup.ItemTitle>暂无好友或待处理邀请</ListGroup.ItemTitle></ListGroup.ItemContent></ListGroup.Item> : friends.map((friend) => <ListGroup.Item key={friend.id} disabled>
-          <ListGroup.ItemPrefix><Avatar color="accent" variant="soft" size="sm"><Avatar.Fallback>{initials(friend.user.nickname)}</Avatar.Fallback></Avatar></ListGroup.ItemPrefix>
-          <ListGroup.ItemContent><ListGroup.ItemTitle>{friend.user.nickname}</ListGroup.ItemTitle><ListGroup.ItemDescription>{friend.status === 'accepted' ? '已是好友' : friend.direction === 'incoming' ? '等待你接受' : '已发送邀请'}</ListGroup.ItemDescription></ListGroup.ItemContent>
-          <ListGroup.ItemSuffix>{friend.status === 'pending' && friend.direction === 'incoming' ? <Button size="sm" onPress={() => void accept(friend.id)}>接受</Button> : friend.status === 'accepted' ? <Button size="sm" variant="secondary" onPress={() => void createPk(friend.user.id)}>发起 PK</Button> : null}</ListGroup.ItemSuffix>
-        </ListGroup.Item>)}
-      </ListGroup>
-      {matches.map((match) => <Surface key={match.id} variant="secondary" className="rounded-xl p-3"><Text type="body-sm">{match.challenger.nickname} {match.challenger.minutes}m : {match.opponent.minutes}m {match.opponent.nickname}</Text></Surface>)}
-      {matches.length === 0 ? <Text type="body-sm" color="muted">今天还没有好友 PK</Text> : null}
-    </Surface>
+  return (
+    <View className="gap-4">
+      <Surface accessibilityLabel="今日 PK" className="gap-4 rounded-2xl p-4">
+        <View className="flex-row items-center justify-between">
+          <Text type="body-lg" weight="semibold">今日 PK</Text>
+          <Button size="sm" variant="secondary" onPress={() => setFriendsOpen(true)}>
+            {pendingIncoming.length > 0 ? `邀请 ${pendingIncoming.length}` : `好友 ${accepted.length}`}
+          </Button>
+        </View>
 
-    <Surface className="gap-4 rounded-2xl p-4">
-      <View className="gap-1"><Text type="body-lg" weight="semibold">无聊天自习室</Text><Text type="body-sm" color="muted">公开房间或邀请码私密房间，只允许发送励志表情。</Text></View>
-      <TextField><Label>房间名称</Label><Input value={roomName} onChangeText={setRoomName} placeholder="晚间自习室" /></TextField>
-      <View className="flex-row flex-wrap gap-2"><Button size="sm" isDisabled={!configured || !roomName.trim()} onPress={() => void createRoom(roomName, 'public')}>创建公开房</Button><Button size="sm" variant="secondary" isDisabled={!configured || !roomName.trim()} onPress={() => void createRoom(roomName, 'private')}>创建私密房</Button></View>
-      <TextField><Label>私密房邀请码</Label><Input value={inviteCode} onChangeText={setInviteCode} autoCapitalize="characters" /></TextField>
-      <Button size="sm" variant="secondary" isDisabled={!configured || !inviteCode.trim()} onPress={() => void joinByCode(inviteCode)}>使用邀请码加入</Button>
-      <ListGroup accessibilityLabel="自习室列表" variant="secondary">
-        {rooms.length === 0 ? <ListGroup.Item disabled><ListGroup.ItemContent><ListGroup.ItemTitle>暂无可加入的自习室</ListGroup.ItemTitle></ListGroup.ItemContent></ListGroup.Item> : rooms.map((room) => <ListGroup.Item key={room.id} disabled>
-          <ListGroup.ItemContent><ListGroup.ItemTitle>{room.name}</ListGroup.ItemTitle><ListGroup.ItemDescription>{room.visibility === 'private' ? `私密 · ${room.memberCount} 人${room.inviteCode ? ` · 邀请码 ${room.inviteCode}` : ''}` : `公开 · ${room.memberCount} 人`}</ListGroup.ItemDescription></ListGroup.ItemContent>
-          <ListGroup.ItemSuffix><Button size="sm" onPress={() => void joinRoom(room)}>{room.joined ? '进入' : '加入'}</Button></ListGroup.ItemSuffix>
-        </ListGroup.Item>)}
-      </ListGroup>
-      {rooms.filter((room) => room.joined).map((room) => <View key={`${room.id}-reactions`} className="flex-row gap-3">{['💪', '🔥', '👏', '🌱', '🏆'].map((emoji) => <Text key={emoji} type="h4" onPress={() => void react(room.id, emoji)}>{emoji}</Text>)}</View>)}
-      {reactions.slice(-5).map((item, index) => <Text key={`${item.createdAt}-${index}`} type="body-xs">{item.nickname} {item.emoji}</Text>)}
-      {error ? <View className="gap-2"><Text type="body-xs" color="danger">{error}</Text><Button size="sm" variant="secondary" onPress={() => void load()}>重试</Button></View> : null}
-    </Surface>
-  </View>;
+        {activeMatch ? <PkCard match={activeMatch} /> : (
+          <View className="gap-2 rounded-xl bg-default-100 p-4">
+            <Text type="body-sm" weight="semibold">今天还没有进行中的 PK</Text>
+            <Text type="body-xs" color="muted">选择一位好友，比拼当日有效专注分钟。</Text>
+          </View>
+        )}
+
+        <View className="flex-row flex-wrap gap-2">
+          <Button size="sm" className="flex-1" isDisabled={!configured} onPress={() => setPkPickOpen(true)}>发起 PK</Button>
+          <Button size="sm" variant="secondary" className="flex-1" isDisabled={!configured || accepted.length === 0} onPress={() => setPkPickOpen(true)}>一起专注</Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            className="flex-1"
+            isDisabled={!configured}
+            onPress={() => setRoomsOpen(true)}
+          >
+            {currentRoom ? '当前自习室' : '进入自习室'}
+          </Button>
+        </View>
+
+        {currentRoom ? (
+          <Surface variant="secondary" className="gap-2 rounded-xl p-3">
+            <Text type="body-sm" weight="semibold">{currentRoom.name}</Text>
+            <Text type="body-xs" color="muted">
+              {currentRoom.memberCount} 人 · {currentRoom.visibility === 'private' ? '私密' : '公开'} · 无聊天
+            </Text>
+            <View className="flex-row gap-3">
+              {['💪', '🔥', '👏', '🌱', '🏆'].map((emoji) => (
+                <Text key={emoji} type="h4" onPress={() => void react(currentRoom.id, emoji)}>{emoji}</Text>
+              ))}
+            </View>
+            {reactions.slice(-3).map((item, index) => (
+              <Text key={`${item.createdAt}-${index}`} type="body-xs" color="muted">{item.nickname} {item.emoji}</Text>
+            ))}
+          </Surface>
+        ) : null}
+      </Surface>
+
+      <Surface className="gap-2 rounded-2xl p-4">
+        <Text type="body-lg" weight="semibold">最近战绩</Text>
+        <Text type="body-sm" color="muted">胜 {record.wins}  ·  负 {record.losses}  ·  连胜 {record.streak}</Text>
+        {matches.slice(0, 3).map((match) => (
+          <Text key={match.id} type="body-xs" color="muted">
+            {match.challenger.nickname} {match.challenger.minutes}m : {match.opponent.minutes}m {match.opponent.nickname}
+          </Text>
+        ))}
+      </Surface>
+
+      {error ? (
+        <View className="gap-2">
+          <Text type="body-xs" color="danger">{error}</Text>
+          <Button size="sm" variant="secondary" onPress={() => void load()}>重试</Button>
+        </View>
+      ) : null}
+
+      <BottomSheetModal visible={friendsOpen} title="好友" onClose={() => setFriendsOpen(false)}>
+        <Button size="sm" onPress={() => { setFriendsOpen(false); setInviteOpen(true); }}>邀请好友</Button>
+        {pendingIncoming.length > 0 ? (
+          <ListGroup accessibilityLabel="待处理邀请" variant="secondary">
+            {pendingIncoming.map((friend) => (
+              <FriendRow key={friend.id} friend={friend} onAccept={() => void accept(friend.id)} />
+            ))}
+          </ListGroup>
+        ) : null}
+        <ListGroup accessibilityLabel="好友列表" variant="secondary">
+          {accepted.length === 0 ? (
+            <ListGroup.Item disabled>
+              <ListGroup.ItemContent>
+                <ListGroup.ItemTitle>还没有专注伙伴</ListGroup.ItemTitle>
+                <ListGroup.ItemDescription>邀请一位朋友，一起完成今天的专注。</ListGroup.ItemDescription>
+              </ListGroup.ItemContent>
+            </ListGroup.Item>
+          ) : accepted.map((friend) => (
+            <FriendRow key={friend.id} friend={friend} onPk={() => void createPk(friend.user.id)} />
+          ))}
+        </ListGroup>
+      </BottomSheetModal>
+
+      <BottomSheetModal visible={inviteOpen} title="邀请好友" onClose={() => setInviteOpen(false)}>
+        <TextField>
+          <Label>好友邮箱</Label>
+          <Input value={email} onChangeText={setEmail} autoCapitalize="none" placeholder="friend@example.com" />
+        </TextField>
+        <Button
+          size="sm"
+          isDisabled={!configured || !email.trim()}
+          onPress={() => {
+            void invite(email).then(() => {
+              setEmail('');
+              setInviteOpen(false);
+            });
+          }}
+        >
+          发送邀请
+        </Button>
+      </BottomSheetModal>
+
+      <BottomSheetModal visible={pkPickOpen} title="选择 PK 对手" onClose={() => setPkPickOpen(false)}>
+        {accepted.length === 0 ? (
+          <View className="gap-3">
+            <Text type="body-sm" color="muted">还没有好友，先邀请一位吧。</Text>
+            <Button size="sm" onPress={() => { setPkPickOpen(false); setInviteOpen(true); }}>邀请好友</Button>
+          </View>
+        ) : (
+          <ListGroup accessibilityLabel="PK 对手" variant="secondary">
+            {accepted.map((friend) => (
+              <ListGroup.Item key={friend.id} disabled>
+                <ListGroup.ItemPrefix>
+                  <Avatar color="accent" variant="soft" size="sm">
+                    <Avatar.Fallback>{initials(friend.user.nickname)}</Avatar.Fallback>
+                  </Avatar>
+                </ListGroup.ItemPrefix>
+                <ListGroup.ItemContent>
+                  <ListGroup.ItemTitle>{friend.user.nickname}</ListGroup.ItemTitle>
+                </ListGroup.ItemContent>
+                <ListGroup.ItemSuffix>
+                  <Button
+                    size="sm"
+                    onPress={() => {
+                      void createPk(friend.user.id);
+                      setPkPickOpen(false);
+                    }}
+                  >
+                    发起
+                  </Button>
+                </ListGroup.ItemSuffix>
+              </ListGroup.Item>
+            ))}
+          </ListGroup>
+        )}
+      </BottomSheetModal>
+
+      <BottomSheetModal visible={roomsOpen} title="自习室" onClose={() => setRoomsOpen(false)}>
+        <TextField>
+          <Label>房间名称（1–15 字）</Label>
+          <Input value={roomName} onChangeText={setRoomName} maxLength={15} placeholder="深夜自习" />
+        </TextField>
+        <View className="flex-row flex-wrap gap-2">
+          <Button
+            size="sm"
+            isDisabled={!configured || roomName.trim().length < 1 || roomName.trim().length > 15}
+            onPress={() => void createRoom(roomName.trim(), 'public')}
+          >
+            创建公开房
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            isDisabled={!configured || roomName.trim().length < 1 || roomName.trim().length > 15}
+            onPress={() => void createRoom(roomName.trim(), 'private')}
+          >
+            创建私密房
+          </Button>
+        </View>
+        <TextField>
+          <Label>私密房邀请码</Label>
+          <Input value={inviteCode} onChangeText={setInviteCode} autoCapitalize="characters" />
+        </TextField>
+        <Button size="sm" variant="secondary" isDisabled={!configured || !inviteCode.trim()} onPress={() => void joinByCode(inviteCode)}>
+          使用邀请码加入
+        </Button>
+        <ListGroup accessibilityLabel="自习室列表" variant="secondary">
+          {rooms.length === 0 ? (
+            <ListGroup.Item disabled>
+              <ListGroup.ItemContent>
+                <ListGroup.ItemTitle>暂无可加入的自习室</ListGroup.ItemTitle>
+              </ListGroup.ItemContent>
+            </ListGroup.Item>
+          ) : rooms.map((room) => (
+            <RoomRow key={room.id} room={room} onJoin={() => void joinRoom(room)} />
+          ))}
+        </ListGroup>
+      </BottomSheetModal>
+    </View>
+  );
 }
 
-function Metric({ label, value }: { label: string; value: number }) {
-  return <Surface variant="secondary" className="flex-1 rounded-xl p-3"><Text type="body-xs" color="muted">{label}</Text><Text type="h4" weight="semibold">{value}</Text></Surface>;
+/** @deprecated use SocialChallengePanel */
+export const SocialInteractionPanel = SocialChallengePanel;
+
+function PkCard({ match }: { match: PkMatch }) {
+  const left = match.challenger;
+  const right = match.opponent;
+  const total = Math.max(1, left.minutes + right.minutes);
+  const leftRatio = left.minutes / total;
+  return (
+    <View className="gap-3 rounded-xl bg-default-100 p-4">
+      <View className="flex-row items-center justify-between">
+        <View className="items-center gap-1">
+          <Avatar color="accent" variant="soft" size="md"><Avatar.Fallback>{initials(left.nickname)}</Avatar.Fallback></Avatar>
+          <Text type="body-xs">{left.nickname}</Text>
+          <Text type="body-sm" weight="semibold">{left.minutes} 分</Text>
+        </View>
+        <View className="items-center">
+          <Text type="h4" weight="semibold" color="accent">{left.minutes - right.minutes >= 0 ? `+${left.minutes - right.minutes}` : `${left.minutes - right.minutes}`}</Text>
+          <Text type="body-xs" color="muted">分钟差</Text>
+        </View>
+        <View className="items-center gap-1">
+          <Avatar color="default" variant="soft" size="md"><Avatar.Fallback>{initials(right.nickname)}</Avatar.Fallback></Avatar>
+          <Text type="body-xs">{right.nickname}</Text>
+          <Text type="body-sm" weight="semibold">{right.minutes} 分</Text>
+        </View>
+      </View>
+      <View className="h-2 overflow-hidden rounded-full bg-default-200">
+        <View className="h-full rounded-full bg-accent" style={{ width: `${Math.round(leftRatio * 100)}%` }} />
+      </View>
+      <Text type="body-xs" color="muted">按当日有效专注分钟结算 · 胜负不额外加星</Text>
+    </View>
+  );
+}
+
+function FriendRow({ friend, onAccept, onPk }: { friend: Friend; onAccept?: () => void; onPk?: () => void }) {
+  return (
+    <ListGroup.Item disabled>
+      <ListGroup.ItemPrefix>
+        <Avatar color="accent" variant="soft" size="sm">
+          <Avatar.Fallback>{initials(friend.user.nickname)}</Avatar.Fallback>
+        </Avatar>
+      </ListGroup.ItemPrefix>
+      <ListGroup.ItemContent>
+        <ListGroup.ItemTitle>{friend.user.nickname}</ListGroup.ItemTitle>
+        <ListGroup.ItemDescription>
+          {friend.status === 'accepted' ? '好友' : friend.direction === 'incoming' ? '等待你接受' : '已发送邀请'}
+        </ListGroup.ItemDescription>
+      </ListGroup.ItemContent>
+      <ListGroup.ItemSuffix>
+        {onAccept ? <Button size="sm" onPress={onAccept}>接受</Button> : null}
+        {onPk ? <Button size="sm" variant="secondary" onPress={onPk}>PK</Button> : null}
+      </ListGroup.ItemSuffix>
+    </ListGroup.Item>
+  );
+}
+
+function RoomRow({ room, onJoin }: { room: StudyRoom; onJoin: () => void }) {
+  return (
+    <ListGroup.Item disabled>
+      <ListGroup.ItemContent>
+        <ListGroup.ItemTitle>{room.name}</ListGroup.ItemTitle>
+        <ListGroup.ItemDescription>
+          {room.visibility === 'private' ? `私密 · ${room.memberCount} 人` : `公开 · ${room.memberCount} 人`}
+        </ListGroup.ItemDescription>
+      </ListGroup.ItemContent>
+      <ListGroup.ItemSuffix>
+        <Button size="sm" onPress={onJoin}>{room.joined ? '进入' : '加入'}</Button>
+      </ListGroup.ItemSuffix>
+    </ListGroup.Item>
+  );
+}
+
+function summarizeMatches(matches: PkMatch[]) {
+  let wins = 0;
+  let losses = 0;
+  let streak = 0;
+  for (const match of matches) {
+    const mine = match.challenger.minutes;
+    const theirs = match.opponent.minutes;
+    if (mine === theirs) continue;
+    if (mine > theirs) {
+      wins += 1;
+      streak += 1;
+    } else {
+      losses += 1;
+      streak = 0;
+    }
+  }
+  return { wins, losses, streak };
 }
 
 function initials(name: string) {
