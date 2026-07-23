@@ -7,9 +7,83 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
     return this.prisma.$transaction(async (tx) => { const claimed = await tx.familyInvite.updateMany({ where: { id: invite.id, usedAt: null }, data: { usedAt: new Date(), usedById: userId } }); if (!claimed.count) throw new ConflictException({ code: 'FAMILY_INVITE_USED', message: '邀请码已使用' }); return tx.familyMember.upsert({ where: { familyGroupId_userId: { familyGroupId: invite.familyGroupId, userId } }, update: { role: invite.role, leftAt: null, joinedAt: new Date() }, create: { familyGroupId: invite.familyGroupId, userId, role: invite.role } }); }); }
   async assignTask(userId: string, groupId: string, input: AssignFamilyTaskDto) { const parent = await this.requireParent(userId, groupId); await this.requireGroupEntitlement(groupId); const child = await this.prisma.familyMember.findFirst({ where: { familyGroupId: groupId, userId: input.childUserId, role: 'child', leftAt: null } }); if (!child) throw new NotFoundException({ code: 'FAMILY_CHILD_NOT_FOUND', message: '孩子不在该家庭组' }); if (input.taskType === 'goal' && (input.timerMode !== 'countdown' || !input.deadlineAt || !input.targetAmount || !input.targetUnit?.trim())) throw new BadRequestException({ code: 'GOAL_FIELDS_REQUIRED', message: '定目标任务需要倒计时、截止日期、目标量和单位' }); if (input.isTodayRequired && !input.triggerTime) throw new BadRequestException({ code: 'FORCED_TRIGGER_TIME_REQUIRED', message: '今日必须任务需要触发时间' });
     return this.prisma.$transaction(async (tx) => { const task = await tx.task.create({ data: { userId: child.userId, title: input.title.trim(), taskType: input.taskType, timerMode: input.timerMode, estimatedMinutes: input.estimatedMinutes, restMinutes: input.restMinutes, deadlineAt: input.deadlineAt ? new Date(input.deadlineAt) : null, targetAmount: input.targetAmount, targetUnit: input.targetUnit?.trim(), isTodayRequired: input.isTodayRequired, forcedTriggerTime: input.isTodayRequired ? input.triggerTime : null, createdByFamilyMemberId: parent.id } }); const assignment = await tx.familyTaskAssignment.create({ data: { familyGroupId: groupId, taskId: task.id, parentMemberId: parent.id, childMemberId: child.id } }); if (input.isTodayRequired && input.triggerTime) await tx.forcedLockRule.create({ data: { userId: child.userId, taskId: task.id, triggerTime: input.triggerTime } }); return { task, assignment }; }); }
-  async requestChange(userId: string, assignmentId: string, requestType: 'update' | 'delete', reason: string, proposedPatch?: Record<string, unknown>) { const assignment = await this.prisma.familyTaskAssignment.findFirst({ where: { id: assignmentId, childMember: { userId, leftAt: null }, status: 'active' } }); if (!assignment) throw new NotFoundException({ code: 'FAMILY_ASSIGNMENT_NOT_FOUND', message: '家庭任务不存在' }); const patch = sanitizeFamilyTaskPatch(proposedPatch); if (requestType === 'update' && !Object.keys(patch).length) throw new BadRequestException({ code: 'EMPTY_TASK_PATCH', message: '修改申请没有有效字段' }); return this.prisma.taskChangeRequest.create({ data: { assignmentId, childMemberId: assignment.childMemberId, requestType, reason: reason.trim(), proposedPatch: requestType === 'update' ? patch as Prisma.InputJsonObject : undefined } }); }
-  async reviewChange(userId: string, requestId: string, decision: 'approved' | 'rejected') { const request = await this.prisma.taskChangeRequest.findUnique({ where: { id: requestId }, include: { assignment: true } }); if (!request || request.status !== 'pending') throw new NotFoundException({ code: 'CHANGE_REQUEST_NOT_FOUND', message: '修改申请不存在或已处理' }); await this.requireParent(userId, request.assignment.familyGroupId); await this.requireGroupEntitlement(request.assignment.familyGroupId);
-    return this.prisma.$transaction(async (tx) => { if (decision === 'approved') { const task = await tx.task.findUniqueOrThrow({ where: { id: request.assignment.taskId } }); if (task.activeSessionId) throw new ConflictException({ code: 'FAMILY_TASK_ACTIVE', message: '任务进行中，暂不能批准修改或删除' }); if (request.requestType === 'delete') { await tx.task.update({ where: { id: request.assignment.taskId }, data: { status: 'archived', version: { increment: 1 } } }); await tx.familyTaskAssignment.update({ where: { id: request.assignmentId }, data: { status: 'cancelled' } }); } else { await tx.task.update({ where: { id: request.assignment.taskId }, data: { ...taskUpdateData(request.proposedPatch as Record<string, unknown>, task), version: { increment: 1 } } }); } } return tx.taskChangeRequest.update({ where: { id: request.id }, data: { status: decision, reviewedByUserId: userId, reviewedAt: new Date() } }); }); }
+  async requestChange(userId: string, assignmentId: string, requestType: 'update' | 'delete', reason: string, proposedPatch?: Record<string, unknown>) {
+    const assignment = await this.prisma.familyTaskAssignment.findFirst({
+      where: { id: assignmentId, childMember: { userId, leftAt: null }, status: 'active' },
+      include: { childMember: { include: { user: { select: { nickname: true } } } }, task: { select: { title: true } } },
+    });
+    if (!assignment) throw new NotFoundException({ code: 'FAMILY_ASSIGNMENT_NOT_FOUND', message: '家庭任务不存在' });
+    const patch = sanitizeFamilyTaskPatch(proposedPatch);
+    if (requestType === 'update' && !Object.keys(patch).length) throw new BadRequestException({ code: 'EMPTY_TASK_PATCH', message: '修改申请没有有效字段' });
+    const created = await this.prisma.taskChangeRequest.create({
+      data: {
+        assignmentId,
+        childMemberId: assignment.childMemberId,
+        requestType,
+        reason: reason.trim(),
+        proposedPatch: requestType === 'update' ? patch as Prisma.InputJsonObject : undefined,
+      },
+    });
+    const parents = await this.prisma.familyMember.findMany({
+      where: { familyGroupId: assignment.familyGroupId, role: 'parent', leftAt: null },
+      select: { userId: true },
+    });
+    const childName = assignment.childMember.user.nickname;
+    const taskTitle = assignment.task.title;
+    await Promise.all(parents.map((parent) => this.notifications.enqueue({
+      userId: parent.userId,
+      type: 'family_change_request',
+      title: '家庭任务修改申请',
+      body: `${childName} 申请${requestType === 'delete' ? '删除' : '修改'}「${taskTitle}」`,
+      data: { requestId: created.id, assignmentId, childUserId: userId, requestType },
+      dedupeKey: `family-change-request:${created.id}`,
+      scheduledAt: new Date(),
+    })));
+    return created;
+  }
+  async reviewChange(userId: string, requestId: string, decision: 'approved' | 'rejected') {
+    const request = await this.prisma.taskChangeRequest.findUnique({
+      where: { id: requestId },
+      include: {
+        assignment: {
+          include: {
+            childMember: { include: { user: { select: { id: true, nickname: true } } } },
+            task: { select: { title: true } },
+          },
+        },
+      },
+    });
+    if (!request || request.status !== 'pending') throw new NotFoundException({ code: 'CHANGE_REQUEST_NOT_FOUND', message: '修改申请不存在或已处理' });
+    await this.requireParent(userId, request.assignment.familyGroupId);
+    await this.requireGroupEntitlement(request.assignment.familyGroupId);
+    const updated = await this.prisma.$transaction(async (tx) => {
+      if (decision === 'approved') {
+        const task = await tx.task.findUniqueOrThrow({ where: { id: request.assignment.taskId } });
+        if (task.activeSessionId) throw new ConflictException({ code: 'FAMILY_TASK_ACTIVE', message: '任务进行中，暂时不能批准修改或删除' });
+        if (request.requestType === 'delete') {
+          await tx.task.update({ where: { id: request.assignment.taskId }, data: { status: 'archived', version: { increment: 1 } } });
+          await tx.familyTaskAssignment.update({ where: { id: request.assignmentId }, data: { status: 'cancelled' } });
+        } else {
+          await tx.task.update({ where: { id: request.assignment.taskId }, data: { ...taskUpdateData(request.proposedPatch as Record<string, unknown>, task), version: { increment: 1 } } });
+        }
+      }
+      return tx.taskChangeRequest.update({ where: { id: request.id }, data: { status: decision, reviewedByUserId: userId, reviewedAt: new Date() } });
+    });
+    const childUserId = request.assignment.childMember.user.id;
+    const taskTitle = request.assignment.task.title;
+    await this.notifications.enqueue({
+      userId: childUserId,
+      type: 'family_change_result',
+      title: decision === 'approved' ? '修改申请已批准' : '修改申请已拒绝',
+      body: decision === 'approved'
+        ? `家长已批准你对「${taskTitle}」的${request.requestType === 'delete' ? '删除' : '修改'}申请`
+        : `家长已拒绝你对「${taskTitle}」的申请`,
+      data: { requestId: request.id, decision, assignmentId: request.assignmentId },
+      dedupeKey: `family-change-result:${request.id}:${decision}`,
+      scheduledAt: new Date(),
+    });
+    return updated;
+  } else { await tx.task.update({ where: { id: request.assignment.taskId }, data: { ...taskUpdateData(request.proposedPatch as Record<string, unknown>, task), version: { increment: 1 } } }); } } return tx.taskChangeRequest.update({ where: { id: request.id }, data: { status: decision, reviewedByUserId: userId, reviewedAt: new Date() } }); }); }
   async status(userId: string, childUserId: string) {
     const relation = await this.prisma.familyMember.findFirst({
       where: {

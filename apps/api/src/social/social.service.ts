@@ -4,11 +4,12 @@ import { Prisma } from '@prisma/client';
 
 import { PrismaService } from '../infrastructure/prisma/prisma.service';
 import { RedisService } from '../infrastructure/redis/redis.service';
+import { NotificationService } from '../notifications/notification.service';
 import { competitiveFocusMinutes, socialPairKey } from './social.policy';
 
 @Injectable()
 export class SocialService {
-  constructor(private readonly prisma: PrismaService, private readonly redis: RedisService) {}
+  constructor(private readonly prisma: PrismaService, private readonly redis: RedisService, private readonly notifications: NotificationService) {}
 
   async inviteFriend(userId: string, email: string) {
     const addressee = await this.prisma.user.findUnique({
@@ -136,9 +137,18 @@ export class SocialService {
     const matchDate = dateOnly(new Date());
     const key = `${matchDate.toISOString().slice(0, 10)}:${socialPairKey(userId, friendUserId)}`;
     try {
-      return await this.prisma.pkMatch.create({
+      const match = await this.prisma.pkMatch.create({
         data: { challengerId: userId, opponentId: friendUserId, matchDate, pairDateKey: key },
       });
+      const challenger = await this.prisma.user.findUnique({ where: { id: userId }, select: { nickname: true } });
+      await this.enqueuePkStartedNotification(
+        friendUserId,
+        userId,
+        challenger?.nickname ?? '好友',
+        match.id,
+        key,
+      );
+      return match;
     } catch (error) {
       if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') throw error;
       throw new ConflictException({ code: 'PK_ALREADY_EXISTS', message: '今天已与该好友创建 PK' });
@@ -315,23 +325,27 @@ export class SocialService {
     friendshipId: string,
     pairKey: string,
   ) {
-    try {
-      await this.prisma.notificationEvent.create({
-        data: {
-          userId: toUserId,
-          type: 'friend_invite',
-          title: '新的好友邀请',
-          body: `${fromNickname} 邀请你成为好友`,
-          data: { friendshipId, fromUserId },
-          dedupeKey: `friend_invite:${pairKey}`,
-          scheduledAt: new Date(),
-        },
-      });
-    } catch (error) {
-      if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
-        return;
-      }
-    }
+    await this.notifications.enqueue({
+      userId: toUserId,
+      type: 'friend_invite',
+      title: '新的好友邀请',
+      body: `${fromNickname} 邀请你成为好友`,
+      data: { friendshipId, fromUserId },
+      dedupeKey: `friend_invite:${pairKey}`,
+      scheduledAt: new Date(),
+    });
+  }
+
+  private async enqueuePkStartedNotification(toUserId: string, fromUserId: string, fromNickname: string, matchId: string, pairDateKey: string) {
+    await this.notifications.enqueue({
+      userId: toUserId,
+      type: 'pk_started',
+      title: '今日 PK 已开始',
+      body: `${fromNickname} 向你发起了今日专注 PK`,
+      data: { matchId, fromUserId },
+      dedupeKey: `pk_started:${pairDateKey}:${toUserId}`,
+      scheduledAt: new Date(),
+    });
   }
 
   private async areFriends(first: string, second: string) {

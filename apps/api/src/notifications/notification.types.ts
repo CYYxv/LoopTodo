@@ -1,4 +1,13 @@
-export const notificationEventTypes = ['forced_lock_buffer', 'family_anomaly', 'reward_available', 'focus_complete'] as const;
+export const notificationEventTypes = [
+  'forced_lock_buffer',
+  'family_anomaly',
+  'family_change_request',
+  'family_change_result',
+  'friend_invite',
+  'pk_started',
+  'reward_available',
+  'focus_complete',
+] as const;
 export type NotificationEventType = (typeof notificationEventTypes)[number];
 export type PushProviderName = 'fcm' | 'vendor' | 'test';
 export type NotificationEventInput = { userId: string; type: NotificationEventType; title: string; body: string;

@@ -3,6 +3,7 @@ import { Prisma, type NotificationDelivery } from '@prisma/client';
 
 import { PrismaService } from '../infrastructure/prisma/prisma.service';
 import type { NotificationRepository } from './notification.repository';
+import { isNotificationTypeEnabled } from './notification.preference';
 import type { DeliveryJob, NotificationEventInput } from './notification.types';
 
 @Injectable()
@@ -16,8 +17,7 @@ export class PrismaNotificationRepository implements NotificationRepository {
   }
   async enqueue(input: NotificationEventInput) {
     const preferences = await this.prisma.user.findUnique({ where: { id: input.userId }, select: { taskRemindersEnabled: true, familyAlertsEnabled: true, rewardNotificationsEnabled: true } });
-    const enabled = input.type === 'family_anomaly' ? preferences?.familyAlertsEnabled : input.type === 'reward_available' ? preferences?.rewardNotificationsEnabled : preferences?.taskRemindersEnabled;
-    if (enabled === false) return { eventId: 'suppressed', deliveries: 0, replayed: false };
+    if (!isNotificationTypeEnabled(input.type, preferences)) return { eventId: 'suppressed', deliveries: 0, replayed: false };
     const existing = await this.prisma.notificationEvent.findUnique({ where: { userId_dedupeKey: { userId: input.userId, dedupeKey: input.dedupeKey } }, include: { deliveries: true } });
     if (existing) return { eventId: existing.id, deliveries: existing.deliveries.length, replayed: true };
     try {

@@ -17,7 +17,8 @@ describe('FamilyService task assignment', () => {
         forcedLockRule: { create: forcedRuleCreate },
       }),
     };
-    const service = new FamilyService(prisma as never, {} as never, {} as never, {} as never, { record: jest.fn() } as never);
+    const notifications = { enqueue: jest.fn(async () => ({ eventId: 'n1', deliveries: 0, replayed: false })) };
+    const service = new FamilyService(prisma as never, {} as never, notifications as never, {} as never, { record: jest.fn() } as never);
     return { service, taskCreate, forcedRuleCreate };
   }
 
@@ -51,7 +52,7 @@ describe('FamilyService task change review', () => {
     const prisma = {
       taskChangeRequest: { findUnique: jest.fn(async () => ({
         id: 'request-1', status: 'pending', requestType: 'update', proposedPatch,
-        assignmentId: 'assignment-1', assignment: { id: 'assignment-1', taskId: 'task-1', familyGroupId: 'group-1' },
+        assignmentId: 'assignment-1', assignment: { id: 'assignment-1', taskId: 'task-1', familyGroupId: 'group-1', childMember: { user: { id: 'child-user', nickname: '孩子' } }, task: { title: '家庭作业' } },
       })) },
       familyMember: { findFirst: jest.fn(async () => ({ id: 'parent-member', role: 'parent' })) },
       subscription: { findFirst: jest.fn(async () => ({ id: 'subscription-1' })) },
@@ -66,7 +67,8 @@ describe('FamilyService task change review', () => {
         taskChangeRequest: { update: jest.fn(async ({ data }) => data) },
       }),
     };
-    const service = new FamilyService(prisma as never, {} as never, {} as never, {} as never, { record: jest.fn() } as never);
+    const notifications = { enqueue: jest.fn(async () => ({ eventId: 'n1', deliveries: 0, replayed: false })) };
+    const service = new FamilyService(prisma as never, {} as never, notifications as never, {} as never, { record: jest.fn() } as never);
     return { service, taskUpdate };
   }
 

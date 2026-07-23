@@ -3,7 +3,7 @@ import { BadRequestException, ConflictException, NotFoundException } from '@nest
 import { SocialService } from './social.service';
 
 function createService(prisma: Record<string, unknown>) {
-  return new SocialService(prisma as never, { getClient: async () => ({}) } as never);
+  return new SocialService(prisma as never, { getClient: async () => ({}) } as never, { enqueue: async () => ({}) } as never);
 }
 
 describe('SocialService safety', () => {
@@ -52,7 +52,7 @@ describe('SocialService safety', () => {
         return Promise.all(ops);
       },
     };
-    const service = new SocialService(prisma as never, {} as never);
+    const service = new SocialService(prisma as never, {} as never, { enqueue: async () => ({}) } as never);
     const result = await service.blockFriend('u1', 'f1');
     expect(result.status).toBe('blocked');
     expect(updates.length).toBeGreaterThanOrEqual(2);
@@ -130,7 +130,7 @@ test('inviteFriend rejects mutual UserBlock', async () => {
       async findUnique() { return null; },
     },
   };
-  const service = new SocialService(prisma as never, {} as never);
+  const service = new SocialService(prisma as never, {} as never, { enqueue: async () => ({}) } as never);
   await expect(service.inviteFriend('u1', 'friend@example.com')).rejects.toMatchObject({
     response: expect.objectContaining({ code: 'USER_BLOCKED' }),
   });
