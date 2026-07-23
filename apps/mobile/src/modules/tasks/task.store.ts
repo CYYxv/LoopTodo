@@ -524,6 +524,13 @@ export function createTaskStore(
           mode: starMode,
           priorEffectiveMinutesToday: priorMinutes,
         });
+        track('star_settle', {
+          taskId: task.id,
+          sessionId: activeSession.id,
+          delta: lastStarDelta,
+          mode: starMode,
+          outcome: starOutcome,
+        });
         set((state) => ({
           tasks: state.tasks.map((candidate) => candidate.id === nextTask.id ? nextTask : candidate),
           sessionRecords: [record, ...state.sessionRecords],
@@ -603,6 +610,7 @@ export function useTaskStore<T>(selector: (state: TaskStore) => T) {
 }
 function taskRuleId(taskId: string) { return `task:${taskId}`; }
 function scheduleTask(scheduler: ForcedTriggerScheduler, task: Task) {
+  track('forced_trigger_schedule', { taskId: task.id, time: task.forcedTriggerTime });
   const [hour, minute] = task.forcedTriggerTime!.split(':').map(Number);
   return scheduler.schedule({ id: taskRuleId(task.id), sourceId: task.id, title: task.title,
     durationMinutes: task.estimateMinutes, dailyMinute: hour * 60 + minute, recurring: false });

@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
 import { ActiveSessionScreen } from '@/modules/focus-session/components/ActiveSessionScreen';
+import { track } from '@/modules/analytics/analytics';
 import { taskStore, useTaskStore } from '@/modules/tasks/task.store';
 import { Button, Text } from '@/ui/hero-runtime';
 
@@ -41,18 +42,7 @@ export default function SessionRoute() {
       return (
         <SafeAreaView style={{ flex: 1, backgroundColor: dark ? '#101114' : '#F7F8FA' }}>
           <StatusBar style={dark ? 'light' : 'dark'} />
-          <View className="flex-1 items-center justify-center gap-4 px-6" accessibilityLabel="专注星结算">
-            <Text type="h3" weight="semibold">专注已结束</Text>
-            <Text type="h2" weight="bold" color="accent">
-              {lastStarDelta > 0 ? `本次 +${lastStarDelta} 星` : lastStarDelta < 0 ? `本次 ${lastStarDelta} 星` : '本次 +0 星'}
-            </Text>
-            {lastStarDelta === 0 ? (
-              <Text type="body-sm" color="muted" align="center">有效专注满 25 分钟才记星；白名单模式记星最少。</Text>
-            ) : (
-              <Text type="body-sm" color="muted" align="center">星已按当次整星结算，不跨次保留进度。</Text>
-            )}
-            <Button onPress={goTasks}>返回任务</Button>
-          </View>
+          <StarSettleView delta={lastStarDelta} onDone={goTasks} />
         </SafeAreaView>
       );
     }
@@ -96,5 +86,32 @@ export default function SessionRoute() {
         onCountdownExpired={completeExpired}
       />
     </SafeAreaView>
+  );
+}
+
+function StarSettleView({ delta, onDone }: { delta: number; onDone: () => void }) {
+  // Approximate promotion feedback from session records sum is not available here; celebrate any +star burst.
+  if (delta > 0) {
+    track('star_settle', { delta, surface: 'session_end' });
+  }
+  return (
+    <View className="flex-1 items-center justify-center gap-4 px-6" accessibilityLabel="专注星结算">
+      <Text type="h3" weight="semibold">专注已结束</Text>
+      <Text type="h2" weight="bold" color="accent">
+        {delta > 0 ? `本次 +${delta} 星` : delta < 0 ? `本次 ${delta} 星` : '本次 +0 星'}
+      </Text>
+      {delta > 0 ? (
+        <View className="items-center gap-1 rounded-2xl bg-accent/10 px-4 py-3" accessibilityLabel="段位成长反馈">
+          <Text type="body-sm" weight="semibold" color="accent">继续保持，向更高段位前进</Text>
+          <Text type="body-xs" color="muted">顶格段位为「闭环」；晋级进度见排位页</Text>
+        </View>
+      ) : null}
+      {delta === 0 ? (
+        <Text type="body-sm" color="muted" align="center">有效专注满 25 分钟才记星；白名单模式记星最少。</Text>
+      ) : (
+        <Text type="body-sm" color="muted" align="center">星已按当次整星结算，不跨次保留进度。</Text>
+      )}
+      <Button onPress={onDone}>返回任务</Button>
+    </View>
   );
 }

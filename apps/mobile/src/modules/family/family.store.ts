@@ -3,6 +3,7 @@ import { createStore } from 'zustand/vanilla';
 
 import { offlineFeatureMessage } from '../../shared/offline-feature-message';
 import { createFamilyClient, type FamilyClient, type FamilyTaskInput } from './family.client';
+import { track } from '@/modules/analytics/analytics';
 import type { FamilyAnomalyType } from './family-anomaly';
 import type { FamilyAssignment, FamilyChangeRequest, FamilyChildStatus, FamilyGroupMembership } from './family.types';
 
@@ -73,6 +74,7 @@ export function createFamilyStore() {
     },
     async assign(groupId, input) {
       await mutate(get, set, (client) => client.assign(groupId, input));
+      track('family_task_assign');
     },
     async leave(groupId) {
       await mutate(get, set, (client) => client.leave(groupId));
@@ -114,6 +116,7 @@ export function createFamilyStore() {
       if (!client) return;
       try {
         await client.reportAnomaly(type, taskId);
+        track('family_anomaly', { type, taskId: taskId ?? null });
       } catch {
         // 离线或非孩子身份时静默；服务端按日 dedupe
       }

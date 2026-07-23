@@ -9,6 +9,7 @@ import { Surface } from 'heroui-native/surface';
 import { BottomSheetModal } from '@/ui/bottom-sheet-modal';
 import { Button, Chip, Input, Label, Text, TextField } from '@/ui/hero-runtime';
 import { formatStarBar, rankFromStars, tierLabels, type MajorTier } from '../star-rank';
+import { track } from '@/modules/analytics/analytics';
 import { useCompetitionStore } from '../competition.store';
 
 const periods = { today: '今日', week: '本周', month: '本月', season: '赛季' } as const;
@@ -35,7 +36,10 @@ export function CompetitionPanel() {
   const joinTeam = useCompetitionStore((state) => state.joinTeam);
 
   useEffect(() => {
-    if (configured) void load();
+    if (configured) {
+      track('rank_view');
+      void load();
+    }
   }, [configured, load]);
 
   const progress = useMemo(() => {
@@ -77,11 +81,16 @@ export function CompetitionPanel() {
           <Text type="body-sm" color="muted">{seasonLabel}</Text>
           <Text type="body-sm" color="muted">{daysLeft != null ? `还剩 ${daysLeft} 天` : '—'}</Text>
         </View>
-        <View className="h-24 w-24 items-center justify-center rounded-full bg-accent/15">
+        <View
+          className="h-24 w-24 items-center justify-center rounded-full bg-accent/15"
+          accessibilityLabel={`段位徽章 ${tierLabels[(progress.tier as MajorTier)] ?? progress.tier}`}
+        >
           <Text type="body-sm" weight="semibold" color="accent">
             {tierLabels[(progress.tier as MajorTier)] ?? progress.tier}
           </Text>
-          <Text type="body-xs" color="muted">徽章</Text>
+          <Text type="body-xs" color="muted">
+            {progress.tier === 'closed_loop' ? '闭环' : '徽章'}
+          </Text>
         </View>
         <Text type="h4" weight="semibold">{tierTitle}</Text>
         <Text type="body-lg" color="accent">{rank?.starBar ?? starLine}</Text>

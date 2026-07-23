@@ -5,10 +5,15 @@ export type AnalyticsEvent =
   | 'focus_fail'
   | 'lock_start'
   | 'lock_emergency_exit'
+  | 'star_settle'
+  | 'tier_promote'
   | 'family_task_assign'
+  | 'family_anomaly'
+  | 'forced_trigger_schedule'
   | 'nav_customize'
   | 'social_pk_create'
-  | 'social_report';
+  | 'social_report'
+  | 'rank_view';
 
 export type AnalyticsEntry = {
   event: AnalyticsEvent;
