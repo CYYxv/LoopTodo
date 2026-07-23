@@ -6,6 +6,7 @@ import { Button, Card, Chip, Input, Switch, Text } from '@/ui/hero-runtime';
 import { useLockEngineStore } from '@/modules/lock-engine/lock-engine.store';
 import { useNotificationStore } from '@/modules/notifications/notification.store';
 import { useWhitelistStore } from '@/modules/focus-session/whitelist.store';
+import { track } from '@/modules/analytics/analytics';
 import { normalizeBottomTabs, optionalTabKeys, replaceBottomTab, tabLabels, type OptionalTabKey } from '@/ui/tab-navigation';
 
 import { useSettingsStore, type Settings, type ThemePreference } from '../settings.store';
@@ -91,9 +92,9 @@ export function SettingsPanel() {
                 <Text type="body-xs" color="muted">底栏第 {index + 2} 个位置</Text>
               </View>
               <View className="flex-row flex-wrap gap-2">
-                <Button size="sm" variant="secondary" isDisabled={index === 0} onPress={() => void update({ bottomTabs: [bottomTabs[1], bottomTabs[0]] })}>前移</Button>
-                <Button size="sm" variant="secondary" isDisabled={index === 1} onPress={() => void update({ bottomTabs: [bottomTabs[1], bottomTabs[0]] })}>后移</Button>
-                <Button size="sm" variant="secondary" onPress={() => void update({ bottomTabs: replaceBottomTab(bottomTabs, moreTab, index) })}>移入更多</Button>
+                <Button size="sm" variant="secondary" isDisabled={index === 0} onPress={() => void update({ bottomTabs: [bottomTabs[1], bottomTabs[0]] }).then(() => track('nav_customize', { tabs: [bottomTabs[1], bottomTabs[0]] }))}>前移</Button>
+                <Button size="sm" variant="secondary" isDisabled={index === 1} onPress={() => void update({ bottomTabs: [bottomTabs[1], bottomTabs[0]] }).then(() => track('nav_customize', { tabs: [bottomTabs[1], bottomTabs[0]] }))}>后移</Button>
+                <Button size="sm" variant="secondary" onPress={() => void update({ bottomTabs: replaceBottomTab(bottomTabs, moreTab, index) }).then(() => track('nav_customize', { action: 'to_more', index }))}>移入更多</Button>
               </View>
             </View>
           ))}
@@ -102,7 +103,7 @@ export function SettingsPanel() {
               <Text type="body-sm" weight="semibold">{tabLabels[moreTab]}</Text>
               <Text type="body-xs" color="muted">当前位于更多</Text>
             </View>
-            <Button size="sm" onPress={() => void update({ bottomTabs: replaceBottomTab(bottomTabs, moreTab) })}>固定到底栏</Button>
+            <Button size="sm" onPress={() => void update({ bottomTabs: replaceBottomTab(bottomTabs, moreTab) }).then(() => track('nav_customize', { action: 'to_bottom' }))}>固定到底栏</Button>
           </View>
         </Card.Body>
       </Card>

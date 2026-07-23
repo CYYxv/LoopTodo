@@ -1,15 +1,72 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LoopTodo 奖励管理</title>
-<style>body{font-family:system-ui;margin:0;background:#f4f6fa;color:#171717}main{max-width:1080px;margin:auto;padding:24px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}.card{background:white;border:1px solid #e5e7eb;border-radius:14px;padding:18px}input,select,textarea,button{box-sizing:border-box;width:100%;margin-top:8px;padding:10px;border-radius:9px;border:1px solid #d1d5db}button{background:#2563eb;color:white;border:0;font-weight:650;cursor:pointer}.secondary{background:#52525b}.danger{background:#b91c1c}.row{display:flex;gap:8px}.row>*{flex:1}.item{padding:10px 0;border-top:1px solid #eee;word-break:break-word}.muted{color:#6b7280;font-size:13px}pre{white-space:pre-wrap}</style></head>
-<body><main><h1>LoopTodo 奖励管理</h1><p class="muted">独立运营页面。使用管理员账号登录后取得 Access Token，再连接管理员 API。</p>
-<section class="card"><label>API 地址<input id="api" value="http://127.0.0.1:3000"></label><label>管理员 Access Token<textarea id="token" rows="3"></textarea></label><button id="refresh">刷新奖励与发放记录</button><pre id="message"></pre></section>
-<div class="grid"><section class="card"><h2>上架奖励</h2><input id="name" placeholder="奖励名称"><textarea id="description" placeholder="奖励说明"></textarea><select id="type"><option value="virtual">虚拟奖励</option><option value="physical">实物奖励</option></select><input id="inventory" type="number" min="0" placeholder="库存（留空为不限）"><button id="create">上架</button><div id="rewards"></div></section>
-<section class="card"><h2>发放奖励</h2><input id="rewardId" placeholder="奖励 ID"><input id="userId" placeholder="用户 UUID"><button id="grant">发放</button><h2>待履约记录</h2><div id="claims"></div></section></div></main>
+<style>
+body{font-family:system-ui,sans-serif;margin:0;background:#f4f6fa;color:#171717}
+main{max-width:1100px;margin:auto;padding:24px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:18px}
+input,select,textarea,button{box-sizing:border-box;width:100%;margin-top:8px;padding:10px;border-radius:9px;border:1px solid #d1d5db}
+button{background:#2563eb;color:#fff;border:0;font-weight:650;cursor:pointer}
+.secondary{background:#52525b}
+.row{display:flex;gap:8px}.row>*{flex:1}
+.item{padding:10px 0;border-top:1px solid #eee;word-break:break-word}
+.muted{color:#6b7280;font-size:13px}pre{white-space:pre-wrap;font-size:12px}
+h1{margin:0 0 8px}h2{margin:16px 0 8px;font-size:18px}
+label{display:block;font-size:13px;color:#374151;margin-top:8px}
+</style></head>
+<body><main>
+  <h1>LoopTodo 奖励管理</h1>
+  <p class="muted">独立运营后台：上架、发放、查看实物地址、确认履约。账号须在 API 的 ADMIN_EMAILS 白名单中。</p>
+  <section class="card">
+    <h2>连接</h2>
+    <label>API 地址<input id="api" value="http://127.0.0.1:3000"></label>
+    <div class="row">
+      <label>管理员邮箱<input id="email" value="admin@example.com"></label>
+      <label>密码<input id="password" type="password" placeholder="管理员密码"></label>
+    </div>
+    <div class="row">
+      <button id="login">登录并获取 Token</button>
+      <button id="refresh" class="secondary">刷新数据</button>
+    </div>
+    <label>Access Token<textarea id="token" rows="3" placeholder="也可手动粘贴 accessToken"></textarea></label>
+    <pre id="message" class="muted"></pre>
+  </section>
+  <div class="grid">
+    <section class="card">
+      <h2>上架奖励</h2>
+      <input id="name" placeholder="奖励名称">
+      <textarea id="description" placeholder="奖励说明"></textarea>
+      <select id="type"><option value="virtual">虚拟奖励</option><option value="physical">实物奖励</option></select>
+      <input id="inventory" type="number" min="0" placeholder="库存（实物建议填写；留空=不限）">
+      <button id="create">上架</button>
+      <div id="rewards"></div>
+    </section>
+    <section class="card">
+      <h2>发放奖励</h2>
+      <input id="rewardId" placeholder="奖励 ID">
+      <input id="userId" placeholder="用户 UUID">
+      <button id="grant">发放</button>
+      <h2>发放与履约记录</h2>
+      <div id="claims"></div>
+    </section>
+  </div>
+</main>
 <script>
-const $=id=>document.getElementById(id); const message=$('message');
-async function request(path,init={}){const response=await fetch($('api').value.replace(/\/$/,'')+path,{...init,headers:{'content-type':'application/json',authorization:'Bearer '+$('token').value.trim(),...(init.headers||{})}});const body=await response.json();if(!response.ok)throw new Error(body.error?.message||body.error?.code||'请求失败');return body.data}
-async function refresh(){try{const [rewards,claims]=await Promise.all([request('/rewards'),request('/admin/reward-claims')]);$('rewards').innerHTML=rewards.map(x=>`<div class="item"><b>${x.name}</b><div class="muted">${x.id} · ${x.rewardType} · 库存 ${x.inventory??'不限'}</div></div>`).join('')||'<p class="muted">暂无奖励</p>';$('claims').innerHTML=claims.map(x=>`<div class="item"><b>${x.reward.name}</b><div class="muted">${x.id} · ${x.status} · ${x.user.nickname}</div><div class="row"><button onclick="fulfillment('${x.id}')">查看地址</button><button class="secondary" onclick="fulfill('${x.id}')">确认履约</button></div></div>`).join('')||'<p class="muted">暂无发放记录</p>';message.textContent='已刷新'}catch(e){message.textContent=e.message}}
-async function fulfillment(id){try{message.textContent=JSON.stringify(await request('/admin/reward-claims/'+id+'/fulfillment'),null,2)}catch(e){message.textContent=e.message}}
-async function fulfill(id){try{await request('/admin/reward-claims/'+id+'/fulfill',{method:'POST'});await refresh()}catch(e){message.textContent=e.message}}
-$('refresh').onclick=refresh;$('create').onclick=async()=>{try{const inventory=$('inventory').value;await request('/admin/rewards',{method:'POST',body:JSON.stringify({name:$('name').value,description:$('description').value,rewardType:$('type').value,inventory:inventory?Number(inventory):undefined})});await refresh()}catch(e){message.textContent=e.message}};$('grant').onclick=async()=>{try{await request('/admin/rewards/'+$('rewardId').value.trim()+'/claims',{method:'POST',body:JSON.stringify({userId:$('userId').value.trim()})});await refresh()}catch(e){message.textContent=e.message}};
-</script></body></html>
+const $=id=>document.getElementById(id);
+const message=$("message");
+const storageKey="looptodo-reward-admin";
+function loadSaved(){try{const saved=JSON.parse(localStorage.getItem(storageKey)||"{}");if(saved.api)$("api").value=saved.api;if(saved.email)$("email").value=saved.email;if(saved.token)$("token").value=saved.token;}catch(e){}}
+function persist(){localStorage.setItem(storageKey,JSON.stringify({api:$("api").value.trim(),email:$("email").value.trim(),token:$("token").value.trim()}));}
+async function request(path,init={}){const response=await fetch($("api").value.replace(/\/$/,"")+path,{...init,headers:{"content-type":"application/json",authorization:"Bearer "+$("token").value.trim(),...(init.headers||{})}});const body=await response.json();if(!response.ok)throw new Error(body.error?.message||body.error?.code||("HTTP "+response.status));return body.data;}
+async function login(){try{const response=await fetch($("api").value.replace(/\/$/,"")+"/auth/login",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email:$("email").value.trim(),password:$("password").value,deviceName:"reward-admin"})});const body=await response.json();if(!response.ok)throw new Error(body.error?.message||body.error?.code||"登录失败");const token=body.data?.tokens?.accessToken;if(!token)throw new Error("登录响应缺少 accessToken");$("token").value=token;persist();message.textContent="登录成功";await refresh();}catch(e){message.textContent=e.message;}}
+function escapeHtml(value){return String(value??"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[ch]));}
+function useReward(id){$("rewardId").value=id;}
+async function refresh(){try{persist();const [rewards,claims]=await Promise.all([request("/rewards"),request("/admin/reward-claims")]);$("rewards").innerHTML=rewards.map(x=>`<div class="item"><b>${escapeHtml(x.name)}</b><div class="muted">${x.id} · ${x.rewardType} · 库存 ${x.inventory??"不限"}</div><button class="secondary" style="margin-top:6px" onclick="useReward('${x.id}')">填入发放 ID</button></div>`).join("")||"<p class=\"muted\">暂无奖励</p>";$("claims").innerHTML=claims.map(x=>`<div class="item"><b>${escapeHtml(x.reward?.name||"奖励")}</b><div class="muted">${x.id} · ${x.status} · ${escapeHtml(x.user?.nickname||"")} · ${escapeHtml(x.user?.email||"")}</div><div class="row"><button onclick="fulfillment('${x.id}')">查看地址</button><button class="secondary" onclick="fulfill('${x.id}')">确认履约</button></div></div>`).join("")||"<p class=\"muted\">暂无发放记录</p>";message.textContent="已刷新 "+new Date().toLocaleTimeString();}catch(e){message.textContent=e.message;}}
+async function fulfillment(id){try{message.textContent=JSON.stringify(await request("/admin/reward-claims/"+id+"/fulfillment"),null,2);}catch(e){message.textContent=e.message;}}
+async function fulfill(id){try{await request("/admin/reward-claims/"+id+"/fulfill",{method:"POST"});await refresh();}catch(e){message.textContent=e.message;}}
+$("login").onclick=login;$("refresh").onclick=refresh;
+$("create").onclick=async()=>{try{const inventory=$("inventory").value;await request("/admin/rewards",{method:"POST",body:JSON.stringify({name:$("name").value.trim(),description:$("description").value.trim(),rewardType:$("type").value,inventory:inventory===""?undefined:Number(inventory)})});$("name").value="";$("description").value="";$("inventory").value="";await refresh();}catch(e){message.textContent=e.message;}};
+$("grant").onclick=async()=>{try{await request("/admin/rewards/"+$("rewardId").value.trim()+"/claims",{method:"POST",body:JSON.stringify({userId:$("userId").value.trim()})});await refresh();}catch(e){message.textContent=e.message;}};
+loadSaved();
+</script>
+</body></html>
