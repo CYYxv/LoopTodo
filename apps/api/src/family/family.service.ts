@@ -118,7 +118,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
       scheduledAt: new Date(),
     });
     return updated;
-  } else { await tx.task.update({ where: { id: request.assignment.taskId }, data: { ...taskUpdateData(request.proposedPatch as Record<string, unknown>, task), version: { increment: 1 } } }); } } return tx.taskChangeRequest.update({ where: { id: request.id }, data: { status: decision, reviewedByUserId: userId, reviewedAt: new Date() } }); }); }
+  }
   async status(userId: string, childUserId: string) {
     const relation = await this.prisma.familyMember.findFirst({
       where: {
