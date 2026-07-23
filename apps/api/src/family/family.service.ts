@@ -90,7 +90,27 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
     };
   }
 
-  async leave(userId: string, groupId: string) { const result = await this.prisma.familyMember.updateMany({ where: { familyGroupId: groupId, userId, leftAt: null }, data: { leftAt: new Date() } }); if (!result.count) throw new NotFoundException({ code: 'FAMILY_MEMBERSHIP_NOT_FOUND', message: '家庭成员关系不存在' }); return { left: true }; }
+    /**
+   * 退出后立即失去成员与状态访问；服务端仅保留审计，不对前成员开放历史查询。
+   */
+  async leave(userId: string, groupId: string) {
+    const result = await this.prisma.familyMember.updateMany({
+      where: { familyGroupId: groupId, userId, leftAt: null },
+      data: { leftAt: new Date() },
+    });
+    if (!result.count) {
+      throw new NotFoundException({ code: 'FAMILY_MEMBERSHIP_NOT_FOUND', message: '家庭成员关系不存在' });
+    }
+    await this.security.record({
+      actorId: userId,
+      category: 'family',
+      action: 'member_leave',
+      outcome: 'success',
+      targetType: 'family_group',
+      targetId: groupId,
+    } as never);
+    return { left: true };
+  }
   listRequests(userId: string, groupId: string) { return this.requireParent(userId, groupId).then(() => this.prisma.taskChangeRequest.findMany({ where: { assignment: { familyGroupId: groupId } }, include: { assignment: { include: { task: true } }, childMember: { include: { user: { select: { nickname: true } } } } }, orderBy: { createdAt: 'desc' } })); }
   listAssignments(userId: string) { return this.prisma.familyTaskAssignment.findMany({ where: { childMember: { userId, leftAt: null }, status: 'active' }, include: { task: true, changeRequests: { where: { status: 'pending' }, orderBy: { createdAt: 'desc' } }, parentMember: { include: { user: { select: { nickname: true } } } } }, orderBy: { createdAt: 'desc' } }); }
   async handleSessionFinished(userId: string, session: { id: string; outcome: string | null; taskId: string }) { if (session.outcome !== 'emergency_exit') return; const parents = await this.prisma.familyMember.findMany({ where: { role: 'parent', leftAt: null, familyGroup: { members: { some: { userId, role: 'child', leftAt: null } } } }, select: { userId: true } }); await Promise.all(parents.map((parent) => this.notifications.enqueue({ userId: parent.userId, type: 'family_anomaly', title: '家庭异常提醒', body: '孩子提前退出了锁机任务', data: { childUserId: userId, taskId: session.taskId }, dedupeKey: `family-emergency:${parent.userId}:${session.id}`, scheduledAt: new Date() }))); }

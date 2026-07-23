@@ -33,9 +33,11 @@ export type Task = {
   version: number;
   syncStatus: SyncStatus;
   remoteActive: boolean;
+  whitelistMode: 'inherit' | 'custom';
+  whitelistPackages: string[];
 };
 
 export type CreateTaskInput = Omit<Task, 'id' | 'status' | 'completedAmount' | 'progressLabel' | 'version' | 'syncStatus' | 'remoteActive'>;
 export type UpdateTaskInput = Pick<Task,
   'title' | 'timerMode' | 'estimateMinutes' | 'restMinutes' | 'deadlineAt' | 'targetAmount' | 'targetUnit' | 'mustDo' | 'forcedTriggerTime'
-> & Partial<Pick<Task, 'categoryId' | 'category'>>;
+> & Partial<Pick<Task, 'categoryId' | 'category' | 'whitelistMode' | 'whitelistPackages'>>;

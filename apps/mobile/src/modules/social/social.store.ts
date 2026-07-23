@@ -4,6 +4,7 @@ import { createStore } from 'zustand/vanilla';
 import { offlineFeatureMessage } from '../../shared/offline-feature-message';
 import { createHttpSocialClient, type SocialClient } from './social.client';
 import { connectSocialRealtime, type SocialRealtime } from './social.realtime';
+import { track } from '@/modules/analytics/analytics';
 import type { Friend, PkMatch, RoomReaction, StudyRoom } from './social.types';
 
 type SocialStore = {
@@ -24,6 +25,9 @@ type SocialStore = {
   load(): Promise<void>;
   invite(email: string): Promise<void>;
   accept(id: string): Promise<void>;
+  remove(id: string): Promise<void>;
+  block(id: string): Promise<void>;
+  report(targetUserId: string, reason: string): Promise<void>;
   createPk(userId: string): Promise<void>;
   createRoom(name: string, visibility: 'public' | 'private'): Promise<void>;
   joinRoom(room: StudyRoom): Promise<void>;
@@ -79,7 +83,10 @@ export function createSocialStore() {
     },
     async invite(email) { await action(get, set, (client) => client.invite(email)); },
     async accept(id) { await action(get, set, (client) => client.accept(id)); },
-    async createPk(userId) { await action(get, set, (client) => client.createPk(userId)); },
+    async remove(id) { await action(get, set, (client) => client.remove(id)); },
+    async block(id) { await action(get, set, (client) => client.block(id)); },
+    async report(targetUserId, reason) { if (await action(get, set, (client) => client.report(targetUserId, reason))) track('social_report', { targetUserId }); },
+    async createPk(userId) { if (await action(get, set, (client) => client.createPk(userId))) track('social_pk_create', { friendUserId: userId }); },
     async createRoom(name, visibility) {
       const trimmed = name.trim();
       if (trimmed.length < 1 || trimmed.length > 15) return set({ error: '房间名称需要 1–15 个字' });

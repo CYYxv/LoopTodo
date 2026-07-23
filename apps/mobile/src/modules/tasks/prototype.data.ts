@@ -22,7 +22,7 @@ export const prototypeTasks: Task[] = [
     status: 'pending',
     version: 1,
     syncStatus: 'synced',
-    remoteActive: false,
+    remoteActive: false, whitelistMode: 'inherit', whitelistPackages: [],
   },
   {
     id: 'task-weekly-report',
@@ -43,7 +43,7 @@ export const prototypeTasks: Task[] = [
     status: 'pending',
     version: 1,
     syncStatus: 'synced',
-    remoteActive: false,
+    remoteActive: false, whitelistMode: 'inherit', whitelistPackages: [],
   },
   {
     id: 'task-english-listening',
@@ -64,7 +64,7 @@ export const prototypeTasks: Task[] = [
     status: 'pending',
     version: 1,
     syncStatus: 'synced',
-    remoteActive: false,
+    remoteActive: false, whitelistMode: 'inherit', whitelistPackages: [],
   },
 ];
 

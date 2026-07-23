@@ -13,6 +13,8 @@ import { calculateRecordedDurationSeconds, sessionElapsedMilliseconds } from '@/
 
 import { prototypeStrictOptions } from './prototype.data';
 import { selectedWhitelistPackages, whitelistStore } from '@/modules/focus-session/whitelist.store';
+import { track } from '@/modules/analytics/analytics';
+import { resolveTaskWhitelistPackages } from './task.whitelist';
 import { createSQLiteTaskRepository } from './sqlite-task.repository';
 import { taskProgressLabel } from './task.presentation';
 import { createUuid } from '@/shared/uuid';
@@ -161,7 +163,14 @@ export function createTaskStore(
         // 「专注」会话可自由退出，进程死亡后不得重新困人——否则残留的 active 会话会让无障碍持续拉回，用户退不出。
         if (recoveredSession?.phase === 'focus' && recoveredSession.mode === 'lock') {
           const capabilities = await nativeLockEngine.checkCapabilities();
-          await nativeLockEngine.applyFocusRestrictions(restrictionsFor(recoveredSession.mode, savedStrictOptions, capabilities, selectedWhitelistPackages(), recoveredSession.plannedEndAt ?? 0));
+          const recoveredTask = recoveredTasks.find((candidate) => candidate.id === recoveredSession.taskId);
+          await nativeLockEngine.applyFocusRestrictions(restrictionsFor(
+            recoveredSession.mode,
+            savedStrictOptions,
+            capabilities,
+            recoveredTask ? packagesForTask(recoveredTask) : selectedWhitelistPackages(),
+            recoveredSession.plannedEndAt ?? 0,
+          ));
           if (isPermissionAnomaly(capabilities)) {
             void familyStore.getState().reportAnomaly('permission_disabled', recoveredSession.taskId);
           }
@@ -205,6 +214,7 @@ export function createTaskStore(
         const task = await repository.create(input);
         set((state) => ({ tasks: [task, ...state.tasks], selectedTaskId: task.id }));
         if (task.mustDo && task.forcedTriggerTime) try { await scheduleTask(forcedScheduler, task); } catch (error) { set({ error: errorMessage(error) }); }
+        track('task_create', { taskId: task.id, kind: task.kind, whitelistMode: task.whitelistMode ?? 'inherit' });
         return { ok: true, taskId: task.id };
       } catch (error) {
         const nextError = errorMessage(error);
@@ -339,7 +349,8 @@ export function createTaskStore(
             throw new Error('请先完成锁机风险确认并开启通知与通知读取权限');
           }
         }
-        await nativeLockEngine.applyFocusRestrictions(restrictionsFor(mode, state.strictOptions, capabilities, selectedWhitelistPackages(), session.plannedEndAt ?? startedAt + 4 * 60 * 60 * 1000));
+        const whitelistPackages = packagesForTask(task);
+        await nativeLockEngine.applyFocusRestrictions(restrictionsFor(mode, state.strictOptions, capabilities, whitelistPackages, session.plannedEndAt ?? startedAt + 4 * 60 * 60 * 1000));
         if (mode === 'lock') {
           await nativeLockEngine.startLockSession({ id: session.id, taskId, taskTitle: task.title,
             startedAt, endsAt: session.plannedEndAt!, enhanced: capabilities.accessibilityEnabled });
@@ -360,6 +371,12 @@ export function createTaskStore(
           isFinishingSession: false,
           error: forcedRuleError,
         }));
+        track(mode === 'lock' ? 'lock_start' : 'focus_start', {
+          taskId,
+          mode,
+          whitelistMode: task.whitelistMode ?? 'inherit',
+          packageCount: whitelistPackages.length,
+        });
       } catch (error) {
         if (mode === 'lock') await nativeLockEngine.endLockSession(session.id).catch(() => undefined);
         await nativeLockEngine.clearFocusRestrictions().catch(() => undefined);
@@ -385,11 +402,12 @@ export function createTaskStore(
         let restrictionError: string | null = null;
         try {
           const capabilities = await nativeLockEngine.checkCapabilities();
+          const pauseTask = state.tasks.find((candidate) => candidate.id === session.taskId);
           await nativeLockEngine.applyFocusRestrictions(restrictionsFor(
             session.mode,
             state.strictOptions,
             capabilities,
-            selectedWhitelistPackages(),
+            pauseTask ? packagesForTask(pauseTask) : selectedWhitelistPackages(),
             nextSession.pausedAt == null
               ? nextSession.plannedEndAt ?? timestamp + 4 * 60 * 60 * 1000
               : timestamp + 24 * 60 * 60 * 1000,
@@ -471,11 +489,18 @@ export function createTaskStore(
           else await nativeLockEngine.endLockSession(activeSession.id);
         }
         await repository.finishSession(nextTask, record, restSession);
+        if (activeSession.mode === 'lock' && outcome === 'exited') {
+          track('lock_emergency_exit', { taskId: task.id, sessionId: activeSession.id });
+        } else if (outcome === 'completed') {
+          track('focus_complete', { taskId: task.id, mode: activeSession.mode, sessionId: activeSession.id });
+        } else {
+          track('focus_fail', { taskId: task.id, mode: activeSession.mode, sessionId: activeSession.id, outcome });
+        }
         const restrictionError = await nativeLockEngine.clearFocusRestrictions()
           .then(() => null)
           .catch((error) => errorMessage(error));
         // Preview uses same trust→mode mapping as server; server remains source of truth after sync.
-        const hasWhitelist = selectedWhitelistPackages().length > 0;
+        const hasWhitelist = packagesForTask(task).length > 0;
         const trustLevel = activeSession.mode === 'lock' ? 'high' : hasWhitelist ? 'open' : 'normal';
         const starMode = mapTrustToMode(trustLevel, task.timerMode);
         const starOutcome = outcome === 'completed'
@@ -572,6 +597,10 @@ async function loadStrictOptions() {
     const enabled = saved[option.id];
     return { ...option, enabled: typeof enabled === 'boolean' ? enabled : option.enabled };
   });
+}
+
+function packagesForTask(task: Pick<Task, 'whitelistMode' | 'whitelistPackages'>) {
+  return resolveTaskWhitelistPackages(task, selectedWhitelistPackages());
 }
 
 function restrictionsFor(

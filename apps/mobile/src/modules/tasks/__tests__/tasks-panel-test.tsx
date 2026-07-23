@@ -51,7 +51,7 @@ const task = {
     id: 'forced', title: '提交报告', category: '未分类', kind: 'pomodoro', timerMode: 'countdown',
     estimateMinutes: 25, restMinutes: 5, deadlineAt: null, targetAmount: null, targetUnit: null,
     completedAmount: 0, progressLabel: '倒计时 25 分钟', mustDo: true, forcedTriggerTime: '20:00',
-    trustLevel: 'medium', status: 'pending', version: 1, syncStatus: 'pending', remoteActive: false,
+    trustLevel: 'medium', status: 'pending', version: 1, syncStatus: 'pending', remoteActive: false, whitelistMode: 'inherit', whitelistPackages: [],
   } satisfies Task;
 
 test('keeps task cards compact and opens actions by long press or overflow', async () => {

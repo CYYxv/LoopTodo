@@ -6,7 +6,7 @@ const task: Task = {
   id: 'task-1', title: '修改任务', category: '未分类', kind: 'pomodoro', timerMode: 'countdown',
   estimateMinutes: 25, restMinutes: 5, deadlineAt: null, targetAmount: null, targetUnit: null,
   completedAmount: 0, progressLabel: '倒计时 25 分钟', mustDo: false, forcedTriggerTime: null,
-  trustLevel: 'medium', status: 'pending', version: 2, syncStatus: 'pending', remoteActive: false,
+  trustLevel: 'medium', status: 'pending', version: 2, syncStatus: 'pending', remoteActive: false, whitelistMode: 'inherit', whitelistPackages: [],
 };
 
 test('rejects a task edit when the persisted version has advanced', async () => {

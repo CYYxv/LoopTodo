@@ -22,6 +22,8 @@ export function taskFromInput(id: string, input: CreateTaskInput): Task {
   const task: Task = {
     ...input,
     id,
+    whitelistMode: input.whitelistMode ?? 'inherit',
+    whitelistPackages: input.whitelistPackages ?? [],
     status: 'pending',
     completedAmount: 0,
     version: 1,

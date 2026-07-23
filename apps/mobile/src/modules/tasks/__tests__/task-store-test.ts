@@ -24,7 +24,7 @@ const pomodoroTask: Task = {
   status: 'pending',
   version: 1,
   syncStatus: 'pending',
-  remoteActive: false,
+  remoteActive: false, whitelistMode: 'inherit', whitelistPackages: [],
 };
 
 const goalTask: Task = {

@@ -29,6 +29,8 @@ type TaskRow = {
   version: number;
   sync_status: Task['syncStatus'];
   remote_active: number;
+  whitelist_mode?: string | null;
+  whitelist_packages?: string | null;
 };
 
 type CategoryRow = { id: string; name: string; color: string | null; archived: number; version: number; sync_status: TaskCategory['syncStatus'] };
@@ -55,7 +57,7 @@ type SessionRow = {
 
 const taskColumns = `id, title, category_id, category, kind, timer_mode, estimate_minutes, rest_minutes,
   deadline_at, target_amount, target_unit, completed_amount, must_do, forced_trigger_time, trust_level, status,
-  version, sync_status, remote_active`;
+  version, sync_status, remote_active, whitelist_mode, whitelist_packages`;
 
 export function createSQLiteTaskRepository(
   getDatabase: () => Promise<SQLiteDatabase> = getLoopTodoDatabase,
@@ -99,7 +101,7 @@ export function createSQLiteTaskRepository(
       const database = await getDatabase();
       await database.withTransactionAsync(async () => {
         await database.runAsync(`INSERT INTO tasks (${taskColumns}, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, ...taskValues(task), now(), now());
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, ...taskValues(task), now(), now());
         await enqueueSyncOperation(database, { type: 'task.create', task }, task.id, `task-create-${task.id}`, now());
       });
       return task;
@@ -141,15 +143,18 @@ export function createSQLiteTaskRepository(
       await database.withTransactionAsync(async () => {
         const result = await database.runAsync(`UPDATE tasks SET
           title = ?, category_id = ?, category = ?, timer_mode = ?, estimate_minutes = ?, rest_minutes = ?, deadline_at = ?, target_amount = ?,
-          target_unit = ?, must_do = ?, forced_trigger_time = ?, status = ?, version = ?, sync_status = 'pending', updated_at = ?
+          target_unit = ?, must_do = ?, forced_trigger_time = ?, status = ?, version = ?, sync_status = 'pending',
+          whitelist_mode = ?, whitelist_packages = ?, updated_at = ?
           WHERE id = ? AND status != 'active' AND remote_active = 0 AND version = ?`,
           task.title, task.categoryId ?? null, task.category, task.timerMode, task.estimateMinutes, task.restMinutes, task.deadlineAt, task.targetAmount,
-          task.targetUnit, task.mustDo ? 1 : 0, task.forcedTriggerTime, task.status, task.version, now(), task.id, previousVersion);
+          task.targetUnit, task.mustDo ? 1 : 0, task.forcedTriggerTime, task.status, task.version,
+          task.whitelistMode ?? 'inherit', JSON.stringify(task.whitelistPackages ?? []), now(), task.id, previousVersion);
         if (result.changes !== 1) throw new Error('任务正在执行或已被其他设备更新');
         await enqueueSyncOperation(database, { type: 'task.update', taskId: task.id, version: previousVersion,
           patch: { title: task.title, categoryId: task.categoryId ?? null, category: task.category, timerMode: task.timerMode, estimateMinutes: task.estimateMinutes,
             restMinutes: task.restMinutes, deadlineAt: task.deadlineAt, targetAmount: task.targetAmount,
             targetUnit: task.targetUnit, mustDo: task.mustDo, forcedTriggerTime: task.forcedTriggerTime,
+            whitelistMode: task.whitelistMode ?? 'inherit', whitelistPackages: task.whitelistPackages ?? [],
             status: task.status as 'pending' | 'completed' | 'failed' } }, task.id,
           `task-update-${task.id}-${task.version}`, now());
       });
@@ -267,9 +272,21 @@ function mapTask(row: TaskRow): Task {
     version: row.version,
     syncStatus: row.sync_status,
     remoteActive: Boolean(row.remote_active),
+    whitelistMode: row.whitelist_mode === 'custom' ? 'custom' : 'inherit',
+    whitelistPackages: parseStringArray(row.whitelist_packages),
     progressLabel: '',
   };
   return { ...task, progressLabel: taskProgressLabel(task) };
+}
+
+function parseStringArray(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const value = JSON.parse(raw) as unknown;
+    return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+  } catch {
+    return [];
+  }
 }
 
 function mapActive(row: SessionRow): ActiveSession {
@@ -321,6 +338,8 @@ function taskValues(task: Task): SQLiteBindValue[] {
     task.version,
     task.syncStatus,
     task.remoteActive ? 1 : 0,
+    task.whitelistMode ?? 'inherit',
+    JSON.stringify(task.whitelistPackages ?? []),
   ];
 }
 

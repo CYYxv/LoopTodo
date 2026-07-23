@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { Avatar } from 'heroui-native/avatar';
 import { ListGroup } from 'heroui-native/list-group';
@@ -17,6 +17,8 @@ export function SocialChallengePanel() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [roomsOpen, setRoomsOpen] = useState(false);
   const [pkPickOpen, setPkPickOpen] = useState(false);
+  const [reportTarget, setReportTarget] = useState<Friend | null>(null);
+  const [reportReason, setReportReason] = useState('');
   const [email, setEmail] = useState('');
   const [roomName, setRoomName] = useState('');
   const [inviteCode, setInviteCode] = useState('');
@@ -32,6 +34,9 @@ export function SocialChallengePanel() {
   const setEnabled = useSocialStore((state) => state.setEnabled);
   const invite = useSocialStore((state) => state.invite);
   const accept = useSocialStore((state) => state.accept);
+  const remove = useSocialStore((state) => state.remove);
+  const block = useSocialStore((state) => state.block);
+  const report = useSocialStore((state) => state.report);
   const createPk = useSocialStore((state) => state.createPk);
   const createRoom = useSocialStore((state) => state.createRoom);
   const joinRoom = useSocialStore((state) => state.joinRoom);
@@ -142,7 +147,17 @@ export function SocialChallengePanel() {
               </ListGroup.ItemContent>
             </ListGroup.Item>
           ) : accepted.map((friend) => (
-            <FriendRow key={friend.id} friend={friend} onPk={() => void createPk(friend.user.id)} />
+            <FriendRow
+              key={friend.id}
+              friend={friend}
+              onPk={() => void createPk(friend.user.id)}
+              onBlock={() => void block(friend.id)}
+              onRemove={() => void remove(friend.id)}
+              onReport={() => {
+                setReportReason('');
+                setReportTarget(friend);
+              }}
+            />
           ))}
         </ListGroup>
       </BottomSheetModal>
@@ -163,6 +178,41 @@ export function SocialChallengePanel() {
           }}
         >
           发送邀请
+        </Button>
+      </BottomSheetModal>
+
+      <BottomSheetModal
+        visible={reportTarget != null}
+        title="举报用户"
+        onClose={() => {
+          setReportTarget(null);
+          setReportReason('');
+        }}
+      >
+        <Text type="body-sm" color="muted">
+          举报 {reportTarget?.user.nickname ?? '用户'}，我们会记录并跟进处理。
+        </Text>
+        <TextField>
+          <Label>举报原因</Label>
+          <Input
+            value={reportReason}
+            onChangeText={setReportReason}
+            placeholder="请简要说明原因"
+            maxLength={500}
+          />
+        </TextField>
+        <Button
+          size="sm"
+          isDisabled={!configured || !reportReason.trim() || !reportTarget}
+          onPress={() => {
+            if (!reportTarget) return;
+            void report(reportTarget.user.id, reportReason.trim()).then(() => {
+              setReportTarget(null);
+              setReportReason('');
+            });
+          }}
+        >
+          提交举报
         </Button>
       </BottomSheetModal>
 
@@ -280,7 +330,22 @@ function PkCard({ match }: { match: PkMatch }) {
   );
 }
 
-function FriendRow({ friend, onAccept, onPk }: { friend: Friend; onAccept?: () => void; onPk?: () => void }) {
+function FriendRow({
+  friend,
+  onAccept,
+  onPk,
+  onBlock,
+  onRemove,
+  onReport,
+}: {
+  friend: Friend;
+  onAccept?: () => void;
+  onPk?: () => void;
+  onBlock?: () => void;
+  onRemove?: () => void;
+  onReport?: () => void;
+}) {
+  const accepted = friend.status === 'accepted';
   return (
     <ListGroup.Item disabled>
       <ListGroup.ItemPrefix>
@@ -291,12 +356,17 @@ function FriendRow({ friend, onAccept, onPk }: { friend: Friend; onAccept?: () =
       <ListGroup.ItemContent>
         <ListGroup.ItemTitle>{friend.user.nickname}</ListGroup.ItemTitle>
         <ListGroup.ItemDescription>
-          {friend.status === 'accepted' ? '好友' : friend.direction === 'incoming' ? '等待你接受' : '已发送邀请'}
+          {accepted ? '好友' : friend.direction === 'incoming' ? '等待你接受' : '已发送邀请'}
         </ListGroup.ItemDescription>
       </ListGroup.ItemContent>
       <ListGroup.ItemSuffix>
-        {onAccept ? <Button size="sm" onPress={onAccept}>接受</Button> : null}
-        {onPk ? <Button size="sm" variant="secondary" onPress={onPk}>PK</Button> : null}
+        <View className="max-w-[200px] flex-row flex-wrap items-center justify-end gap-1">
+          {onAccept ? <Button size="sm" onPress={onAccept}>接受</Button> : null}
+          {accepted && onPk ? <Button size="sm" variant="secondary" onPress={onPk}>PK</Button> : null}
+          {accepted && onBlock ? <Button size="sm" variant="secondary" onPress={onBlock}>拉黑</Button> : null}
+          {accepted && onRemove ? <Button size="sm" variant="secondary" onPress={onRemove}>删除</Button> : null}
+          {accepted && onReport ? <Button size="sm" variant="secondary" onPress={onReport}>举报</Button> : null}
+        </View>
       </ListGroup.ItemSuffix>
     </ListGroup.Item>
   );

@@ -99,6 +99,8 @@ async function openAndMigrate() {
   await ensureColumn(database, 'tasks', 'server_updated_at', 'INTEGER');
   await ensureColumn(database, 'tasks', 'forced_trigger_time', 'TEXT');
   await ensureColumn(database, 'tasks', 'category_id', 'TEXT');
+  await ensureColumn(database, 'tasks', 'whitelist_mode', "TEXT NOT NULL DEFAULT 'inherit'");
+  await ensureColumn(database, 'tasks', 'whitelist_packages', "TEXT NOT NULL DEFAULT '[]'");
   await ensureColumn(database, 'focus_sessions', 'synced_at', 'INTEGER');
   await ensureColumn(database, 'focus_sessions', 'completion_note', 'TEXT');
   await ensureColumn(database, 'focus_sessions', 'planned_focus_seconds', 'INTEGER');

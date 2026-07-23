@@ -7,7 +7,7 @@ const task: Task = {
   id: 'task', title: '任务', category: '收集箱', kind: 'pomodoro', timerMode: 'countdown',
   estimateMinutes: 25, restMinutes: 5, deadlineAt: null, targetAmount: null, targetUnit: null,
   completedAmount: 0, progressLabel: '25 分钟', mustDo: false, forcedTriggerTime: null,
-  trustLevel: 'medium', status: 'pending', version: 1, syncStatus: 'pending', remoteActive: false,
+  trustLevel: 'medium', status: 'pending', version: 1, syncStatus: 'pending', remoteActive: false, whitelistMode: 'inherit', whitelistPackages: [],
 };
 const session: ActiveSession = { id: 'session', taskId: 'task', mode: 'focus', timerMode: 'countdown', phase: 'focus', startedAt: 0, plannedEndAt: 1, restEndsAt: null };
 

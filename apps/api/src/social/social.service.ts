@@ -13,8 +13,16 @@ export class SocialService {
   async inviteFriend(userId: string, email: string) {
     const addressee = await this.prisma.user.findUnique({ where: { email: email.trim().toLowerCase() }, select: { id: true } });
     if (!addressee || addressee.id === userId) throw new NotFoundException({ code: 'FRIEND_NOT_FOUND', message: '未找到可邀请用户' });
+    const pairKey = socialPairKey(userId, addressee.id);
+    const existing = await this.prisma.friendship.findUnique({ where: { pairKey } });
+    if (existing?.status === 'blocked') {
+      throw new ConflictException({ code: 'FRIENDSHIP_BLOCKED', message: '已被拉黑，无法邀请' });
+    }
+    if (existing) {
+      throw new ConflictException({ code: 'FRIENDSHIP_EXISTS', message: '好友关系或邀请已存在' });
+    }
     try {
-      return await this.prisma.friendship.create({ data: { requesterId: userId, addresseeId: addressee.id, pairKey: socialPairKey(userId, addressee.id) } });
+      return await this.prisma.friendship.create({ data: { requesterId: userId, addresseeId: addressee.id, pairKey } });
     } catch (error) {
       if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') throw error;
       throw new ConflictException({ code: 'FRIENDSHIP_EXISTS', message: '好友关系或邀请已存在' });
@@ -25,6 +33,45 @@ export class SocialService {
     const updated = await this.prisma.friendship.updateMany({ where: { id: friendshipId, addresseeId: userId, status: 'pending' }, data: { status: 'accepted', respondedAt: new Date() } });
     if (!updated.count) throw new NotFoundException({ code: 'FRIEND_INVITE_NOT_FOUND', message: '好友邀请不存在或已处理' });
     return this.prisma.friendship.findUniqueOrThrow({ where: { id: friendshipId } });
+  }
+
+  async removeFriend(userId: string, friendshipId: string) {
+    const friendship = await this.prisma.friendship.findFirst({
+      where: { id: friendshipId, OR: [{ requesterId: userId }, { addresseeId: userId }] },
+    });
+    if (!friendship) throw new NotFoundException({ code: 'FRIENDSHIP_NOT_FOUND', message: '好友关系不存在' });
+    await this.prisma.friendship.delete({ where: { id: friendshipId } });
+    return { id: friendshipId, removed: true };
+  }
+
+  async blockFriend(userId: string, friendshipId: string) {
+    const updated = await this.prisma.friendship.updateMany({
+      where: { id: friendshipId, OR: [{ requesterId: userId }, { addresseeId: userId }] },
+      data: { status: 'blocked', respondedAt: new Date() },
+    });
+    if (!updated.count) throw new NotFoundException({ code: 'FRIENDSHIP_NOT_FOUND', message: '好友关系不存在' });
+    return this.prisma.friendship.findUniqueOrThrow({ where: { id: friendshipId } });
+  }
+
+  async reportUser(userId: string, targetUserId: string, reason: string) {
+    if (userId === targetUserId) {
+      throw new BadRequestException({ code: 'REPORT_SELF_FORBIDDEN', message: '不能举报自己' });
+    }
+    const trimmed = reason.trim();
+    if (!trimmed) {
+      throw new BadRequestException({ code: 'REPORT_REASON_REQUIRED', message: '请填写举报原因' });
+    }
+    const finalReason = trimmed.slice(0, 500);
+    return this.prisma.securityEvent.create({
+      data: {
+        actorId: userId,
+        category: 'social',
+        action: 'user_report',
+        outcome: 'recorded',
+        targetType: 'user',
+        metadata: { targetUserId, reason: finalReason },
+      },
+    });
   }
 
   async listFriends(userId: string) {
@@ -100,7 +147,10 @@ export class SocialService {
     return { nickname: target.nickname, currentTask: current, completedTasks: [...new Map(sessions.map((item) => [item.task.id, item.task])).values()] };
   }
 
-  private async areFriends(first: string, second: string) { return Boolean(await this.prisma.friendship.findFirst({ where: { pairKey: socialPairKey(first, second), status: 'accepted' } })); }
+  private async areFriends(first: string, second: string) {
+    return Boolean(await this.prisma.friendship.findFirst({ where: { pairKey: socialPairKey(first, second), status: 'accepted' } }));
+  }
+
   private async pkView(match: { id: string; challengerId: string; opponentId: string; matchDate: Date; status: string; challenger: { id: string; nickname: string }; opponent: { id: string; nickname: string } }) {
     const events = await this.prisma.scoreEvent.findMany({
       where: {
