@@ -3,6 +3,7 @@ export const notificationEventTypes = [
   'family_anomaly',
   'family_change_request',
   'family_change_result',
+  'family_task_assigned',
   'friend_invite',
   'pk_started',
   'reward_available',

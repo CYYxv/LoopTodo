@@ -3,6 +3,7 @@ import { isNotificationTypeEnabled } from './notification.preference';
 test('family change and anomaly respect familyAlertsEnabled', () => {
   expect(isNotificationTypeEnabled('family_change_request', { familyAlertsEnabled: false })).toBe(false);
   expect(isNotificationTypeEnabled('family_anomaly', { familyAlertsEnabled: true })).toBe(true);
+  expect(isNotificationTypeEnabled('family_task_assigned', { familyAlertsEnabled: false })).toBe(false);
 });
 
 test('friend invite and pk use task reminders', () => {

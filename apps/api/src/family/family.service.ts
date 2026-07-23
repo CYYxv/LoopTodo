@@ -6,7 +6,42 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
   async join(userId: string, code: string) { const redis = await this.redis.getClient(); const attempts = await redis.incr(`family:join:${userId}`); if (attempts === 1) await redis.expire(`family:join:${userId}`, 300); if (attempts > 10) throw new ForbiddenException({ code: 'FAMILY_INVITE_RATE_LIMITED', message: '邀请码尝试过多，请稍后再试' }); const invite = await this.prisma.familyInvite.findUnique({ where: { codeHash: hash(code.trim().toUpperCase()) } }); if (!invite || invite.usedAt || invite.expiresAt <= new Date()) throw new NotFoundException({ code: 'FAMILY_INVITE_INVALID', message: '家庭邀请码无效或已过期' }); await this.requireGroupEntitlement(invite.familyGroupId);
     return this.prisma.$transaction(async (tx) => { const claimed = await tx.familyInvite.updateMany({ where: { id: invite.id, usedAt: null }, data: { usedAt: new Date(), usedById: userId } }); if (!claimed.count) throw new ConflictException({ code: 'FAMILY_INVITE_USED', message: '邀请码已使用' }); return tx.familyMember.upsert({ where: { familyGroupId_userId: { familyGroupId: invite.familyGroupId, userId } }, update: { role: invite.role, leftAt: null, joinedAt: new Date() }, create: { familyGroupId: invite.familyGroupId, userId, role: invite.role } }); }); }
   async assignTask(userId: string, groupId: string, input: AssignFamilyTaskDto) { const parent = await this.requireParent(userId, groupId); await this.requireGroupEntitlement(groupId); const child = await this.prisma.familyMember.findFirst({ where: { familyGroupId: groupId, userId: input.childUserId, role: 'child', leftAt: null } }); if (!child) throw new NotFoundException({ code: 'FAMILY_CHILD_NOT_FOUND', message: '孩子不在该家庭组' }); if (input.taskType === 'goal' && (input.timerMode !== 'countdown' || !input.deadlineAt || !input.targetAmount || !input.targetUnit?.trim())) throw new BadRequestException({ code: 'GOAL_FIELDS_REQUIRED', message: '定目标任务需要倒计时、截止日期、目标量和单位' }); if (input.isTodayRequired && !input.triggerTime) throw new BadRequestException({ code: 'FORCED_TRIGGER_TIME_REQUIRED', message: '今日必须任务需要触发时间' });
-    return this.prisma.$transaction(async (tx) => { const task = await tx.task.create({ data: { userId: child.userId, title: input.title.trim(), taskType: input.taskType, timerMode: input.timerMode, estimatedMinutes: input.estimatedMinutes, restMinutes: input.restMinutes, deadlineAt: input.deadlineAt ? new Date(input.deadlineAt) : null, targetAmount: input.targetAmount, targetUnit: input.targetUnit?.trim(), isTodayRequired: input.isTodayRequired, forcedTriggerTime: input.isTodayRequired ? input.triggerTime : null, createdByFamilyMemberId: parent.id } }); const assignment = await tx.familyTaskAssignment.create({ data: { familyGroupId: groupId, taskId: task.id, parentMemberId: parent.id, childMemberId: child.id } }); if (input.isTodayRequired && input.triggerTime) await tx.forcedLockRule.create({ data: { userId: child.userId, taskId: task.id, triggerTime: input.triggerTime } }); return { task, assignment }; }); }
+    const result = await this.prisma.$transaction(async (tx) => {
+      const task = await tx.task.create({
+        data: {
+          userId: child.userId,
+          title: input.title.trim(),
+          taskType: input.taskType,
+          timerMode: input.timerMode,
+          estimatedMinutes: input.estimatedMinutes,
+          restMinutes: input.restMinutes,
+          deadlineAt: input.deadlineAt ? new Date(input.deadlineAt) : null,
+          targetAmount: input.targetAmount,
+          targetUnit: input.targetUnit?.trim(),
+          isTodayRequired: input.isTodayRequired,
+          forcedTriggerTime: input.isTodayRequired ? input.triggerTime : null,
+          createdByFamilyMemberId: parent.id,
+        },
+      });
+      const assignment = await tx.familyTaskAssignment.create({
+        data: { familyGroupId: groupId, taskId: task.id, parentMemberId: parent.id, childMemberId: child.id },
+      });
+      if (input.isTodayRequired && input.triggerTime) {
+        await tx.forcedLockRule.create({ data: { userId: child.userId, taskId: task.id, triggerTime: input.triggerTime } });
+      }
+      return { task, assignment };
+    });
+    await this.notifications.enqueue({
+      userId: child.userId,
+      type: 'family_task_assigned',
+      title: '新的家庭任务',
+      body: `家长布置了任务「${input.title.trim()}」`,
+      data: { taskId: result.task.id, assignmentId: result.assignment.id, groupId },
+      dedupeKey: `family-task-assigned:${result.assignment.id}`,
+      scheduledAt: new Date(),
+    });
+    return result;
+  }
   async requestChange(userId: string, assignmentId: string, requestType: 'update' | 'delete', reason: string, proposedPatch?: Record<string, unknown>) {
     const assignment = await this.prisma.familyTaskAssignment.findFirst({
       where: { id: assignmentId, childMember: { userId, leftAt: null }, status: 'active' },

@@ -8,6 +8,7 @@ const familyTypes = new Set([
   'family_anomaly',
   'family_change_request',
   'family_change_result',
+  'family_task_assigned',
 ]);
 
 export function isNotificationTypeEnabled(
