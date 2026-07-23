@@ -58,9 +58,27 @@ export class TeamsSeasonsService implements OnModuleInit, OnModuleDestroy {
     const season = await this.currentSeason(); const range = leaderboardRange(period, season);
     const cacheKey = `leaderboard:${period}:${range.start.toISOString()}:${limit}`; const redis = await this.redis.getClient(); const cached = await redis.get(cacheKey);
     if (cached) return JSON.parse(cached);
-    const rows = await this.prisma.scoreEvent.groupBy({ by: ['userId'], where: { scoreDate: { gte: range.start, lt: range.end } }, _sum: { totalScore: true, durationMinutes: true }, orderBy: { _sum: { totalScore: 'desc' } }, take: limit });
-    const users = await this.prisma.user.findMany({ where: { id: { in: rows.map((row) => row.userId) } }, select: { id: true, nickname: true, avatarUrl: true } }); const byId = new Map(users.map((user) => [user.id, user]));
-    const result = rows.map((row, index) => ({ position: index + 1, user: byId.get(row.userId), score: row._sum.totalScore ?? 0, focusMinutes: row._sum.durationMinutes ?? 0 }));
+    const rows = await this.prisma.scoreEvent.groupBy({
+      by: ['userId'],
+      where: { scoreDate: { gte: range.start, lt: range.end } },
+      _sum: { totalScore: true, durationMinutes: true },
+      orderBy: { _sum: { totalScore: 'desc' } },
+      take: Math.max(limit * 3, limit),
+    });
+    const users = await this.prisma.user.findMany({ where: { id: { in: rows.map((row) => row.userId) } }, select: { id: true, nickname: true, avatarUrl: true } });
+    const byId = new Map(users.map((user) => [user.id, user]));
+    const ranked = rows
+      .map((row) => ({
+        user: byId.get(row.userId),
+        score: row._sum.totalScore ?? 0,
+        focusMinutes: row._sum.durationMinutes ?? 0,
+      }))
+      .sort((a, b) => {
+        if (period === 'season') return b.score - a.score || b.focusMinutes - a.focusMinutes;
+        return b.focusMinutes - a.focusMinutes || b.score - a.score;
+      })
+      .slice(0, limit);
+    const result = ranked.map((row, index) => ({ position: index + 1, ...row }));
     await redis.set(cacheKey, JSON.stringify(result), 'EX', period === 'today' ? 15 : 60); return result;
   }
 

@@ -462,15 +462,13 @@ export function createTaskStore(
         const restrictionError = await nativeLockEngine.clearFocusRestrictions()
           .then(() => null)
           .catch((error) => errorMessage(error));
-        const hasStrict = get().strictOptions.some((option) => option.enabled && option.id !== 'allow-whitelist');
+        // Preview only; server settles with trustLevel. Align modes: lock > whitelist open > strict.
         const hasWhitelist = selectedWhitelistPackages().length > 0;
         const starMode = activeSession.mode === 'lock'
           ? 'lock'
           : hasWhitelist
             ? 'whitelist'
-            : hasStrict
-              ? 'strict'
-              : 'strict';
+            : 'strict';
         const starOutcome = outcome === 'completed'
           ? 'completed'
           : outcome === 'exited' && activeSession.mode === 'lock'
@@ -479,7 +477,7 @@ export function createTaskStore(
         const lastStarDelta = calculateSessionStars({
           outcome: starOutcome,
           effectiveMinutes: Math.floor(record.durationSeconds / 60),
-          mode: starMode as 'lock' | 'strict' | 'whitelist',
+          mode: task.timerMode === 'untimed' ? 'untimed' : starMode,
         });
         set((state) => ({
           tasks: state.tasks.map((candidate) => candidate.id === nextTask.id ? nextTask : candidate),
