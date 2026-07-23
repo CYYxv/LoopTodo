@@ -103,16 +103,24 @@ export class AuthService {
 
   async updateSettings(userId: string, input: UpdateSettingsDto) {
     const { themePreference, ...settings } = input;
-    let settingsInput = settings;
-    if (themePreference !== undefined) {
-      const existing = await this.repository.findUserById(userId);
-      if (!existing) throw invalidCredentials();
+    const existing = await this.repository.findUserById(userId);
+    if (!existing) throw invalidCredentials();
+    let settingsInput: typeof settings = { ...settings };
+    const privacy = {
+      ...privacySettingsFrom(settings.privacySettings ?? existing.privacySettings),
+      ...(themePreference !== undefined ? { themePreference } : {}),
+    };
+    if (settings.privacySettings !== undefined || themePreference !== undefined) {
+      settingsInput = { ...settingsInput, privacySettings: privacy };
+    }
+    // TBD-S06 skeleton: minors use stricter share defaults
+    const isMinor = privacy.isMinor === true;
+    if (isMinor) {
       settingsInput = {
-        ...settings,
-        privacySettings: {
-          ...privacySettingsFrom(settings.privacySettings ?? existing.privacySettings),
-          themePreference,
-        },
+        ...settingsInput,
+        shareCurrentTask: false,
+        shareCompletedTasks: false,
+        privacySettings: { ...privacy, isMinor: true, socialVisibility: privacy.socialVisibility === 'public' ? 'friends' : privacy.socialVisibility ?? 'friends' },
       };
     }
     const user = await this.repository.updateSettings(userId, settingsInput);

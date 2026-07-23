@@ -1,19 +1,73 @@
+import * as SecureStore from 'expo-secure-store';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 
 import { createNativeLockEngine } from './native-lock-engine';
 import type { LockEngine } from './lock-engine.port';
 import type { LockCapabilities } from './lock-engine.types';
+import { fetchEmergencyQuota } from './emergency-quota.client';
 
-type LockEngineStore = { capabilities: LockCapabilities | null; error: string | null; refresh(): Promise<void>; confirmRisk(): Promise<void>; open(kind: 'notifications' | 'notificationListener' | 'accessibility' | 'battery' | 'exactAlarm' | 'vendorBackground'): Promise<void> };
+type LockEngineStore = {
+  capabilities: LockCapabilities | null;
+  serverEmergencyRemaining: number | null;
+  error: string | null;
+  refresh(): Promise<void>;
+  refreshServerQuota(baseUrl: string): Promise<void>;
+  confirmRisk(): Promise<void>;
+  open(kind: 'notifications' | 'notificationListener' | 'accessibility' | 'battery' | 'exactAlarm' | 'vendorBackground'): Promise<void>;
+};
+
 export function createLockEngineStore(engine: LockEngine) {
-  return createStore<LockEngineStore>((set, get) => ({ capabilities: null, error: null,
-    async refresh() { try { set({ capabilities: await engine.checkCapabilities(), error: null }); } catch (error) { set({ error: message(error) }); } },
-    async confirmRisk() { try { await engine.confirmRisk(); await get().refresh(); } catch (error) { set({ error: message(error) }); } },
-    async open(kind) { try { await engine.openPermissionSettings(kind); } catch (error) { set({ error: message(error) }); } },
+  return createStore<LockEngineStore>((set, get) => ({
+    capabilities: null,
+    serverEmergencyRemaining: null,
+    error: null,
+    async refresh() {
+      try {
+        set({ capabilities: await engine.checkCapabilities(), error: null });
+      } catch (error) {
+        set({ error: error instanceof Error ? error.message : '锁机能力检查失败' });
+      }
+    },
+    async refreshServerQuota(baseUrl) {
+      try {
+        const token = await SecureStore.getItemAsync('looptodo.access-token');
+        if (!token || !baseUrl) return;
+        const quota = await fetchEmergencyQuota(baseUrl, token);
+        set({ serverEmergencyRemaining: quota.remaining });
+        const capabilities = get().capabilities;
+        if (capabilities) {
+          set({
+            capabilities: {
+              ...capabilities,
+              emergencyExitsRemaining: Math.min(capabilities.emergencyExitsRemaining, quota.remaining),
+            },
+          });
+        }
+      } catch {
+        // offline: keep local native remaining
+      }
+    },
+    async confirmRisk() {
+      try {
+        await engine.confirmRiskAcknowledgement();
+        await get().refresh();
+      } catch (error) {
+        set({ error: error instanceof Error ? error.message : '风险确认失败' });
+      }
+    },
+    async open(kind) {
+      try {
+        await engine.openPermissionSettings(kind);
+      } catch (error) {
+        set({ error: error instanceof Error ? error.message : '无法打开系统设置' });
+      }
+    },
   }));
 }
+
 export const lockEngine = createNativeLockEngine();
 export const lockEngineStore = createLockEngineStore(lockEngine);
-export function useLockEngineStore<T>(selector: (state: LockEngineStore) => T) { return useStore(lockEngineStore, selector); }
-function message(error: unknown) { return error instanceof Error ? error.message : '锁机权限检查失败'; }
+export function useLockEngineStore<T>(selector: (state: LockEngineStore) => T) {
+  return useStore(lockEngineStore, selector);
+}

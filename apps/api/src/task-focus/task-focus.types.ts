@@ -21,6 +21,8 @@ export type TaskView = {
   completedAmount: number;
   isTodayRequired: boolean;
   forcedTriggerTime: string | null;
+  whitelistMode: 'inherit' | 'custom';
+  whitelistPackages: string[];
   status: 'pending' | 'active' | 'completed' | 'failed' | 'archived';
   activeSessionId: string | null;
   createdByFamilyMemberId: string | null;

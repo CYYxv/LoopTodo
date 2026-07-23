@@ -17,6 +17,7 @@ export type Settings = {
   taskRemindersEnabled: boolean;
   familyAlertsEnabled: boolean;
   rewardNotificationsEnabled: boolean;
+  isMinor: boolean;
 };
 
 type Store = {
@@ -60,7 +61,16 @@ export const settingsStore = createStore<Store>((set, get) => ({
   async update(patch) {
     if (!get().configured) return set({ error: '登录后才能同步设置' });
     try {
-      const value = normalizeSettings(await request<unknown>(get(), '/me/settings', { method: 'PATCH', body: JSON.stringify(patch) }));
+      const body: Record<string, unknown> = { ...patch };
+      if (typeof patch.isMinor === 'boolean') {
+        body.privacySettings = { isMinor: patch.isMinor };
+        if (patch.isMinor) {
+          body.shareCurrentTask = false;
+          body.shareCompletedTasks = false;
+        }
+        delete body.isMinor;
+      }
+      const value = normalizeSettings(await request<unknown>(get(), '/me/settings', { method: 'PATCH', body: JSON.stringify(body) }));
       await persistSettings(value);
       set({ value, error: null });
     } catch (error) {
@@ -91,7 +101,12 @@ function normalizeSettings(value: unknown): Settings {
     taskRemindersEnabled: input.taskRemindersEnabled !== false,
     familyAlertsEnabled: input.familyAlertsEnabled !== false,
     rewardNotificationsEnabled: input.rewardNotificationsEnabled !== false,
+    isMinor: input.isMinor === true || privacyIsMinor(input.privacySettings),
   };
+}
+
+function privacyIsMinor(value: unknown): boolean {
+  return !!(value && typeof value === 'object' && !Array.isArray(value) && (value as Record<string, unknown>).isMinor === true);
 }
 
 function normalizeThemePreference(value: unknown): ThemePreference {

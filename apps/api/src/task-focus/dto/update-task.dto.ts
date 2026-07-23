@@ -1,4 +1,4 @@
-import { IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, Length, Matches, Max, Min } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, Length, Matches, Max, Min } from 'class-validator';
 
 export class UpdateTaskDto {
   @IsInt() @Min(1) version!: number;
@@ -13,4 +13,6 @@ export class UpdateTaskDto {
   @IsOptional() @IsBoolean() isTodayRequired?: boolean;
   @IsOptional() @IsString() @Matches(/^([01]\d|2[0-3]):[0-5]\d$/) forcedTriggerTime?: string | null;
   @IsOptional() @IsIn(['pending', 'completed', 'failed']) status?: 'pending' | 'completed' | 'failed';
+  @IsOptional() @IsIn(['inherit', 'custom']) whitelistMode?: 'inherit' | 'custom';
+  @IsOptional() @IsArray() @ArrayMaxSize(50) @IsString({ each: true }) whitelistPackages?: string[];
 }

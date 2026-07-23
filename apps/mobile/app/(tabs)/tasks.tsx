@@ -1,5 +1,6 @@
+import { useAuthStore } from '@/modules/auth/auth.store';
 import { useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { Surface } from 'heroui-native/surface';
 
@@ -44,6 +45,8 @@ export default function TasksRoute() {
   const toggleStrictOption = useTaskStore((state) => state.toggleStrictOption);
   const capabilities = useLockEngineStore((state) => state.capabilities);
   const refreshCapabilities = useLockEngineStore((state) => state.refresh);
+  const refreshServerQuota = useLockEngineStore((state) => state.refreshServerQuota);
+  const apiBaseUrl = useAuthStore((state) => state.baseUrl);
   const confirmRisk = useLockEngineStore((state) => state.confirmRisk);
   const openPermission = useLockEngineStore((state) => state.open);
   const visibleTasks = useMemo(() => tasks.filter((task) => task.status !== 'archived'), [tasks]);
@@ -86,7 +89,7 @@ export default function TasksRoute() {
         onUpdated={() => { setTaskSheet(null); setNotice('任务已更新'); }} /> : null}
       {sheetTask && taskSheet?.mode === 'focus' ? <FocusPanel selectedMode={selectedMode} strictOptions={strictOptions} selectedTask={sheetTask}
         onModeChange={selectMode} onStrictOptionToggle={toggleStrictOption} onStart={() => void start(sheetTask.id, selectedMode)}
-        lockCapabilities={capabilities} onRefreshLockCapabilities={() => void refreshCapabilities()}
+        lockCapabilities={capabilities} onRefreshLockCapabilities={() => { void refreshCapabilities(); if (apiBaseUrl) void refreshServerQuota(apiBaseUrl); }}
         onConfirmLockRisk={() => void confirmRisk()} onOpenLockPermission={(kind) => void openPermission(kind)} /> : null}
     </BottomSheetModal>
   </Screen>;

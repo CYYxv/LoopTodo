@@ -83,6 +83,9 @@ export class TaskFocusController {
     return this.service.finishSession(request.auth.sub, id, key, input);
   }
 
+  @Get('focus-sessions/emergency-quota')
+  emergencyQuota(@Req() request: AuthenticatedRequest) { return this.service.emergencyQuota(request.auth.sub); }
+
   @Get('focus-sessions')
   listSessions(@Req() request: AuthenticatedRequest) { return this.service.listSessions(request.auth.sub); }
 

@@ -134,7 +134,18 @@ export function SocialChallengePanel() {
         {pendingIncoming.length > 0 ? (
           <ListGroup accessibilityLabel="待处理邀请" variant="secondary">
             {pendingIncoming.map((friend) => (
-              <FriendRow key={friend.id} friend={friend} onAccept={() => void accept(friend.id)} />
+              <FriendRow
+                key={friend.id}
+                friend={friend}
+                onAccept={() => void accept(friend.id)}
+                onRemove={() => void remove(friend.id)}
+                onBlock={() => void block(friend.id)}
+                onReport={() => {
+                  setReportTarget(friend);
+                  setReportReason('');
+                  setReportOpen(true);
+                }}
+              />
             ))}
           </ListGroup>
         ) : null}
@@ -365,9 +376,9 @@ function FriendRow({
         <View className="max-w-[200px] flex-row flex-wrap items-center justify-end gap-1">
           {onAccept ? <Button size="sm" onPress={onAccept}>接受</Button> : null}
           {accepted && onPk ? <Button size="sm" variant="secondary" onPress={onPk}>PK</Button> : null}
-          {accepted && onBlock ? <Button size="sm" variant="secondary" onPress={onBlock}>拉黑</Button> : null}
-          {accepted && onRemove ? <Button size="sm" variant="secondary" onPress={onRemove}>删除</Button> : null}
-          {accepted && onReport ? <Button size="sm" variant="secondary" onPress={onReport}>举报</Button> : null}
+          {onBlock ? <Button size="sm" variant="secondary" onPress={onBlock}>拉黑</Button> : null}
+          {onRemove ? <Button size="sm" variant="secondary" onPress={onRemove}>{accepted ? '删除' : '拒绝'}</Button> : null}
+          {onReport ? <Button size="sm" variant="secondary" onPress={onReport}>举报</Button> : null}
         </View>
       </ListGroup.ItemSuffix>
     </ListGroup.Item>

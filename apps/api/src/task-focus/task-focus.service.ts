@@ -1,6 +1,7 @@
-import { ConflictException, Inject, Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 
 import type { CreateTaskDto } from './dto/create-task.dto';
+import { emergencyYearMonth, monthRangeUtc, MONTHLY_EMERGENCY_EXIT_LIMIT, remainingEmergencyExits } from './emergency-quota.policy';
 import type { FinishSessionDto } from './dto/finish-session.dto';
 import type { UpdateTaskDto } from './dto/update-task.dto';
 import { DuplicateCategoryError, TASK_FOCUS_REPOSITORY, TaskIdentityConflictError, type MutationResult, type TaskFocusRepository } from './task-focus.repository';
@@ -62,6 +63,8 @@ export class TaskFocusService {
         targetUnit: input.targetUnit?.trim() || null,
         isTodayRequired: input.isTodayRequired,
         forcedTriggerTime: input.isTodayRequired ? input.forcedTriggerTime ?? null : null,
+        whitelistMode: input.whitelistMode === 'custom' ? 'custom' : 'inherit',
+        whitelistPackages: input.whitelistMode === 'custom' ? (input.whitelistPackages ?? []) : [],
       });
     } catch (error) {
       if (error instanceof TaskIdentityConflictError) throw new ConflictException({ code: 'TASK_IDENTITY_CONFLICT', message: '客户端任务 ID 已用于其他内容' });
@@ -84,6 +87,8 @@ export class TaskFocusService {
       targetUnit: patch.targetUnit === undefined ? undefined : patch.targetUnit?.trim() || null,
       forcedTriggerTime: nextTriggerTime,
       deadlineAt: patch.deadlineAt === undefined ? undefined : patch.deadlineAt ? new Date(patch.deadlineAt) : null,
+      whitelistMode: patch.whitelistMode,
+      whitelistPackages: patch.whitelistMode === 'custom' ? (patch.whitelistPackages ?? []) : patch.whitelistMode === 'inherit' ? [] : patch.whitelistPackages,
     });
     if (nextRequired && !nextTriggerTime) {
       throw new BadRequestException({ code: 'FORCED_TRIGGER_TIME_REQUIRED', message: '今日必须任务需要触发时间' });
@@ -129,8 +134,29 @@ export class TaskFocusService {
       sessionId, startedAt: startedAt ? new Date(startedAt) : undefined, plannedMinutes }));
   }
 
+  async emergencyQuota(userId: string) {
+    const { start, end } = monthRangeUtc();
+    const used = await this.repository.countEmergencyExits(userId, start, end);
+    const remaining = remainingEmergencyExits(used);
+    return {
+      yearMonth: emergencyYearMonth(),
+      limit: MONTHLY_EMERGENCY_EXIT_LIMIT,
+      used,
+      remaining,
+    };
+  }
+
   async finishSession(userId: string, sessionId: string, key: string, input: FinishSessionDto) {
     validateKey(key);
+    if (input.outcome === 'emergency_exit') {
+      const current = await this.repository.getSession(userId, sessionId);
+      if (current && !current.endedAt) {
+        const quota = await this.emergencyQuota(userId);
+        if (quota.remaining <= 0) {
+          throw new ForbiddenException({ code: 'EMERGENCY_QUOTA_EXHAUSTED', message: '本月紧急退出次数已用完' });
+        }
+      }
+    }
     const session = unwrap(await this.repository.finishSession({
       userId,
       sessionId,

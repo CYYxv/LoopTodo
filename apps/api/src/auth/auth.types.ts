@@ -15,7 +15,7 @@ export type AuthUser = {
   taskRemindersEnabled: boolean; familyAlertsEnabled: boolean; rewardNotificationsEnabled: boolean;
 };
 
-export type PublicUser = Omit<AuthUser, 'passwordHash'> & { themePreference: ThemePreference };
+export type PublicUser = Omit<AuthUser, 'passwordHash'> & { themePreference: ThemePreference; isMinor: boolean };
 
 export type DeviceSession = {
   id: string;
@@ -40,7 +40,12 @@ export type TokenPair = {
 
 export function publicUser(user: AuthUser): PublicUser {
   const { passwordHash: _passwordHash, ...safeUser } = user;
-  return { ...safeUser, themePreference: themePreferenceFrom(user.privacySettings) };
+  return { ...safeUser, themePreference: themePreferenceFrom(user.privacySettings), isMinor: isMinorFrom(user.privacySettings) };
+}
+
+function isMinorFrom(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  return (value as Record<string, unknown>).isMinor === true;
 }
 
 function themePreferenceFrom(value: unknown): ThemePreference {

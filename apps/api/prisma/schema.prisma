@@ -313,6 +313,8 @@ model Task {
   completedAmount         Decimal        @default(0) @map("completed_amount") @db.Decimal(12, 2)
   isTodayRequired         Boolean        @default(false) @map("is_today_required")
   forcedTriggerTime       String?        @map("forced_trigger_time") @db.Char(5)
+  whitelistMode           String         @default("inherit") @map("whitelist_mode") @db.VarChar(16)
+  whitelistPackages       String[]       @default([]) @map("whitelist_packages")
   status                  TaskStatus     @default(pending)
   activeSessionId         String?        @map("active_session_id") @db.Uuid
   version                 Int            @default(1)

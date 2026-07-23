@@ -47,6 +47,8 @@ export interface TaskFocusRepository {
     actualMinutes?: number;
   }): Promise<MutationResult<SessionView>>;
   listSessions(userId: string): Promise<SessionView[]>;
+  countEmergencyExits(userId: string, start: Date, end: Date): Promise<number>;
+  getSession(userId: string, sessionId: string): Promise<SessionView | null>;
   sync(userId: string, since: Date): Promise<{
     categories: CategoryView[];
     tasks: TaskView[];

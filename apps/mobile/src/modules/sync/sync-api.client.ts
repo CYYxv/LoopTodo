@@ -40,7 +40,7 @@ export function createHttpSyncClient(baseUrl: string, accessToken: string): Sync
           taskType: task.kind, timerMode: task.timerMode, estimatedMinutes: task.estimateMinutes,
           restMinutes: task.restMinutes, deadlineAt: task.deadlineAt ? new Date(task.deadlineAt).toISOString() : undefined,
           targetAmount: task.targetAmount ?? undefined, targetUnit: task.targetUnit ?? undefined,
-          isTodayRequired: task.mustDo, forcedTriggerTime: task.forcedTriggerTime }) });
+          isTodayRequired: task.mustDo, forcedTriggerTime: task.forcedTriggerTime, whitelistMode: task.whitelistMode ?? 'inherit', whitelistPackages: task.whitelistPackages ?? [] }) });
         return {};
       }
       if (operation.type === 'task.update') {
@@ -49,7 +49,7 @@ export function createHttpSyncClient(baseUrl: string, accessToken: string): Sync
           categoryId: patch.categoryId, title: patch.title, timerMode: patch.timerMode, estimatedMinutes: patch.estimateMinutes,
           restMinutes: patch.restMinutes, deadlineAt: patch.deadlineAt ? new Date(patch.deadlineAt).toISOString() : null,
           targetAmount: patch.targetAmount, targetUnit: patch.targetUnit, isTodayRequired: patch.mustDo,
-          forcedTriggerTime: patch.forcedTriggerTime, status: patch.status }) });
+          forcedTriggerTime: patch.forcedTriggerTime, status: patch.status, whitelistMode: patch.whitelistMode, whitelistPackages: patch.whitelistPackages }) });
         return {};
       }
       if (operation.type === 'task.delete') {

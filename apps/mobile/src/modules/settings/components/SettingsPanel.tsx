@@ -56,8 +56,9 @@ export function SettingsPanel() {
             </Chip>
           </View>
           <Setting label="多设备同步专注/锁机" value={value?.multiDeviceFocusSync ?? false} onChange={(next) => toggle('multiDeviceFocusSync', next)} />
-          <Setting label="自习室可见当前待办" value={value?.shareCurrentTask ?? false} onChange={(next) => toggle('shareCurrentTask', next)} />
-          <Setting label="自习室可见今日完成" value={value?.shareCompletedTasks ?? false} onChange={(next) => toggle('shareCompletedTasks', next)} />
+          <Setting label="未成年人模式" value={value?.isMinor ?? false} onChange={(next) => toggle('isMinor', next)} />
+          <Setting label="自习室可见当前待办" value={value?.shareCurrentTask ?? false} onChange={(next) => toggle('shareCurrentTask', next)} disabled={value?.isMinor === true} />
+          <Setting label="自习室可见今日完成" value={value?.shareCompletedTasks ?? false} onChange={(next) => toggle('shareCompletedTasks', next)} disabled={value?.isMinor === true} />
           <Text type="body-xs" color="muted">任务内容默认仅本人可见；家庭任务仅关联家长可见。</Text>
         </Card.Body>
       </Card>
@@ -183,8 +184,8 @@ export function SettingsPanel() {
   );
 }
 
-function Setting({ label, value, onChange }: { label: string; value: boolean; onChange(value: boolean): void }) {
-  return <View className="flex-row items-center justify-between gap-3"><Text type="body-sm" className="flex-1">{label}</Text><Switch accessibilityLabel={label} isSelected={value} onSelectedChange={onChange} /></View>;
+function Setting({ label, value, onChange, disabled }: { label: string; value: boolean; onChange(value: boolean): void; disabled?: boolean }) {
+  return <View className="flex-row items-center justify-between gap-3"><Text type="body-sm" className="flex-1" color={disabled ? 'muted' : undefined}>{label}</Text><Switch accessibilityLabel={label} isSelected={value} isDisabled={disabled} onSelectedChange={onChange} /></View>;
 }
 
 type BooleanSettingKey = Exclude<keyof Settings, 'bottomTabs' | 'networkPolicy' | 'themePreference'>;

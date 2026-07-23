@@ -84,6 +84,8 @@ export class PrismaTaskFocusRepository implements TaskFocusRepository {
           targetUnit: input.targetUnit,
           isTodayRequired: input.isTodayRequired,
           forcedTriggerTime: input.forcedTriggerTime,
+          whitelistMode: input.whitelistMode ?? 'inherit',
+          whitelistPackages: input.whitelistPackages ?? [],
         },
       }));
     } catch (error) {
@@ -241,6 +243,17 @@ export class PrismaTaskFocusRepository implements TaskFocusRepository {
     return (await this.prisma.focusSession.findMany({ where: { userId }, orderBy: { startedAt: 'desc' }, take: 200 })).map(sessionView);
   }
 
+  async countEmergencyExits(userId: string, start: Date, end: Date) {
+    return this.prisma.focusSession.count({
+      where: { userId, outcome: 'emergency_exit', endedAt: { gte: start, lt: end } },
+    });
+  }
+
+  async getSession(userId: string, sessionId: string) {
+    const session = await this.prisma.focusSession.findFirst({ where: { id: sessionId, userId } });
+    return session ? sessionView(session) : null;
+  }
+
   async sync(userId: string, since: Date) {
     const cursor = new Date();
     const [categories, tasks, sessions] = await Promise.all([
@@ -285,5 +298,7 @@ function sameTask(task: Task, input: TaskCreate) {
     task.estimatedMinutes === input.estimatedMinutes && task.restMinutes === input.restMinutes &&
     task.categoryId === input.categoryId && (task.deadlineAt?.getTime() ?? null) === (input.deadlineAt?.getTime() ?? null) &&
     (task.targetAmount?.toNumber() ?? null) === input.targetAmount && task.targetUnit === input.targetUnit &&
-    task.isTodayRequired === input.isTodayRequired && task.forcedTriggerTime === input.forcedTriggerTime;
+    task.isTodayRequired === input.isTodayRequired && task.forcedTriggerTime === input.forcedTriggerTime &&
+    (task.whitelistMode === (input.whitelistMode ?? 'inherit')) &&
+    JSON.stringify(task.whitelistPackages ?? []) === JSON.stringify(input.whitelistPackages ?? []);
 }
