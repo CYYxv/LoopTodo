@@ -37,7 +37,7 @@ export type Task = {
   whitelistPackages: string[];
 };
 
-export type CreateTaskInput = Omit<Task, 'id' | 'status' | 'completedAmount' | 'progressLabel' | 'version' | 'syncStatus' | 'remoteActive'>;
+export type CreateTaskInput = Omit<Task, 'id' | 'status' | 'completedAmount' | 'progressLabel' | 'version' | 'syncStatus' | 'remoteActive' | 'whitelistMode' | 'whitelistPackages'> & Partial<Pick<Task, 'whitelistMode' | 'whitelistPackages'>>;
 export type UpdateTaskInput = Pick<Task,
   'title' | 'timerMode' | 'estimateMinutes' | 'restMinutes' | 'deadlineAt' | 'targetAmount' | 'targetUnit' | 'mustDo' | 'forcedTriggerTime'
 > & Partial<Pick<Task, 'categoryId' | 'category' | 'whitelistMode' | 'whitelistPackages'>>;

@@ -71,6 +71,16 @@ describe('SocialService safety', () => {
     });
   });
 
+  test('removeFriend rejects blocked friendships', async () => {
+    const service = createService({
+      friendship: {
+        async findFirst() { return { id: 'f1', requesterId: 'u1', addresseeId: 'u2', status: 'blocked' }; },
+        async delete() { throw new Error('should not delete'); },
+      },
+    });
+    await expect(service.removeFriend('u2', 'f1')).rejects.toBeInstanceOf(ConflictException);
+  });
+
   test('inviteFriend rejects blocked pairs', async () => {
     const service = createService({
       user: {

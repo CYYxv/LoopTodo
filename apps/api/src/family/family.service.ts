@@ -90,7 +90,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
     };
   }
 
-    /**
+  /**
    * 退出后立即失去成员与状态访问；服务端仅保留审计，不对前成员开放历史查询。
    */
   async leave(userId: string, groupId: string) {
@@ -101,14 +101,18 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
     if (!result.count) {
       throw new NotFoundException({ code: 'FAMILY_MEMBERSHIP_NOT_FOUND', message: '家庭成员关系不存在' });
     }
-    await this.security.record({
-      actorId: userId,
-      category: 'family',
-      action: 'member_leave',
-      outcome: 'success',
-      targetType: 'family_group',
-      targetId: groupId,
-    } as never);
+    try {
+      await this.security.record({
+        actorId: userId,
+        category: 'privacy',
+        action: 'member_leave',
+        outcome: 'allowed',
+        targetType: 'family_group',
+        targetId: groupId,
+      });
+    } catch {
+      // membership already left; audit must not roll back leave
+    }
     return { left: true };
   }
   listRequests(userId: string, groupId: string) { return this.requireParent(userId, groupId).then(() => this.prisma.taskChangeRequest.findMany({ where: { assignment: { familyGroupId: groupId } }, include: { assignment: { include: { task: true } }, childMember: { include: { user: { select: { nickname: true } } } } }, orderBy: { createdAt: 'desc' } })); }

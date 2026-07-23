@@ -206,7 +206,9 @@ export function SocialChallengePanel() {
           isDisabled={!configured || !reportReason.trim() || !reportTarget}
           onPress={() => {
             if (!reportTarget) return;
-            void report(reportTarget.user.id, reportReason.trim()).then(() => {
+            void report(reportTarget.user.id, reportReason.trim()).then((ok) => {
+              if (!ok) return;
+              setReportOpen(false);
               setReportTarget(null);
               setReportReason('');
             });

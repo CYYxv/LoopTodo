@@ -114,9 +114,9 @@ describe('FamilyService leave/status membership', () => {
 
     await expect(service.leave('user-1', 'group-1')).resolves.toEqual({ left: true });
     expect(security.record).toHaveBeenCalledWith(expect.objectContaining({
-      category: 'family',
+      category: 'privacy',
       action: 'member_leave',
-      outcome: 'success',
+      outcome: 'allowed',
       targetType: 'family_group',
       targetId: 'group-1',
     }));

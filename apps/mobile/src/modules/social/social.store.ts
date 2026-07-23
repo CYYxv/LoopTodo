@@ -25,9 +25,9 @@ type SocialStore = {
   load(): Promise<void>;
   invite(email: string): Promise<void>;
   accept(id: string): Promise<void>;
-  remove(id: string): Promise<void>;
-  block(id: string): Promise<void>;
-  report(targetUserId: string, reason: string): Promise<void>;
+  remove(id: string): Promise<boolean>;
+  block(id: string): Promise<boolean>;
+  report(targetUserId: string, reason: string): Promise<boolean>;
   createPk(userId: string): Promise<void>;
   createRoom(name: string, visibility: 'public' | 'private'): Promise<void>;
   joinRoom(room: StudyRoom): Promise<void>;
@@ -83,9 +83,13 @@ export function createSocialStore() {
     },
     async invite(email) { await action(get, set, (client) => client.invite(email)); },
     async accept(id) { await action(get, set, (client) => client.accept(id)); },
-    async remove(id) { await action(get, set, (client) => client.remove(id)); },
-    async block(id) { await action(get, set, (client) => client.block(id)); },
-    async report(targetUserId, reason) { if (await action(get, set, (client) => client.report(targetUserId, reason))) track('social_report', { targetUserId }); },
+    async remove(id) { return action(get, set, (client) => client.remove(id)); },
+    async block(id) { return action(get, set, (client) => client.block(id)); },
+    async report(targetUserId, reason) {
+      const ok = await action(get, set, (client) => client.report(targetUserId, reason));
+      if (ok) track('social_report', { targetUserId });
+      return ok;
+    },
     async createPk(userId) { if (await action(get, set, (client) => client.createPk(userId))) track('social_pk_create', { friendUserId: userId }); },
     async createRoom(name, visibility) {
       const trimmed = name.trim();

@@ -40,6 +40,9 @@ export class SocialService {
       where: { id: friendshipId, OR: [{ requesterId: userId }, { addresseeId: userId }] },
     });
     if (!friendship) throw new NotFoundException({ code: 'FRIENDSHIP_NOT_FOUND', message: '好友关系不存在' });
+    if (friendship.status === 'blocked') {
+      throw new ConflictException({ code: 'FRIENDSHIP_BLOCKED_IMMUTABLE', message: '已拉黑关系不能直接删除，避免绕过拉黑' });
+    }
     await this.prisma.friendship.delete({ where: { id: friendshipId } });
     return { id: friendshipId, removed: true };
   }
