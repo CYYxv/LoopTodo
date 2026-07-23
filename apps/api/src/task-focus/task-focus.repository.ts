@@ -11,7 +11,8 @@ export type MutationResult<T> =
   | { status: 'conflict' }
   | { status: 'idempotency-conflict' }
   | { status: 'already-active' }
-  | { status: 'not-active' };
+  | { status: 'not-active' }
+  | { status: 'quota-exhausted' };
 
 export interface TaskFocusRepository {
   listCategories(userId: string): Promise<CategoryView[]>;

@@ -1,4 +1,4 @@
-﻿import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+﻿import { Body, Controller, DefaultValuePipe, Get, Param, ParseIntPipe, Post, Query, Req, UseGuards } from '@nestjs/common';
 
 import { AccessTokenGuard, type AuthenticatedRequest } from '../auth/access-token.guard';
 import { CreatePkMatchDto } from './dto/create-pk-match.dto';
@@ -20,6 +20,7 @@ export class SocialController {
   @Post('friends/:id/block') block(@Req() request: AuthenticatedRequest, @Param('id') id: string) { return this.service.blockFriend(request.auth.sub, id); }
   @Post('social/reports') report(@Req() request: AuthenticatedRequest, @Body() input: ReportUserDto) { return this.service.reportUser(request.auth.sub, input.targetUserId, input.reason); }
   @Get('pk-matches/today') pkToday(@Req() request: AuthenticatedRequest) { return this.service.listTodayPk(request.auth.sub); }
+  @Get('pk-matches/history') pkHistory(@Req() request: AuthenticatedRequest, @Query('limit', new DefaultValuePipe(30), ParseIntPipe) limit: number) { return this.service.listPkHistory(request.auth.sub, limit); }
   @Post('pk-matches') createPk(@Req() request: AuthenticatedRequest, @Body() input: CreatePkMatchDto) { return this.service.createPkMatch(request.auth.sub, input.friendUserId); }
   @Get('study-rooms') rooms(@Req() request: AuthenticatedRequest) { return this.service.listRooms(request.auth.sub); }
   @Post('study-rooms') createRoom(@Req() request: AuthenticatedRequest, @Body() input: CreateStudyRoomDto) { return this.service.createRoom(request.auth.sub, input.name, input.visibility); }

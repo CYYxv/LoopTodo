@@ -106,21 +106,29 @@ export class AuthService {
     const existing = await this.repository.findUserById(userId);
     if (!existing) throw invalidCredentials();
     let settingsInput: typeof settings = { ...settings };
+    // Always merge over existing privacy JSON so partial patches keep themePreference etc.
     const privacy = {
-      ...privacySettingsFrom(settings.privacySettings ?? existing.privacySettings),
+      ...privacySettingsFrom(existing.privacySettings),
+      ...privacySettingsFrom(settings.privacySettings),
       ...(themePreference !== undefined ? { themePreference } : {}),
     };
     if (settings.privacySettings !== undefined || themePreference !== undefined) {
       settingsInput = { ...settingsInput, privacySettings: privacy };
     }
-    // TBD-S06 skeleton: minors use stricter share defaults
-    const isMinor = privacy.isMinor === true;
-    if (isMinor) {
+    // TBD-S06: birthYear forces isMinor when age < 18; minors get stricter share defaults
+    const isMinor = resolveIsMinor(privacy);
+    if (settings.privacySettings !== undefined || themePreference !== undefined || isMinor) {
+      const nextPrivacy = {
+        ...privacy,
+        isMinor,
+        socialVisibility: isMinor && privacy.socialVisibility === 'public'
+          ? 'friends'
+          : privacy.socialVisibility ?? (isMinor ? 'friends' : privacy.socialVisibility),
+      };
       settingsInput = {
         ...settingsInput,
-        shareCurrentTask: false,
-        shareCompletedTasks: false,
-        privacySettings: { ...privacy, isMinor: true, socialVisibility: privacy.socialVisibility === 'public' ? 'friends' : privacy.socialVisibility ?? 'friends' },
+        ...(isMinor ? { shareCurrentTask: false, shareCompletedTasks: false } : {}),
+        privacySettings: nextPrivacy,
       };
     }
     const user = await this.repository.updateSettings(userId, settingsInput);
@@ -130,7 +138,16 @@ export class AuthService {
 }
 
 function privacySettingsFrom(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  return value && typeof value === 'object' && !Array.isArray(value) ? { ...(value as Record<string, unknown>) } : {};
+}
+
+function resolveIsMinor(privacy: Record<string, unknown>): boolean {
+  const birthYear = Number(privacy.birthYear);
+  if (Number.isInteger(birthYear) && birthYear >= 1900 && birthYear <= new Date().getUTCFullYear()) {
+    const age = new Date().getUTCFullYear() - birthYear;
+    if (age < 18) return true;
+  }
+  return privacy.isMinor === true;
 }
 
 function normalizeEmail(email: string) { return email.trim().toLowerCase(); }

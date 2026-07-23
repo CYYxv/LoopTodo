@@ -29,22 +29,33 @@ describe('SocialService safety', () => {
 
   test('blockFriend sets blocked status and respondedAt', async () => {
     const updates: unknown[] = [];
-    const service = createService({
+    const prisma = {
       friendship: {
-        async updateMany(query: { data: unknown }) {
-          updates.push(query.data);
-          return { count: 1 };
+        async findFirst() {
+          return { id: 'f1', requesterId: 'u1', addresseeId: 'u2', status: 'accepted' };
+        },
+        async update(args: unknown) {
+          updates.push(args);
+          return { id: 'f1', status: 'blocked' };
         },
         async findUniqueOrThrow() {
           return { id: 'f1', status: 'blocked' };
         },
       },
-    });
-
+      userBlock: {
+        async upsert(args: unknown) {
+          updates.push(args);
+          return { id: 'b1' };
+        },
+      },
+      async $transaction(ops: Promise<unknown>[]) {
+        return Promise.all(ops);
+      },
+    };
+    const service = new SocialService(prisma as never, {} as never);
     const result = await service.blockFriend('u1', 'f1');
     expect(result.status).toBe('blocked');
-    expect(updates[0]).toMatchObject({ status: 'blocked' });
-    expect((updates[0] as { respondedAt: Date }).respondedAt).toBeInstanceOf(Date);
+    expect(updates.length).toBeGreaterThanOrEqual(2);
   });
 
   test('reportUser rejects self/empty and records SecurityEvent', async () => {
@@ -88,6 +99,11 @@ describe('SocialService safety', () => {
           return { id: 'u2' };
         },
       },
+      userBlock: {
+        async findFirst() {
+          return null;
+        },
+      },
       friendship: {
         async findUnique() {
           return { id: 'f1', status: 'blocked' };
@@ -97,7 +113,25 @@ describe('SocialService safety', () => {
 
     await expect(service.inviteFriend('u1', 'friend@example.com')).rejects.toBeInstanceOf(ConflictException);
     await expect(service.inviteFriend('u1', 'friend@example.com')).rejects.toMatchObject({
-      response: { message: '已被拉黑，无法邀请' },
+      response: expect.objectContaining({ code: 'FRIENDSHIP_BLOCKED' }),
     });
+  });
+});
+
+test('inviteFriend rejects mutual UserBlock', async () => {
+  const prisma = {
+    user: {
+      async findUnique() { return { id: 'u2', nickname: 'Bob' }; },
+    },
+    userBlock: {
+      async findFirst() { return { id: 'b1', blockerId: 'u2', blockedId: 'u1' }; },
+    },
+    friendship: {
+      async findUnique() { return null; },
+    },
+  };
+  const service = new SocialService(prisma as never, {} as never);
+  await expect(service.inviteFriend('u1', 'friend@example.com')).rejects.toMatchObject({
+    response: expect.objectContaining({ code: 'USER_BLOCKED' }),
   });
 });

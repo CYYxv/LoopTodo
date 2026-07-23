@@ -56,32 +56,91 @@ export class TeamsSeasonsService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  async leaderboard(period: 'today' | 'week' | 'month' | 'season', limit: number) {
-    const season = await this.currentSeason(); const range = leaderboardRange(period, season);
-    const cacheKey = `leaderboard:${period}:${range.start.toISOString()}:${limit}`; const redis = await this.redis.getClient(); const cached = await redis.get(cacheKey);
-    if (cached) return JSON.parse(cached);
-    const rows = await this.prisma.scoreEvent.groupBy({
-      by: ['userId'],
-      where: { scoreDate: { gte: range.start, lt: range.end } },
-      _sum: { totalScore: true, durationMinutes: true },
-      orderBy: { _sum: { totalScore: 'desc' } },
-      take: Math.max(limit * 3, limit),
-    });
-    const users = await this.prisma.user.findMany({ where: { id: { in: rows.map((row) => row.userId) } }, select: { id: true, nickname: true, avatarUrl: true } });
-    const byId = new Map(users.map((user) => [user.id, user]));
-    const ranked = rows
-      .map((row) => ({
-        user: byId.get(row.userId),
-        score: row._sum.totalScore ?? 0,
-        focusMinutes: row._sum.durationMinutes ?? 0,
-      }))
-      .sort((a, b) => {
-        if (period === 'season') return b.score - a.score || b.focusMinutes - a.focusMinutes;
-        return b.focusMinutes - a.focusMinutes || b.score - a.score;
-      })
-      .slice(0, limit);
-    const result = ranked.map((row, index) => ({ position: index + 1, ...row }));
-    await redis.set(cacheKey, JSON.stringify(result), 'EX', period === 'today' ? 15 : 60); return result;
+  async leaderboard(period: 'today' | 'week' | 'month' | 'season', limit: number, userId?: string) {
+    const season = await this.currentSeason();
+    const range = leaderboardRange(period, season);
+    const cacheKey = `leaderboard:${period}:${range.start.toISOString()}:${limit}`;
+    const redis = await this.redis.getClient();
+    const cached = await redis.get(cacheKey);
+    let items: Array<{ position: number; user?: { id: string; nickname: string; avatarUrl: string | null }; userId?: string; score: number; focusMinutes: number }>;
+    if (cached) {
+      items = JSON.parse(cached);
+    } else {
+      const rows = await this.prisma.scoreEvent.groupBy({
+        by: ['userId'],
+        where: { scoreDate: { gte: range.start, lt: range.end } },
+        _sum: { totalScore: true, durationMinutes: true },
+        orderBy: { _sum: { totalScore: 'desc' } },
+        take: Math.max(limit * 5, 200),
+      });
+      const users = await this.prisma.user.findMany({ where: { id: { in: rows.map((row) => row.userId) } }, select: { id: true, nickname: true, avatarUrl: true } });
+      const byId = new Map(users.map((user) => [user.id, user]));
+      const ranked = rows
+        .map((row) => ({
+          userId: row.userId,
+          user: byId.get(row.userId),
+          score: row._sum.totalScore ?? 0,
+          focusMinutes: row._sum.durationMinutes ?? 0,
+        }))
+        .sort((a, b) => {
+          if (period === 'season') return b.score - a.score || b.focusMinutes - a.focusMinutes;
+          return b.focusMinutes - a.focusMinutes || b.score - a.score;
+        });
+      items = ranked.slice(0, limit).map((row, index) => ({ position: index + 1, ...row }));
+      // Keep a fuller ordered list for self-rank when outside top N
+      await redis.set(cacheKey, JSON.stringify(items), 'EX', period === 'today' ? 15 : 60);
+      await redis.set(`${cacheKey}:full`, JSON.stringify(ranked.map((row, index) => ({ position: index + 1, ...row }))), 'EX', period === 'today' ? 15 : 60);
+    }
+
+    let self: { position: number; score: number; focusMinutes: number; userId: string; positionDelta: number | null; user?: { id: string; nickname: string; avatarUrl: string | null } } | null = null;
+    if (userId) {
+      const fullRaw = await redis.get(`${cacheKey}:full`);
+      const full: Array<{ position: number; userId?: string; user?: { id: string }; score: number; focusMinutes: number }> = fullRaw
+        ? JSON.parse(fullRaw)
+        : items.map((row) => ({ ...row, userId: row.userId ?? row.user?.id }));
+      let entry = full.find((row) => row.userId === userId || row.user?.id === userId);
+      if (!entry) {
+        const aggregate = await this.prisma.scoreEvent.groupBy({
+          by: ['userId'],
+          where: { userId, scoreDate: { gte: range.start, lt: range.end } },
+          _sum: { totalScore: true, durationMinutes: true },
+        });
+        const score = aggregate[0]?._sum.totalScore ?? 0;
+        const focusMinutes = aggregate[0]?._sum.durationMinutes ?? 0;
+        // Position when outside cached window: count users strictly better + 1
+        const better = await this.prisma.scoreEvent.groupBy({
+          by: ['userId'],
+          where: { scoreDate: { gte: range.start, lt: range.end } },
+          _sum: { totalScore: true, durationMinutes: true },
+        });
+        const betterCount = better.filter((row) => {
+          const s = row._sum.totalScore ?? 0;
+          const m = row._sum.durationMinutes ?? 0;
+          if (period === 'season') return s > score || (s === score && m > focusMinutes);
+          return m > focusMinutes || (m === focusMinutes && s > score);
+        }).length;
+        const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true, nickname: true, avatarUrl: true } });
+        entry = { position: betterCount + 1, userId, user: user ?? undefined, score, focusMinutes };
+      }
+      const prevKey = `leaderboard:prevpos:${period}:${userId}`;
+      const prevPosRaw = await redis.get(prevKey);
+      const prevPos = prevPosRaw ? Number(prevPosRaw) : null;
+      const positionDelta = prevPos && Number.isFinite(prevPos) ? prevPos - entry.position : null;
+      await redis.set(prevKey, String(entry.position), 'EX', 86_400);
+      const user = entry.user && 'nickname' in (entry.user as object)
+        ? entry.user as { id: string; nickname: string; avatarUrl: string | null }
+        : await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true, nickname: true, avatarUrl: true } });
+      self = {
+        position: entry.position,
+        score: entry.score,
+        focusMinutes: entry.focusMinutes,
+        userId,
+        positionDelta,
+        user: user ?? undefined,
+      };
+    }
+
+    return { period, items, self };
   }
 
   async createTeam(userId: string, name: string) {

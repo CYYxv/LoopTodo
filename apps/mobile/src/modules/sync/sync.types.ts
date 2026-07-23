@@ -44,6 +44,8 @@ export type RemoteTask = {
   completedAmount: number;
   isTodayRequired: boolean;
   forcedTriggerTime: string | null;
+  whitelistMode?: 'inherit' | 'custom';
+  whitelistPackages?: string[];
   status: 'pending' | 'active' | 'completed' | 'failed' | 'archived';
   activeSessionId: string | null;
   version: number;

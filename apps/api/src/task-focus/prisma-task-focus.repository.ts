@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { Injectable } from '@nestjs/common';
 import { Prisma, type FocusSession, type Task, type TaskCategory } from '@prisma/client';
+import { monthRangeUtc, remainingEmergencyExits } from './emergency-quota.policy';
 
 import { PrismaService } from '../infrastructure/prisma/prisma.service';
 import { DuplicateCategoryError, TaskIdentityConflictError, type MutationResult, type TaskFocusRepository } from './task-focus.repository';
@@ -211,6 +212,13 @@ export class PrismaTaskFocusRepository implements TaskFocusRepository {
         if (session.endedAt) return { status: 'not-active' } as const;
         const task = await transaction.task.findFirst({ where: { id: session.taskId, userId: input.userId, activeSessionId: session.id } });
         if (!task) return { status: 'not-active' } as const;
+        if (input.outcome === 'emergency_exit') {
+          const { start, end } = monthRangeUtc();
+          const used = await transaction.focusSession.count({
+            where: { userId: input.userId, outcome: 'emergency_exit', endedAt: { gte: start, lt: end } },
+          });
+          if (remainingEmergencyExits(used) <= 0) return { status: 'quota-exhausted' } as const;
+        }
         const endedAt = input.endedAt ?? new Date();
         const actualMinutes = input.actualMinutes ?? Math.max(0, Math.ceil((endedAt.getTime() - session.startedAt.getTime()) / 60_000));
         const updated = await transaction.focusSession.updateMany({

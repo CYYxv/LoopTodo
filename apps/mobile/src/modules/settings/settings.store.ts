@@ -18,6 +18,7 @@ export type Settings = {
   familyAlertsEnabled: boolean;
   rewardNotificationsEnabled: boolean;
   isMinor: boolean;
+  birthYear: number | null;
 };
 
 type Store = {
@@ -62,13 +63,21 @@ export const settingsStore = createStore<Store>((set, get) => ({
     if (!get().configured) return set({ error: '登录后才能同步设置' });
     try {
       const body: Record<string, unknown> = { ...patch };
+      const privacyPatch: Record<string, unknown> = {};
       if (typeof patch.isMinor === 'boolean') {
-        body.privacySettings = { isMinor: patch.isMinor };
+        privacyPatch.isMinor = patch.isMinor;
         if (patch.isMinor) {
           body.shareCurrentTask = false;
           body.shareCompletedTasks = false;
         }
         delete body.isMinor;
+      }
+      if (patch.birthYear !== undefined) {
+        privacyPatch.birthYear = patch.birthYear;
+        delete body.birthYear;
+      }
+      if (Object.keys(privacyPatch).length > 0) {
+        body.privacySettings = privacyPatch;
       }
       const value = normalizeSettings(await request<unknown>(get(), '/me/settings', { method: 'PATCH', body: JSON.stringify(body) }));
       await persistSettings(value);
@@ -102,11 +111,24 @@ function normalizeSettings(value: unknown): Settings {
     familyAlertsEnabled: input.familyAlertsEnabled !== false,
     rewardNotificationsEnabled: input.rewardNotificationsEnabled !== false,
     isMinor: input.isMinor === true || privacyIsMinor(input.privacySettings),
+    birthYear: privacyBirthYear(input.privacySettings) ?? (typeof input.birthYear === 'number' ? input.birthYear : null),
   };
 }
 
 function privacyIsMinor(value: unknown): boolean {
-  return !!(value && typeof value === 'object' && !Array.isArray(value) && (value as Record<string, unknown>).isMinor === true);
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const privacy = value as Record<string, unknown>;
+  const birthYear = Number(privacy.birthYear);
+  if (Number.isInteger(birthYear) && birthYear >= 1900 && birthYear <= new Date().getFullYear()) {
+    if (new Date().getFullYear() - birthYear < 18) return true;
+  }
+  return privacy.isMinor === true;
+}
+
+function privacyBirthYear(value: unknown): number | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const birthYear = Number((value as Record<string, unknown>).birthYear);
+  return Number.isInteger(birthYear) && birthYear >= 1900 ? birthYear : null;
 }
 
 function normalizeThemePreference(value: unknown): ThemePreference {

@@ -24,7 +24,17 @@ export function createLockEngineStore(engine: LockEngine) {
     error: null,
     async refresh() {
       try {
-        set({ capabilities: await engine.checkCapabilities(), error: null });
+        const capabilities = await engine.checkCapabilities();
+        const serverRemaining = get().serverEmergencyRemaining;
+        set({
+          capabilities: serverRemaining == null
+            ? capabilities
+            : {
+                ...capabilities,
+                emergencyExitsRemaining: Math.min(capabilities.emergencyExitsRemaining, serverRemaining),
+              },
+          error: null,
+        });
       } catch (error) {
         set({ error: error instanceof Error ? error.message : '锁机能力检查失败' });
       }
@@ -34,16 +44,18 @@ export function createLockEngineStore(engine: LockEngine) {
         const token = await SecureStore.getItemAsync('looptodo.access-token');
         if (!token || !baseUrl) return;
         const quota = await fetchEmergencyQuota(baseUrl, token);
-        set({ serverEmergencyRemaining: quota.remaining });
         const capabilities = get().capabilities;
-        if (capabilities) {
-          set({
-            capabilities: {
-              ...capabilities,
-              emergencyExitsRemaining: Math.min(capabilities.emergencyExitsRemaining, quota.remaining),
-            },
-          });
-        }
+        set({
+          serverEmergencyRemaining: quota.remaining,
+          ...(capabilities
+            ? {
+                capabilities: {
+                  ...capabilities,
+                  emergencyExitsRemaining: Math.min(capabilities.emergencyExitsRemaining, quota.remaining),
+                },
+              }
+            : {}),
+        });
       } catch {
         // offline: keep local native remaining
       }

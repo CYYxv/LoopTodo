@@ -148,15 +148,7 @@ export class TaskFocusService {
 
   async finishSession(userId: string, sessionId: string, key: string, input: FinishSessionDto) {
     validateKey(key);
-    if (input.outcome === 'emergency_exit') {
-      const current = await this.repository.getSession(userId, sessionId);
-      if (current && !current.endedAt) {
-        const quota = await this.emergencyQuota(userId);
-        if (quota.remaining <= 0) {
-          throw new ForbiddenException({ code: 'EMERGENCY_QUOTA_EXHAUSTED', message: '本月紧急退出次数已用完' });
-        }
-      }
-    }
+    // Quota is enforced inside the serializable finish transaction to avoid concurrent over-use.
     const session = unwrap(await this.repository.finishSession({
       userId,
       sessionId,
@@ -188,6 +180,7 @@ function unwrap<T>(result: MutationResult<T>): T {
   if (result.status === 'conflict') throw new ConflictException({ code: 'VERSION_CONFLICT', message: '数据已更新，请刷新后重试' });
   if (result.status === 'idempotency-conflict') throw new ConflictException({ code: 'IDEMPOTENCY_KEY_CONFLICT', message: 'Idempotency-Key 已用于其他操作' });
   if (result.status === 'already-active') throw new ConflictException({ code: 'TASK_ALREADY_ACTIVE', message: '任务已有进行中的会话' });
+  if (result.status === 'quota-exhausted') throw new ForbiddenException({ code: 'EMERGENCY_QUOTA_EXHAUSTED', message: '本月紧急退出次数已用完' });
   throw new ConflictException({ code: 'SESSION_NOT_ACTIVE', message: '会话已结束或不可结束' });
 }
 

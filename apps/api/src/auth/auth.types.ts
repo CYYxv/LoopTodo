@@ -45,7 +45,12 @@ export function publicUser(user: AuthUser): PublicUser {
 
 function isMinorFrom(value: unknown): boolean {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  return (value as Record<string, unknown>).isMinor === true;
+  const privacy = value as Record<string, unknown>;
+  const birthYear = Number(privacy.birthYear);
+  if (Number.isInteger(birthYear) && birthYear >= 1900 && birthYear <= new Date().getUTCFullYear()) {
+    if (new Date().getUTCFullYear() - birthYear < 18) return true;
+  }
+  return privacy.isMinor === true;
 }
 
 function themePreferenceFrom(value: unknown): ThemePreference {

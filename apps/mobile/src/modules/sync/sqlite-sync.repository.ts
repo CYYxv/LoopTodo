@@ -151,8 +151,8 @@ async function mergeTask(database: SQLiteDatabase, remote: SyncSnapshot['tasks']
   await database.runAsync(`INSERT INTO tasks
     (id, title, category_id, category, kind, timer_mode, estimate_minutes, rest_minutes, deadline_at, target_amount,
      target_unit, completed_amount, must_do, forced_trigger_time, trust_level, status, version, sync_status, remote_active,
-     server_updated_at, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'medium', ?, ?, 'synced', ?, ?, ?, ?)
+     whitelist_mode, whitelist_packages, server_updated_at, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'medium', ?, ?, 'synced', ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET title = excluded.title, category_id = excluded.category_id, category = excluded.category, kind = excluded.kind, timer_mode = excluded.timer_mode,
       estimate_minutes = excluded.estimate_minutes, rest_minutes = excluded.rest_minutes,
       deadline_at = excluded.deadline_at, target_amount = excluded.target_amount,
@@ -161,10 +161,13 @@ async function mergeTask(database: SQLiteDatabase, remote: SyncSnapshot['tasks']
       forced_trigger_time = COALESCE(excluded.forced_trigger_time, tasks.forced_trigger_time),
       status = excluded.status, version = excluded.version,
       sync_status = 'synced', remote_active = excluded.remote_active,
+      whitelist_mode = excluded.whitelist_mode, whitelist_packages = excluded.whitelist_packages,
       server_updated_at = excluded.server_updated_at, updated_at = excluded.updated_at`,
     remote.id, remote.title, remote.categoryId, category?.name ?? '未分类', remote.taskType, remote.timerMode, remote.estimatedMinutes, remote.restMinutes,
     remote.deadlineAt ? Date.parse(remote.deadlineAt) : null, remote.targetAmount, remote.targetUnit,
     remote.completedAmount, remote.isTodayRequired ? 1 : 0, remote.forcedTriggerTime, remoteStatus, remote.version, remoteActive,
+    remote.whitelistMode === 'custom' ? 'custom' : 'inherit',
+    JSON.stringify(Array.isArray(remote.whitelistPackages) ? remote.whitelistPackages : []),
     Date.parse(remote.updatedAt), timestamp, timestamp);
 }
 
