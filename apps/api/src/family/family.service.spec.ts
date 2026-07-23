@@ -87,3 +87,38 @@ describe('FamilyService task change review', () => {
     }) }));
   });
 });
+
+
+describe('FamilyService leave/status membership', () => {
+  test('status throws when parent has left (findFirst returns null)', async () => {
+    const security = { record: jest.fn() };
+    const prisma = {
+      familyMember: { findFirst: jest.fn().mockResolvedValue(null) },
+    };
+    const service = new FamilyService(prisma as never, {} as never, {} as never, {} as never, security as never);
+
+    await expect(service.status('parent-user', 'child-user'))
+      .rejects.toMatchObject({ response: { code: 'FAMILY_STATUS_FORBIDDEN' } });
+    expect(security.record).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'family_status_read',
+      outcome: 'denied',
+    }));
+  });
+
+  test('leave records member_leave security audit', async () => {
+    const security = { record: jest.fn() };
+    const prisma = {
+      familyMember: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    };
+    const service = new FamilyService(prisma as never, {} as never, {} as never, {} as never, security as never);
+
+    await expect(service.leave('user-1', 'group-1')).resolves.toEqual({ left: true });
+    expect(security.record).toHaveBeenCalledWith(expect.objectContaining({
+      category: 'family',
+      action: 'member_leave',
+      outcome: 'success',
+      targetType: 'family_group',
+      targetId: 'group-1',
+    }));
+  });
+});
