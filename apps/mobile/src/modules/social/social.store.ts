@@ -35,6 +35,7 @@ type SocialStore = {
   joinByCode(inviteCode: string): Promise<void>;
   react(roomId: string, emoji: string): Promise<void>;
   subscribePk(id: string): void;
+  refreshMatches(): Promise<void>;
 };
 
 export function createSocialStore() {
@@ -66,7 +67,14 @@ export function createSocialStore() {
       if (!get().configured || get().enabled) return;
       const realtime = connectSocialRealtime(get().baseUrl, get().token, {
         reaction: (value) => set((state) => ({ reactions: [...state.reactions.slice(-29), value] })),
-        pk: (value) => set((state) => ({ matches: state.matches.map((item) => item.id === value.id ? value : item) })),
+        pk: (value) => set((state) => ({
+          matches: state.matches.some((item) => item.id === value.id)
+            ? state.matches.map((item) => item.id === value.id ? value : item)
+            : [value, ...state.matches],
+          historyMatches: state.historyMatches.some((item) => item.id === value.id)
+            ? state.historyMatches.map((item) => item.id === value.id ? value : item)
+            : [value, ...state.historyMatches],
+        })),
       });
       set({ enabled: true, realtime, error: null });
     },
@@ -122,6 +130,20 @@ export function createSocialStore() {
       else await action(get, set, (client) => client.react(roomId, emoji), false);
     },
     subscribePk(id) { if (get().enabled) get().realtime?.subscribePk(id); },
+    async refreshMatches() {
+      const client = get().client;
+      if (!client || !get().enabled) return;
+      try {
+        const [matches, historyMatches] = await Promise.all([
+          client.matches(),
+          client.historyMatches(30).catch(() => get().historyMatches),
+        ]);
+        set({ matches, historyMatches, error: null });
+        matches.forEach((match) => get().realtime?.subscribePk(match.id));
+      } catch (error) {
+        set({ error: message(error) });
+      }
+    },
   }));
 }
 

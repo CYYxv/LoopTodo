@@ -59,6 +59,27 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 
     const activeSession = sessions.find((session) => !session.endedAt) ?? null;
     const failures = sessions.filter((session) => session.outcome && session.outcome !== 'completed').slice(0, 10);
+    const anomalyEvents = await this.prisma.notificationEvent.findMany({
+      where: { userId, type: 'family_anomaly' },
+      orderBy: { createdAt: 'desc' },
+      take: 40,
+    });
+    const recentAnomalies = anomalyEvents
+      .map((event) => {
+        const data = (event.data && typeof event.data === 'object' && !Array.isArray(event.data))
+          ? event.data as Record<string, unknown>
+          : {};
+        return {
+          id: event.id,
+          type: typeof data.anomalyType === 'string' ? data.anomalyType : 'family_anomaly',
+          body: event.body,
+          taskId: typeof data.taskId === 'string' ? data.taskId : null,
+          childUserId: typeof data.childUserId === 'string' ? data.childUserId : null,
+          createdAt: event.createdAt,
+        };
+      })
+      .filter((item) => item.childUserId === childUserId)
+      .slice(0, 10);
     return {
       childUserId,
       summary: {
@@ -86,6 +107,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
         endedAt: session.endedAt,
         actualMinutes: session.actualMinutes,
       })),
+      recentAnomalies,
       activeSession,
     };
   }
@@ -118,7 +140,16 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
   listRequests(userId: string, groupId: string) { return this.requireParent(userId, groupId).then(() => this.prisma.taskChangeRequest.findMany({ where: { assignment: { familyGroupId: groupId } }, include: { assignment: { include: { task: true } }, childMember: { include: { user: { select: { nickname: true } } } } }, orderBy: { createdAt: 'desc' } })); }
   listAssignments(userId: string) { return this.prisma.familyTaskAssignment.findMany({ where: { childMember: { userId, leftAt: null }, status: 'active' }, include: { task: true, changeRequests: { where: { status: 'pending' }, orderBy: { createdAt: 'desc' } }, parentMember: { include: { user: { select: { nickname: true } } } } }, orderBy: { createdAt: 'desc' } }); }
   async handleSessionFinished(userId: string, session: { id: string; outcome: string | null; taskId: string }) { if (session.outcome !== 'emergency_exit') return; const parents = await this.prisma.familyMember.findMany({ where: { role: 'parent', leftAt: null, familyGroup: { members: { some: { userId, role: 'child', leftAt: null } } } }, select: { userId: true } }); await Promise.all(parents.map((parent) => this.notifications.enqueue({ userId: parent.userId, type: 'family_anomaly', title: '家庭异常提醒', body: '孩子提前退出了锁机任务', data: { childUserId: userId, taskId: session.taskId }, dedupeKey: `family-emergency:${parent.userId}:${session.id}`, scheduledAt: new Date() }))); }
-  async reportAnomaly(userId: string, type: 'permission_disabled' | 'reboot_detected' | 'task_overdue', taskId?: string) { const parents = await this.prisma.familyMember.findMany({ where: { role: 'parent', leftAt: null, familyGroup: { members: { some: { userId, role: 'child', leftAt: null } } } }, select: { userId: true } }); const body: string = type === 'permission_disabled' ? '孩子关闭了必要权限' : type === 'reboot_detected' ? '孩子设备在约束期间重启' : '孩子的家庭任务已逾期'; await Promise.all(parents.map((parent) => this.notifications.enqueue({ userId: parent.userId, type: 'family_anomaly', title: '家庭异常提醒', body, data: { childUserId: userId, taskId: taskId ?? '', anomalyType: type }, dedupeKey: `family-${type}:${parent.userId}:${userId}:${taskId ?? 'device'}:${new Date().toISOString().slice(0, 10)}`, scheduledAt: new Date() }))); return { notified: parents.length }; }
+  async reportAnomaly(userId: string, type: 'permission_disabled' | 'reboot_detected' | 'task_overdue' | 'forced_trigger_missed', taskId?: string) {
+    const parents = await this.prisma.familyMember.findMany({
+      where: { role: 'parent', leftAt: null, familyGroup: { members: { some: { userId, role: 'child', leftAt: null } } } },
+      select: { userId: true },
+    });
+    const body =
+      type === 'permission_disabled' ? '孩子关闭了必要权限'
+      : type === 'reboot_detected' ? '孩子设备在约束期间重启'
+      : type === 'forced_trigger_missed' ? '孩子未按时开始强制触发任务'
+      : '孩子的家庭任务已逾期'; await Promise.all(parents.map((parent) => this.notifications.enqueue({ userId: parent.userId, type: 'family_anomaly', title: '家庭异常提醒', body, data: { childUserId: userId, taskId: taskId ?? '', anomalyType: type }, dedupeKey: `family-${type}:${parent.userId}:${userId}:${taskId ?? 'device'}:${new Date().toISOString().slice(0, 10)}`, scheduledAt: new Date() }))); return { notified: parents.length }; }
   private async requireParent(userId: string, groupId: string) { const member = await this.prisma.familyMember.findFirst({ where: { familyGroupId: groupId, userId, role: 'parent', leftAt: null } }); if (!member) { await this.security.record({ actorId: userId, category: 'authorization', action: 'family_parent_action', outcome: 'denied', targetType: 'family_group', targetId: groupId }); throw new ForbiddenException({ code: 'FAMILY_PARENT_REQUIRED', message: '需要家庭家长权限' }); } return member; }
   private async requireGroupEntitlement(groupId: string) { const active = await this.prisma.subscription.findFirst({ where: { expiresAt: { gt: new Date() }, user: { familyMemberships: { some: { familyGroupId: groupId, leftAt: null } } } } }); if (!active) throw new ForbiddenException({ code: 'FAMILY_VIP_REQUIRED', message: '家庭组中至少一名成员需要有效 VIP' }); }
 }

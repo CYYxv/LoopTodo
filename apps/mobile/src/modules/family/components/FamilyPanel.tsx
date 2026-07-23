@@ -262,6 +262,14 @@ function ChildStatusCard({ status }: { status: FamilyChildStatus }) {
       {status.familyAssignments.slice(0, 5).map((item) => (
         <Text key={item.id} type="body-xs">· {item.title}{item.isTodayRequired ? ` · 必须 ${item.triggerTime ?? ''}` : ''} · {item.status}</Text>
       ))}
+      {(status.recentAnomalies ?? []).length > 0 ? (
+        <View className="gap-1">
+          <Text type="body-sm" weight="semibold">异常提醒</Text>
+          {(status.recentAnomalies ?? []).slice(0, 5).map((item) => (
+            <Text key={item.id} type="body-xs" color="danger">· {item.body}</Text>
+          ))}
+        </View>
+      ) : null}
       {status.failures.slice(0, 3).map((item) => (
         <Text key={item.id} type="body-xs" color="danger">失败：{item.reason}（{item.outcome}）</Text>
       ))}

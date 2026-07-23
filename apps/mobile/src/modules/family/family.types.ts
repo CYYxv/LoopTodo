@@ -55,5 +55,13 @@ export type FamilyChildStatus = {
     outcome: string | null;
     reason: string;
   }>;
+  recentAnomalies?: Array<{
+    id: string;
+    type: string;
+    body: string;
+    taskId: string | null;
+    childUserId: string | null;
+    createdAt: string;
+  }>;
   activeSession: Record<string, unknown> | null;
 };

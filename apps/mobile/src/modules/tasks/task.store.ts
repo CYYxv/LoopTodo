@@ -29,7 +29,7 @@ import { createNativeForcedTriggerScheduler } from '@/modules/forced-trigger/nat
 import type { ForcedTriggerScheduler } from '@/modules/forced-trigger/forced-trigger.scheduler';
 import { calculateSessionStars, mapTrustToMode } from '../competition/star-rank';
 import { familyStore } from '@/modules/family/family.store';
-import { isPermissionAnomaly, overdueMustDoTasks } from '@/modules/family/family-anomaly';
+import { collectFamilyAnomalies, isPermissionAnomaly, overdueMustDoTasks } from '@/modules/family/family-anomaly';
 
 export type TaskStore = {
   tasks: Task[];
@@ -179,8 +179,15 @@ export function createTaskStore(
         }
         try { await Promise.all(recoveredTasks.filter((task) => task.mustDo && task.forcedTriggerTime && task.status === 'pending').map((task) => scheduleTask(forcedScheduler, task))); }
         catch (error) { set({ error: errorMessage(error) }); }
-        for (const overdue of overdueMustDoTasks(recoveredTasks, now())) {
-          void familyStore.getState().reportAnomaly('task_overdue', overdue.id);
+        try {
+          const caps = await nativeLockEngine.checkCapabilities().catch(() => null);
+          for (const item of collectFamilyAnomalies(recoveredTasks, caps, now())) {
+            void familyStore.getState().reportAnomaly(item.type, item.taskId);
+          }
+        } catch {
+          for (const overdue of overdueMustDoTasks(recoveredTasks, now())) {
+            void familyStore.getState().reportAnomaly('task_overdue', overdue.id);
+          }
         }
         if (
           recoveredSession?.phase === 'rest' &&
@@ -539,7 +546,19 @@ export function createTaskStore(
         set({ isFinishingSession: false, error: errorMessage(error) });
       }
     },
-    async addGoalProgress(taskId, amount) {
+    
+    async scanFamilyAnomalies() {
+      try {
+        const tasks = get().tasks;
+        const caps = await nativeLockEngine.checkCapabilities().catch(() => null);
+        for (const item of collectFamilyAnomalies(tasks, caps, now())) {
+          void familyStore.getState().reportAnomaly(item.type, item.taskId);
+        }
+      } catch {
+        // best-effort
+      }
+    },
+async addGoalProgress(taskId, amount) {
       const task = get().tasks.find((candidate) => candidate.id === taskId);
       if (!task || task.kind !== 'goal' || task.remoteActive || !['pending', 'failed'].includes(task.status) || amount <= 0) {
         return set({ error: '目标进度无效或任务正在执行' });

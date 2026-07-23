@@ -26,6 +26,7 @@ export default function TasksRoute() {
   const [taskSheet, setTaskSheet] = useState<TaskSheet | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const tasks = useTaskStore((state) => state.tasks);
+  const scanFamilyAnomalies = useTaskStore((state) => state.scanFamilyAnomalies);
   const categories = useTaskStore((state) => state.categories);
   const records = useTaskStore((state) => state.sessionRecords);
   const activeSession = useTaskStore((state) => state.activeSession);
@@ -67,6 +68,12 @@ export default function TasksRoute() {
   };
 
   const sheetTitle = taskSheet?.mode === 'edit' ? '编辑任务' : taskSheet?.mode === 'focus' ? '专注设置' : sheetTask?.title ?? '任务操作';
+
+  useEffect(() => {
+    void scanFamilyAnomalies();
+    const timer = setInterval(() => { void scanFamilyAnomalies(); }, 5 * 60_000);
+    return () => clearInterval(timer);
+  }, [scanFamilyAnomalies]);
 
   return <Screen>
     <PageHeader title="任务" description={new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }).format(new Date())} action={<Button size="sm" onPress={() => setCreateOpen(true)}>创建任务</Button>} />

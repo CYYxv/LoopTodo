@@ -34,6 +34,7 @@ export function SocialChallengePanel() {
   const loading = useSocialStore((state) => state.loading);
   const error = useSocialStore((state) => state.error);
   const load = useSocialStore((state) => state.load);
+  const refreshMatches = useSocialStore((state) => state.refreshMatches);
   const setEnabled = useSocialStore((state) => state.setEnabled);
   const invite = useSocialStore((state) => state.invite);
   const accept = useSocialStore((state) => state.accept);
@@ -52,6 +53,12 @@ export function SocialChallengePanel() {
     void load();
     return () => setEnabled(false);
   }, [configured, load, setEnabled]);
+
+  useEffect(() => {
+    if (!configured) return;
+    const timer = setInterval(() => { void refreshMatches(); }, 15_000);
+    return () => clearInterval(timer);
+  }, [configured, refreshMatches]);
 
   const accepted = useMemo(() => friends.filter((item) => item.status === 'accepted'), [friends]);
   const pendingIncoming = useMemo(
