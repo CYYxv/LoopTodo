@@ -25,6 +25,12 @@ jest.mock('heroui-native/avatar', () => require('../../../../test/social-heroui.
 jest.mock('heroui-native/list-group', () => require('../../../../test/social-heroui.mock').listGroupModule);
 jest.mock('heroui-native/skeleton', () => require('../../../../test/social-heroui.mock').skeletonModule);
 jest.mock('heroui-native/surface', () => require('../../../../test/social-heroui.mock').surfaceModule);
+jest.mock('@/ui/bottom-sheet-modal', () => {
+  const { View, Text } = require('react-native');
+  return {
+    BottomSheetModal: ({ visible, title, children }: any) => (visible ? <View accessibilityLabel={`sheet-${title}`}><Text>{title}</Text>{children}</View> : null),
+  };
+});
 jest.mock('../family.store', () => ({ useFamilyStore: (selector: (state: any) => unknown) => selector(mockFamilyState) }));
 
 import { FamilyPanel } from '../components/FamilyPanel';

@@ -4,7 +4,7 @@ import { Prisma } from '@prisma/client';
 
 import { PrismaService } from '../infrastructure/prisma/prisma.service';
 import { RedisService } from '../infrastructure/redis/redis.service';
-import { socialPairKey } from './social.policy';
+import { competitiveFocusMinutes, socialPairKey } from './social.policy';
 
 @Injectable()
 export class SocialService {
@@ -102,11 +102,29 @@ export class SocialService {
 
   private async areFriends(first: string, second: string) { return Boolean(await this.prisma.friendship.findFirst({ where: { pairKey: socialPairKey(first, second), status: 'accepted' } })); }
   private async pkView(match: { id: string; challengerId: string; opponentId: string; matchDate: Date; status: string; challenger: { id: string; nickname: string }; opponent: { id: string; nickname: string } }) {
-    const events = await this.prisma.scoreEvent.groupBy({ by: ['userId'], where: { userId: { in: [match.challengerId, match.opponentId] }, scoreDate: match.matchDate, outcome: 'completed' }, _sum: { durationMinutes: true } });
-    const minutes = new Map(events.map((event) => [event.userId, event._sum.durationMinutes ?? 0]));
-    return { id: match.id, status: match.status, date: match.matchDate, challenger: { ...match.challenger, minutes: minutes.get(match.challengerId) ?? 0 },
-      opponent: { ...match.opponent, minutes: minutes.get(match.opponentId) ?? 0 } };
+    const events = await this.prisma.scoreEvent.findMany({
+      where: {
+        userId: { in: [match.challengerId, match.opponentId] },
+        scoreDate: match.matchDate,
+        outcome: 'completed',
+      },
+      select: { userId: true, durationMinutes: true, trustLevel: true },
+    });
+    const byUser = new Map<string, Array<{ durationMinutes: number; trustLevel: string }>>();
+    for (const event of events) {
+      const list = byUser.get(event.userId) ?? [];
+      list.push(event);
+      byUser.set(event.userId, list);
+    }
+    return {
+      id: match.id,
+      status: match.status,
+      date: match.matchDate,
+      challenger: { ...match.challenger, minutes: competitiveFocusMinutes(byUser.get(match.challengerId) ?? []) },
+      opponent: { ...match.opponent, minutes: competitiveFocusMinutes(byUser.get(match.opponentId) ?? []) },
+    };
   }
+
 }
 
 function dateOnly(value: Date) { return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate())); }

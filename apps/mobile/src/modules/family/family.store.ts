@@ -3,7 +3,7 @@ import { createStore } from 'zustand/vanilla';
 
 import { offlineFeatureMessage } from '../../shared/offline-feature-message';
 import { createFamilyClient, type FamilyClient, type FamilyTaskInput } from './family.client';
-import type { FamilyAssignment, FamilyChangeRequest, FamilyGroupMembership } from './family.types';
+import type { FamilyAssignment, FamilyChangeRequest, FamilyChildStatus, FamilyGroupMembership } from './family.types';
 
 type FamilyStore = {
   configured: boolean;
@@ -12,7 +12,7 @@ type FamilyStore = {
   assignments: FamilyAssignment[];
   requests: Record<string, FamilyChangeRequest[]>;
   inviteCode: string | null;
-  childStatus: { tasks: unknown[]; sessions: unknown[] } | null;
+  childStatus: FamilyChildStatus | null;
   loading: boolean;
   error: string | null;
   configure(baseUrl: string, token: string): void;
