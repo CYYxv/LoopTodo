@@ -1,4 +1,4 @@
-import * as SecureStore from 'expo-secure-store';
+﻿import * as SecureStore from 'expo-secure-store';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 
@@ -26,6 +26,8 @@ import type { FocusRestrictionOptions, LockCapabilities } from '@/modules/lock-e
 import { createNativeForcedTriggerScheduler } from '@/modules/forced-trigger/native-forced-trigger.scheduler';
 import type { ForcedTriggerScheduler } from '@/modules/forced-trigger/forced-trigger.scheduler';
 import { calculateSessionStars, mapTrustToMode } from '../competition/star-rank';
+import { familyStore } from '@/modules/family/family.store';
+import { isPermissionAnomaly, overdueMustDoTasks } from '@/modules/family/family-anomaly';
 
 export type TaskStore = {
   tasks: Task[];
@@ -136,6 +138,7 @@ export function createTaskStore(
           recoveredSession = null;
         }
         if (nativeSession && !recoveredSession) {
+          void familyStore.getState().reportAnomaly('reboot_detected', nativeSession.taskId);
           const task = recoveredTasks.find((candidate) => candidate.id === nativeSession.taskId);
           if (task) {
             recoveredSession = { id: nativeSession.id, taskId: nativeSession.taskId, mode: 'lock', timerMode: task.timerMode,
@@ -159,11 +162,17 @@ export function createTaskStore(
         if (recoveredSession?.phase === 'focus' && recoveredSession.mode === 'lock') {
           const capabilities = await nativeLockEngine.checkCapabilities();
           await nativeLockEngine.applyFocusRestrictions(restrictionsFor(recoveredSession.mode, savedStrictOptions, capabilities, selectedWhitelistPackages(), recoveredSession.plannedEndAt ?? 0));
+          if (isPermissionAnomaly(capabilities)) {
+            void familyStore.getState().reportAnomaly('permission_disabled', recoveredSession.taskId);
+          }
         } else if (recoveredSession?.phase !== 'focus' || recoveredSession.id !== existingSessionId) {
           await nativeLockEngine.clearFocusRestrictions();
         }
         try { await Promise.all(recoveredTasks.filter((task) => task.mustDo && task.forcedTriggerTime && task.status === 'pending').map((task) => scheduleTask(forcedScheduler, task))); }
         catch (error) { set({ error: errorMessage(error) }); }
+        for (const overdue of overdueMustDoTasks(recoveredTasks, now())) {
+          void familyStore.getState().reportAnomaly('task_overdue', overdue.id);
+        }
         if (
           recoveredSession?.phase === 'rest' &&
           recoveredSession.restEndsAt &&
@@ -334,6 +343,9 @@ export function createTaskStore(
         if (mode === 'lock') {
           await nativeLockEngine.startLockSession({ id: session.id, taskId, taskTitle: task.title,
             startedAt, endsAt: session.plannedEndAt!, enhanced: capabilities.accessibilityEnabled });
+          if (isPermissionAnomaly(capabilities)) {
+            void familyStore.getState().reportAnomaly('permission_disabled', taskId);
+          }
         }
         await repository.startSession(activeTask, session);
         let forcedRuleError: string | null = null;

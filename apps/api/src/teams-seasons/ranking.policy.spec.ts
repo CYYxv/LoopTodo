@@ -1,9 +1,12 @@
 ﻿import {
   calculateSessionStars,
+  DEFAULT_TEAM_AVERAGE_WEIGHT,
+  DEFAULT_TEAM_TOTAL_BONUS_WEIGHT,
   demoteTier,
   formatStarBar,
   majorTierThresholds,
   mapTrustToMode,
+  PK_MATCH_DATE_POLICY,
   rankFromStars,
   teamScore,
   tierForScore,
@@ -22,12 +25,23 @@ test('maps cumulative stars to major and sub tiers including closed_loop', () =>
   expect(rankFromStars(93).displayName).toBe('闭环 · 12 星');
 });
 
-test('uses major star thresholds and demotes three major tiers', () => {
+test('uses major star thresholds and demotes three major tiers for new season floor', () => {
   expect(tierForScore(36, [...majorTierThresholds])).toBe('platinum');
   expect(demoteTier('diamond')).toBe('silver');
   expect(demoteTier('closed_loop')).toBe('platinum');
+  expect(demoteTier('starlight')).toBe('gold');
+  expect(demoteTier('gold')).toBe('bronze');
+  expect(demoteTier('bronze')).toBe('bronze');
+  expect(demoteTier('silver', 1)).toBe('bronze');
+  expect(demoteTier('closed_loop', 6)).toBe('bronze');
   expect(tierLabels.closed_loop).toBe('闭环');
   expect(tierNames).toContain('closed_loop');
+  // floor stars for demoted major tier = threshold at that major
+  const floorTier = demoteTier('closed_loop');
+  const floorStars = majorTierThresholds[tierNames.indexOf(floorTier)];
+  expect(floorTier).toBe('platinum');
+  expect(floorStars).toBe(36);
+  expect(rankFromStars(floorStars).tier).toBe('platinum');
 });
 
 test('settles whole stars per session without partial carry', () => {
@@ -65,8 +79,11 @@ test('formats star bars', () => {
   expect(formatStarBar(3, 5)).toBe('★★★☆☆  3/5');
 });
 
-test('team score combines average and total bonus without active-rate input', () => {
-  expect(teamScore(10000, 100, 0.7, 0.3)).toBe(370);
+test('team score defaults use 0.7 average and 0.3 total bonus', () => {
+  expect(DEFAULT_TEAM_AVERAGE_WEIGHT).toBe(0.7);
+  expect(DEFAULT_TEAM_TOTAL_BONUS_WEIGHT).toBe(0.3);
+  expect(teamScore(10000, 100, DEFAULT_TEAM_AVERAGE_WEIGHT, DEFAULT_TEAM_TOTAL_BONUS_WEIGHT)).toBe(370);
+  expect(PK_MATCH_DATE_POLICY).toBe('server_utc_day');
 });
 
 test('aggregates ten thousand members in bounded time', () => {

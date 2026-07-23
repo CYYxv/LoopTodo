@@ -6,7 +6,7 @@ import { randomBytes } from 'node:crypto';
 import { EventBusService } from '../common/event-bus.module';
 import { PrismaService } from '../infrastructure/prisma/prisma.service';
 import { RedisService } from '../infrastructure/redis/redis.service';
-import { demoteTier, formatStarBar, rankFromStars, teamScore, tierForScore, tierNames } from './ranking.policy';
+import { DEFAULT_TEAM_AVERAGE_WEIGHT, DEFAULT_TEAM_TOTAL_BONUS_WEIGHT, demoteTier, formatStarBar, rankFromStars, teamScore, tierForScore, tierNames } from './ranking.policy';
 import { ScoringService } from '../scoring/scoring.service';
 
 @Injectable()
@@ -111,7 +111,7 @@ export class TeamsSeasonsService implements OnModuleInit, OnModuleDestroy {
       LEFT JOIN team_members tm ON tm.team_id = t.id
       LEFT JOIN score_events se ON se.user_id = tm.user_id AND se.season_id = ${season.id}::uuid
       GROUP BY t.id, t.name, t.member_count`;
-    const averageWeight = this.config.get<number>('TEAM_AVERAGE_WEIGHT') ?? 0.7; const totalWeight = this.config.get<number>('TEAM_TOTAL_BONUS_WEIGHT') ?? 0.3;
+    const averageWeight = this.config.get<number>('TEAM_AVERAGE_WEIGHT') ?? DEFAULT_TEAM_AVERAGE_WEIGHT; const totalWeight = this.config.get<number>('TEAM_TOTAL_BONUS_WEIGHT') ?? DEFAULT_TEAM_TOTAL_BONUS_WEIGHT;
     return teams.map((team) => { const total = Number(team.total_score); return { id: team.id, name: team.name, memberCount: team.member_count, totalScore: total,
       score: teamScore(total, team.member_count, averageWeight, totalWeight) }; }).sort((first, second) => second.score - first.score).slice(0, limit).map((team, index) => ({ ...team, position: index + 1 }));
   }

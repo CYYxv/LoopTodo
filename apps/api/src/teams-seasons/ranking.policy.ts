@@ -38,6 +38,13 @@ export const MIN_STAR_MINUTES = 25;
 export const IDLE_STAR_GAP_DAYS = 3;
 export const MAX_STARS_PER_SESSION = 4;
 
+/** 战队榜：人均为主、总分加成（默认 0.7 / 0.3，可用环境变量覆盖）。 */
+export const DEFAULT_TEAM_AVERAGE_WEIGHT = 0.7;
+export const DEFAULT_TEAM_TOTAL_BONUS_WEIGHT = 0.3;
+
+/** PK 对局日：服务端 UTC 自然日（双方共用同一 matchDate）。 */
+export const PK_MATCH_DATE_POLICY = 'server_utc_day' as const;
+
 export type SessionStarInput = {
   outcome: 'completed' | 'failed' | 'cancelled' | 'emergency_exit' | null;
   effectiveMinutes: number;
