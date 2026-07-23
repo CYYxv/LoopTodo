@@ -2,7 +2,7 @@
 import { createStore } from 'zustand/vanilla';
 
 import { createCompetitionClient, type CompetitionClient, type ScoreEventItem } from './competition.client';
-import type { LeaderboardEntry, SeasonRank, TeamLeaderboardEntry, TeamMembership } from './competition.types';
+import type { LeaderboardEntry, LeaderboardSelf, SeasonRank, TeamLeaderboardEntry, TeamMembership } from './competition.types';
 
 type CompetitionStore = {
   configured: boolean;
@@ -10,6 +10,7 @@ type CompetitionStore = {
   period: 'today' | 'week' | 'month' | 'season';
   rank: SeasonRank | null;
   leaderboard: LeaderboardEntry[];
+  self: LeaderboardSelf | null;
   membership: TeamMembership;
   teams: TeamLeaderboardEntry[];
   recentEvents: ScoreEventItem[];
@@ -29,6 +30,7 @@ export function createCompetitionStore() {
     period: 'today',
     rank: null,
     leaderboard: [],
+    self: null,
     membership: null,
     teams: [],
     recentEvents: [],
@@ -42,14 +44,22 @@ export function createCompetitionStore() {
       if (!client) return;
       set({ loading: true, error: null });
       try {
-        const [rank, leaderboard, membership, teams, recentEvents] = await Promise.all([
+        const [rank, board, membership, teams, recentEvents] = await Promise.all([
           client.rank(),
           client.leaderboard(get().period),
           client.myTeam(),
           client.teamLeaderboard(),
           client.recentScoreEvents(12).catch(() => [] as ScoreEventItem[]),
         ]);
-        set({ rank, leaderboard, membership, teams, recentEvents, loading: false });
+        set({
+          rank,
+          leaderboard: board.items,
+          self: board.self,
+          membership,
+          teams,
+          recentEvents,
+          loading: false,
+        });
       } catch (error) {
         set({ loading: false, error: message(error) });
       }

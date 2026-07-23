@@ -16,6 +16,7 @@ type SocialStore = {
   realtime: SocialRealtime | null;
   friends: Friend[];
   matches: PkMatch[];
+  historyMatches: PkMatch[];
   rooms: StudyRoom[];
   reactions: RoomReaction[];
   loading: boolean;
@@ -46,6 +47,7 @@ export function createSocialStore() {
     realtime: null,
     friends: [],
     matches: [],
+    historyMatches: [],
     rooms: [],
     reactions: [],
     loading: false,
@@ -73,9 +75,14 @@ export function createSocialStore() {
       if (!client || !enabled || get().loading) return;
       set({ loading: true, error: null });
       try {
-        const [friends, matches, rooms] = await Promise.all([client.friends(), client.matches(), client.rooms()]);
+        const [friends, matches, historyMatches, rooms] = await Promise.all([
+          client.friends(),
+          client.matches(),
+          client.historyMatches(30).catch(() => [] as PkMatch[]),
+          client.rooms(),
+        ]);
         if (!get().enabled) return set({ loading: false });
-        set({ friends, matches, rooms, loading: false });
+        set({ friends, matches, historyMatches, rooms, loading: false });
         matches.forEach((match) => get().realtime?.subscribePk(match.id));
       } catch (error) {
         set({ loading: false, error: get().enabled ? message(error) : null });

@@ -5,6 +5,7 @@ const mockCompetitionState: any = {
   period: 'today',
   rank: null,
   leaderboard: [],
+  self: null,
   membership: null,
   teams: [],
   recentEvents: [],
@@ -50,6 +51,7 @@ beforeEach(() => {
     nextThreshold: 36,
   };
   mockCompetitionState.leaderboard = [];
+  mockCompetitionState.self = null;
   mockCompetitionState.membership = null;
   mockCompetitionState.teams = [];
   mockCompetitionState.recentEvents = [];
@@ -79,4 +81,19 @@ test('uses a HeroUI skeleton while rankings are loading', async () => {
   const screen = await render(<CompetitionPanel />);
 
   expect(screen.getByLabelText('排位加载占位').props.accessibilityState).toEqual({ busy: true });
+});
+
+test('renders self rank position and delta', async () => {
+  mockCompetitionState.self = {
+    position: 12,
+    score: 8,
+    focusMinutes: 40,
+    userId: 'me',
+    positionDelta: 3,
+    user: { id: 'me', nickname: 'Me', avatarUrl: null },
+  };
+  const screen = await render(<CompetitionPanel />);
+  expect(screen.getByLabelText('我的榜单位置')).toBeTruthy();
+  expect(screen.getByText(/第 12 名/)).toBeTruthy();
+  expect(screen.getByText(/升 3/)).toBeTruthy();
 });

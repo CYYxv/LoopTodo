@@ -85,7 +85,7 @@ export function ActiveSessionScreen({
   }, [onCountdownExpired, resumeAttempt, session.id, session.pausedAt, session.phase, session.timerMode, timerSeconds]);
 
   if (session.phase === 'rest') {
-    return <RestScreen task={task} display={formatDuration(timerSeconds ?? 0)} onFinishRest={onFinishRest} />;
+    return <RestScreen task={task} display={formatDuration(timerSeconds ?? 0)} lastStarDelta={lastStarDelta} onFinishRest={onFinishRest} />;
   }
 
   const ringSize = Math.min(Math.max(width - 72, 240), 320);
@@ -183,8 +183,40 @@ function PlayIcon() { return <Svg width={31} height={31} viewBox="0 0 24 24" fil
 function PauseIcon() { return <Svg width={31} height={31} viewBox="0 0 24 24" fill="#FFFFFF"><Rect x={6} y={5} width={4} height={14} rx={1} /><Rect x={14} y={5} width={4} height={14} rx={1} /></Svg>; }
 function StopIcon() { return <Svg width={25} height={25} viewBox="0 0 24 24" fill="#FFFFFF"><Rect x={5} y={5} width={14} height={14} rx={2.5} /></Svg>; }
 
-function RestScreen({ task, display, onFinishRest }: { task: Task; display: string; onFinishRest: () => Promise<void> }) {
-  return <View className="flex-1 justify-between bg-background px-5 py-8"><View className="items-center gap-5"><Chip color="success" variant="soft">自由休息</Chip><Text type="h2" weight="bold" align="center">{task.title} 已记录</Text><Card><Card.Body className="items-center gap-3 py-8"><Text type="h1" weight="bold">{display}</Text><Text type="body-sm" color="muted">休息结束后自动回到待办首页</Text></Card.Body></Card></View><Button onPress={() => void onFinishRest()}>结束休息</Button></View>;
+function RestScreen({
+  task,
+  display,
+  lastStarDelta = null,
+  onFinishRest,
+}: {
+  task: Task;
+  display: string;
+  lastStarDelta?: number | null;
+  onFinishRest: () => Promise<void>;
+}) {
+  return (
+    <View className="flex-1 justify-between bg-background px-5 py-8">
+      <View className="items-center gap-5">
+        <Chip color="success" variant="soft">自由休息</Chip>
+        <Text type="h2" weight="bold" align="center">{task.title} 已记录</Text>
+        {typeof lastStarDelta === 'number' ? (
+          <View className="items-center gap-1 rounded-2xl bg-accent/10 px-4 py-3" accessibilityLabel="本次星结算">
+            <Text type="body-lg" weight="semibold" color="accent">
+              {lastStarDelta > 0 ? `本次 +${lastStarDelta} 星` : lastStarDelta < 0 ? `本次 ${lastStarDelta} 星` : '本次 +0 星'}
+            </Text>
+            {lastStarDelta === 0 ? <Text type="body-xs" color="muted">有效专注满 25 分钟才记星</Text> : null}
+          </View>
+        ) : null}
+        <Card>
+          <Card.Body className="items-center gap-3 py-8">
+            <Text type="h1" weight="bold">{display}</Text>
+            <Text type="body-sm" color="muted">休息结束后自动回到待办首页</Text>
+          </Card.Body>
+        </Card>
+      </View>
+      <Button onPress={() => void onFinishRest()}>结束休息</Button>
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({

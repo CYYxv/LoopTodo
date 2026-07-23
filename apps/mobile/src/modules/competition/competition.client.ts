@@ -1,4 +1,4 @@
-﻿import type { LeaderboardEntry, SeasonRank, TeamLeaderboardEntry, TeamMembership } from './competition.types';
+﻿import type { LeaderboardEntry, LeaderboardResponse, SeasonRank, TeamLeaderboardEntry, TeamMembership } from './competition.types';
 import { apiErrorMessage } from '@/shared/api-error';
 
 export type ScoreEventItem = {
@@ -15,7 +15,7 @@ export type ScoreEventItem = {
 
 export interface CompetitionClient {
   rank(): Promise<SeasonRank>;
-  leaderboard(period: string): Promise<LeaderboardEntry[]>;
+  leaderboard(period: string): Promise<LeaderboardResponse>;
   myTeam(): Promise<TeamMembership>;
   teamLeaderboard(): Promise<TeamLeaderboardEntry[]>;
   recentScoreEvents(limit?: number): Promise<ScoreEventItem[]>;
@@ -36,11 +36,29 @@ export function createCompetitionClient(baseUrl: string, token: string): Competi
 
   return {
     rank: () => request('/seasons/current/rank'),
-    leaderboard: (period) => request(`/leaderboards?period=${period}&limit=100`),
+    leaderboard: async (period) => {
+      const raw = await request<LeaderboardResponse | LeaderboardEntry[]>(`/leaderboards?period=${period}&limit=100`);
+      return normalizeLeaderboard(raw, period);
+    },
     myTeam: () => request('/teams/mine'),
     teamLeaderboard: () => request('/teams/leaderboard?limit=100'),
     recentScoreEvents: (limit = 12) => request(`/score/events?limit=${limit}`),
     createTeam: (name) => request('/teams', { method: 'POST', body: JSON.stringify({ name }) }),
     joinTeam: (joinCode) => request('/teams/join', { method: 'POST', body: JSON.stringify({ joinCode }) }),
   };
+}
+
+
+function normalizeLeaderboard(raw: LeaderboardResponse | LeaderboardEntry[] | null | undefined, period: string): LeaderboardResponse {
+  if (Array.isArray(raw)) {
+    return { period, items: raw, self: null };
+  }
+  if (raw && typeof raw === 'object' && Array.isArray(raw.items)) {
+    return {
+      period: raw.period ?? period,
+      items: raw.items,
+      self: raw.self ?? null,
+    };
+  }
+  return { period, items: [], self: null };
 }

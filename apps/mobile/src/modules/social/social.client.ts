@@ -9,6 +9,7 @@ export interface SocialClient {
   block(id: string): Promise<void>;
   report(targetUserId: string, reason: string): Promise<void>;
   matches(): Promise<PkMatch[]>;
+  historyMatches(limit?: number): Promise<PkMatch[]>;
   createPk(friendUserId: string): Promise<void>;
   rooms(): Promise<StudyRoom[]>;
   createRoom(name: string, visibility: 'public' | 'private'): Promise<void>;
@@ -40,6 +41,7 @@ export function createHttpSocialClient(baseUrl: string, accessToken: string): So
     report: (targetUserId, reason) =>
       request('/social/reports', { method: 'POST', body: JSON.stringify({ targetUserId, reason }) }),
     matches: () => request('/pk-matches/today'),
+    historyMatches: (limit = 30) => request(`/pk-matches/history?limit=${limit}`),
     createPk: (friendUserId) => request('/pk-matches', { method: 'POST', body: JSON.stringify({ friendUserId }) }),
     rooms: () => request('/study-rooms'),
     createRoom: (name, visibility) =>

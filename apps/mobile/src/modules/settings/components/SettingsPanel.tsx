@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { ScrollView, View } from 'react-native';
 
-import { Button, Card, Chip, Switch, Text } from '@/ui/hero-runtime';
+import { Button, Card, Chip, Input, Switch, Text } from '@/ui/hero-runtime';
 
 import { useLockEngineStore } from '@/modules/lock-engine/lock-engine.store';
 import { useNotificationStore } from '@/modules/notifications/notification.store';
@@ -57,6 +57,23 @@ export function SettingsPanel() {
           </View>
           <Setting label="多设备同步专注/锁机" value={value?.multiDeviceFocusSync ?? false} onChange={(next) => toggle('multiDeviceFocusSync', next)} />
           <Setting label="未成年人模式" value={value?.isMinor ?? false} onChange={(next) => toggle('isMinor', next)} />
+          <View className="gap-1 px-1">
+            <Text type="body-xs" color="muted">出生年份（用于年龄保护，未满 18 将自动开启未成年人模式）</Text>
+            <Input
+              value={value?.birthYear != null ? String(value.birthYear) : ''}
+              onChangeText={(raw) => {
+                const digits = raw.replace(/\D/g, '').slice(0, 4);
+                if (digits.length === 0) {
+                  void update({ birthYear: null });
+                  return;
+                }
+                if (digits.length === 4) void update({ birthYear: Number(digits) });
+              }}
+              keyboardType="number-pad"
+              placeholder="例如 2008"
+              maxLength={4}
+            />
+          </View>
           <Setting label="自习室可见当前待办" value={value?.shareCurrentTask ?? false} onChange={(next) => toggle('shareCurrentTask', next)} disabled={value?.isMinor === true} />
           <Setting label="自习室可见今日完成" value={value?.shareCompletedTasks ?? false} onChange={(next) => toggle('shareCompletedTasks', next)} disabled={value?.isMinor === true} />
           <Text type="body-xs" color="muted">任务内容默认仅本人可见；家庭任务仅关联家长可见。</Text>

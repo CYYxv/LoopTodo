@@ -13,6 +13,20 @@
   starBar?: string;
   nextThreshold: number | null;
 };
-export type LeaderboardEntry = { position: number; user: { id: string; nickname: string; avatarUrl: string | null }; score: number; focusMinutes: number };
+export type LeaderboardUser = { id: string; nickname: string; avatarUrl: string | null };
+export type LeaderboardEntry = { position: number; user: LeaderboardUser; score: number; focusMinutes: number; userId?: string };
+export type LeaderboardSelf = {
+  position: number;
+  score: number;
+  focusMinutes: number;
+  userId: string;
+  positionDelta: number | null;
+  user?: LeaderboardUser;
+};
+export type LeaderboardResponse = {
+  period: 'today' | 'week' | 'month' | 'season' | string;
+  items: LeaderboardEntry[];
+  self: LeaderboardSelf | null;
+};
 export type TeamMembership = { role: 'leader' | 'member'; team: { id: string; name: string; joinCode: string; memberCount: number } } | null;
 export type TeamLeaderboardEntry = { id: string; name: string; memberCount: number; totalScore: number; score: number; position: number };

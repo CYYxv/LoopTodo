@@ -341,7 +341,7 @@ export function createTaskStore(
         accumulatedPausedMs: 0,
       };
       const activeTask: Task = { ...task, status: 'active', version: task.version + 1, syncStatus: 'pending' };
-      set({ error: null, isStartingSession: true });
+      set({ error: null, isStartingSession: true, lastStarDelta: null });
       try {
         const capabilities = await nativeLockEngine.checkCapabilities();
         if (mode === 'lock') {

@@ -8,6 +8,7 @@ import { Surface } from 'heroui-native/surface';
 import { BottomSheetModal } from '@/ui/bottom-sheet-modal';
 import { Button, Input, Label, Text, TextField } from '@/ui/hero-runtime';
 
+import { useAuthStore } from '@/modules/auth/auth.store';
 import { useSocialStore } from '../social.store';
 import type { Friend, PkMatch, StudyRoom } from '../social.types';
 
@@ -26,7 +27,9 @@ export function SocialChallengePanel() {
   const configured = useSocialStore((state) => state.configured);
   const friends = useSocialStore((state) => state.friends);
   const matches = useSocialStore((state) => state.matches);
+  const historyMatches = useSocialStore((state) => state.historyMatches);
   const rooms = useSocialStore((state) => state.rooms);
+  const userId = useAuthStore((state) => state.user?.id ?? null);
   const reactions = useSocialStore((state) => state.reactions);
   const loading = useSocialStore((state) => state.loading);
   const error = useSocialStore((state) => state.error);
@@ -57,7 +60,8 @@ export function SocialChallengePanel() {
   );
   const activeMatch = matches[0] ?? null;
   const currentRoom = rooms.find((room) => room.joined) ?? null;
-  const record = useMemo(() => summarizeMatches(matches), [matches]);
+  const record = useMemo(() => summarizeMatches(historyMatches.length > 0 ? historyMatches : matches, userId), [historyMatches, matches, userId]);
+  const recentHistory = historyMatches.length > 0 ? historyMatches : matches;
 
   if (loading && friends.length === 0 && matches.length === 0) {
     return <Skeleton accessibilityLabel="挑战数据加载占位" accessibilityState={{ busy: true }} className="h-48 rounded-2xl" />;
@@ -115,9 +119,11 @@ export function SocialChallengePanel() {
       <Surface className="gap-2 rounded-2xl p-4">
         <Text type="body-lg" weight="semibold">最近战绩</Text>
         <Text type="body-sm" color="muted">胜 {record.wins}  ·  负 {record.losses}  ·  连胜 {record.streak}</Text>
-        {matches.slice(0, 3).map((match) => (
+        {recentHistory.length === 0 ? (
+          <Text type="body-xs" color="muted">完成 PK 后会显示最近战绩。</Text>
+        ) : recentHistory.slice(0, 5).map((match) => (
           <Text key={match.id} type="body-xs" color="muted">
-            {match.challenger.nickname} {match.challenger.minutes}m : {match.opponent.minutes}m {match.opponent.nickname}
+            {formatPkLine(match, userId)}
           </Text>
         ))}
       </Surface>
@@ -401,13 +407,12 @@ function RoomRow({ room, onJoin }: { room: StudyRoom; onJoin: () => void }) {
   );
 }
 
-function summarizeMatches(matches: PkMatch[]) {
+function summarizeMatches(matches: PkMatch[], userId: string | null) {
   let wins = 0;
   let losses = 0;
   let streak = 0;
   for (const match of matches) {
-    const mine = match.challenger.minutes;
-    const theirs = match.opponent.minutes;
+    const { mine, theirs } = sides(match, userId);
     if (mine === theirs) continue;
     if (mine > theirs) {
       wins += 1;
@@ -418,6 +423,20 @@ function summarizeMatches(matches: PkMatch[]) {
     }
   }
   return { wins, losses, streak };
+}
+
+function sides(match: PkMatch, userId: string | null) {
+  if (userId && match.opponent.id === userId) {
+    return { mine: match.opponent.minutes, theirs: match.challenger.minutes, me: match.opponent, them: match.challenger };
+  }
+  return { mine: match.challenger.minutes, theirs: match.opponent.minutes, me: match.challenger, them: match.opponent };
+}
+
+function formatPkLine(match: PkMatch, userId: string | null) {
+  const { mine, theirs, me, them } = sides(match, userId);
+  const result = mine === theirs ? '平' : mine > theirs ? '胜' : '负';
+  const date = typeof match.date === 'string' ? match.date.slice(0, 10) : '';
+  return `${date ? `${date} · ` : ''}${result}  ${me.nickname} ${mine}m : ${theirs}m ${them.nickname}`;
 }
 
 function initials(name: string) {

@@ -23,6 +23,7 @@ export function CompetitionPanel() {
   const period = useCompetitionStore((state) => state.period);
   const rank = useCompetitionStore((state) => state.rank);
   const leaderboard = useCompetitionStore((state) => state.leaderboard);
+  const selfRank = useCompetitionStore((state) => state.self);
   const membership = useCompetitionStore((state) => state.membership);
   const teams = useCompetitionStore((state) => state.teams);
   const recentEvents = useCompetitionStore((state) => state.recentEvents);
@@ -115,7 +116,25 @@ export function CompetitionPanel() {
             </Button>
           ))}
         </View>
-        <ListGroup accessibilityLabel="个人排位榜" variant="secondary">
+                {selfRank ? (
+          <Surface variant="secondary" className="mb-1 gap-1 rounded-xl p-3" accessibilityLabel="我的榜单位置">
+            <Text type="body-sm" weight="semibold">
+              我的位置 · 第 {selfRank.position} 名
+              {selfRank.positionDelta == null
+                ? ''
+                : selfRank.positionDelta > 0
+                  ? ` · 升 ${selfRank.positionDelta}`
+                  : selfRank.positionDelta < 0
+                    ? ` · 降 ${Math.abs(selfRank.positionDelta)}`
+                    : ' · 持平'}
+            </Text>
+            <Text type="body-xs" color="muted">
+              {period === 'season' ? `${selfRank.score} 星` : `${selfRank.focusMinutes} 分钟专注`}
+              {selfRank.user?.nickname ? ` · ${selfRank.user.nickname}` : ''}
+            </Text>
+          </Surface>
+        ) : null}
+<ListGroup accessibilityLabel="个人排位榜" variant="secondary">
           {leaderboard.length === 0 ? (
             <ListGroup.Item disabled>
               <ListGroup.ItemContent>
