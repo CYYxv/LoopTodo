@@ -71,3 +71,18 @@ test('birthYear under 18 forces isMinor', async () => {
   expect(updateSettings.mock.calls[0][1].privacySettings.isMinor).toBe(true);
 });
 
+test('minor users cannot keep public social visibility', async () => {
+  const updateSettings = jest.fn(async (_userId, input) => ({ ...oldUser, ...input, privacySettings: input.privacySettings }));
+  const repository = {
+    findUserById: jest.fn(async () => oldUser),
+    updateSettings,
+  } as unknown as AuthRepository;
+  const service = new AuthService(repository, {} as never, {} as never, {} as never);
+
+  await service.updateSettings('user-1', {
+    privacySettings: { isMinor: true, socialVisibility: 'public' },
+  } as never);
+
+  expect(updateSettings.mock.calls[0][1].privacySettings.socialVisibility).toBe('friends');
+});
+

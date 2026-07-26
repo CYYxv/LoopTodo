@@ -6,6 +6,7 @@ import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 
 import { AppModule } from './app.module';
+import { parseCorsOrigins } from './config/cors-origins';
 import { ApiExceptionFilter } from './common/api-exception.filter';
 import { ApiResponseInterceptor } from './common/api-response.interceptor';
 import { RequestLoggingInterceptor } from './observability/request-logging.interceptor';
@@ -17,6 +18,7 @@ async function bootstrap() {
   app.useGlobalInterceptors(app.get(RequestLoggingInterceptor), new ApiResponseInterceptor());
   app.enableShutdownHooks();
   const config = app.get(ConfigService);
+  app.enableCors({ origin: parseCorsOrigins(config.get('CORS_ORIGINS')) });
   await app.listen(Number(config.getOrThrow('PORT')), '0.0.0.0');
 }
 

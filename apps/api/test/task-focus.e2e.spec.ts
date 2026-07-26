@@ -122,6 +122,13 @@ class MemoryTaskFocusRepository implements TaskFocusRepository {
     return { status: 'ok', value: session };
   }
   async listSessions(userId: string) { return this.sessions.filter((item) => item.userId === userId); }
+  async countEmergencyExits(userId: string, start: Date, end: Date) {
+    return this.sessions.filter((item) => item.userId === userId && item.outcome === 'emergency_exit'
+      && item.endedAt && item.endedAt >= start && item.endedAt < end).length;
+  }
+  async getSession(userId: string, sessionId: string) {
+    return this.sessions.find((item) => item.userId === userId && item.id === sessionId) ?? null;
+  }
   async sync(userId: string, since: Date) {
     const cursor = new Date();
     return {

@@ -280,7 +280,12 @@ function categoryView(category: TaskCategory): CategoryView {
 }
 
 function taskView(task: Task): TaskView {
-  return { ...task, targetAmount: task.targetAmount?.toNumber() ?? null, completedAmount: task.completedAmount.toNumber() };
+  return {
+    ...task,
+    whitelistMode: task.whitelistMode === 'custom' ? 'custom' : 'inherit',
+    targetAmount: task.targetAmount?.toNumber() ?? null,
+    completedAmount: task.completedAmount.toNumber(),
+  };
 }
 
 function sessionView(session: FocusSession): SessionView {

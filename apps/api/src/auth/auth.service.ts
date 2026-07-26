@@ -107,7 +107,7 @@ export class AuthService {
     if (!existing) throw invalidCredentials();
     let settingsInput: typeof settings = { ...settings };
     // Always merge over existing privacy JSON so partial patches keep themePreference etc.
-    const privacy = {
+    const privacy: Record<string, unknown> = {
       ...privacySettingsFrom(existing.privacySettings),
       ...privacySettingsFrom(settings.privacySettings),
       ...(themePreference !== undefined ? { themePreference } : {}),
@@ -120,10 +120,12 @@ export class AuthService {
     if (settings.privacySettings !== undefined || themePreference !== undefined || isMinor) {
       const nextPrivacy = {
         ...privacy,
-        isMinor,
-        socialVisibility: isMinor && privacy.socialVisibility === 'public'
-          ? 'friends'
-          : privacy.socialVisibility ?? (isMinor ? 'friends' : privacy.socialVisibility),
+        ...(isMinor ? {
+          isMinor: true,
+          socialVisibility: privacy.socialVisibility === 'public'
+            ? 'friends'
+            : privacy.socialVisibility ?? 'friends',
+        } : {}),
       };
       settingsInput = {
         ...settingsInput,

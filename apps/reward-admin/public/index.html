@@ -19,7 +19,7 @@ label{display:block;font-size:13px;color:#374151;margin-top:8px}
   <p class="muted">独立运营后台：上架、发放、查看实物地址、确认履约。账号须在 API 的 ADMIN_EMAILS 白名单中。</p>
   <section class="card">
     <h2>连接</h2>
-    <label>API 地址<input id="api" value="http://127.0.0.1:3000"></label>
+    <label>API 地址<input id="api"></label>
     <div class="row">
       <label>管理员邮箱<input id="email" value="admin@example.com"></label>
       <label>密码<input id="password" type="password" placeholder="管理员密码"></label>
@@ -55,6 +55,7 @@ label{display:block;font-size:13px;color:#374151;margin-top:8px}
 const $=id=>document.getElementById(id);
 const message=$("message");
 const storageKey="looptodo-reward-admin";
+$("api").value=`${location.protocol}//${location.hostname}:3310`;
 function loadSaved(){try{const saved=JSON.parse(localStorage.getItem(storageKey)||"{}");if(saved.api)$("api").value=saved.api;if(saved.email)$("email").value=saved.email;if(saved.token)$("token").value=saved.token;}catch(e){}}
 function persist(){localStorage.setItem(storageKey,JSON.stringify({api:$("api").value.trim(),email:$("email").value.trim(),token:$("token").value.trim()}));}
 async function request(path,init={}){const response=await fetch($("api").value.replace(/\/$/,"")+path,{...init,headers:{"content-type":"application/json",authorization:"Bearer "+$("token").value.trim(),...(init.headers||{})}});const body=await response.json();if(!response.ok)throw new Error(body.error?.message||body.error?.code||("HTTP "+response.status));return body.data;}

@@ -1,6 +1,7 @@
 export type Environment = {
   NODE_ENV: string;
   PORT: number;
+  CORS_ORIGINS: string;
   DATABASE_URL: string;
   REDIS_URL: string;
   JWT_ACCESS_SECRET: string;
@@ -29,6 +30,7 @@ export function validateEnvironment(input: Record<string, unknown>): Environment
   const environment: Environment = {
     NODE_ENV: String(input.NODE_ENV ?? 'development'),
     PORT: positiveInteger(input.PORT ?? 3000, 'PORT'),
+    CORS_ORIGINS: String(input.CORS_ORIGINS ?? ''),
     DATABASE_URL: required(input.DATABASE_URL, 'DATABASE_URL'),
     REDIS_URL: required(input.REDIS_URL, 'REDIS_URL'),
     JWT_ACCESS_SECRET: secret(input.JWT_ACCESS_SECRET, 'JWT_ACCESS_SECRET'),

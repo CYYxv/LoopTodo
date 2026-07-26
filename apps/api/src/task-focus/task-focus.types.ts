@@ -56,5 +56,5 @@ export type TaskPatch = Partial<Pick<
   TaskView,
   'categoryId' | 'title' | 'timerMode' | 'estimatedMinutes' | 'restMinutes' | 'deadlineAt' |
   'targetAmount' | 'targetUnit' | 'completedAmount' | 'isTodayRequired' | 'status'
-  | 'forcedTriggerTime'
+  | 'forcedTriggerTime' | 'whitelistMode' | 'whitelistPackages'
 >>;
