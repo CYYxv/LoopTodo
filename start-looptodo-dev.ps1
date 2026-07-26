@@ -22,6 +22,22 @@ function Test-ListeningPort([int]$port) {
   return [bool](Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue)
 }
 
+function Test-PostgresDataServerRunning {
+  & (Join-Path $postgresBin 'pg_ctl.exe') -D $postgresData status *> $null
+  return $LASTEXITCODE -eq 0
+}
+
+function Wait-PostgresReady([int]$timeoutSeconds = 300) {
+  $deadline = (Get-Date).AddSeconds($timeoutSeconds)
+  do {
+    & (Join-Path $postgresBin 'pg_isready.exe') -h 127.0.0.1 -p $DatabasePort -U looptodo -d postgres *> $null
+    if ($LASTEXITCODE -eq 0) { return $true }
+    Start-Sleep -Seconds 2
+  } while ((Get-Date) -lt $deadline)
+
+  return $false
+}
+
 function Test-LanListeningPort([int]$port) {
   return [bool](Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue | Where-Object {
     $_.LocalAddress -notin @('127.0.0.1', '::1')
@@ -123,6 +139,14 @@ function Test-StartedProcessExited($process) {
   return $process.HasExited
 }
 
+function Test-LoopTodoMetroProcessRunning {
+  return [bool](Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+    $_.CommandLine -like "*$mobileDirectory*" -and
+    $_.CommandLine -like '*expo*start*' -and
+    $_.CommandLine -like "*--port $MetroPort*"
+  } | Select-Object -First 1)
+}
+
 function Get-LocalDevelopmentIp {
   $addresses = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
     Where-Object {
@@ -184,9 +208,15 @@ if (-not (Test-Path (Join-Path $postgresData 'PG_VERSION'))) {
   & (Join-Path $postgresBin 'initdb.exe') -D $postgresData -U looptodo -A trust --encoding=UTF8 --no-locale
 }
 
-if (-not (Test-ListeningPort $DatabasePort)) {
-  & (Join-Path $postgresBin 'pg_ctl.exe') -D $postgresData -l (Join-Path $runtime 'postgres.log') -o "`"-p $DatabasePort`"" start
-  Start-Sleep -Seconds 3
+if (-not (Test-PostgresDataServerRunning)) {
+  & (Join-Path $postgresBin 'pg_ctl.exe') -D $postgresData -l (Join-Path $runtime 'postgres.log') -o "`"-p $DatabasePort`"" start -w -t 300
+  if ($LASTEXITCODE -ne 0 -and -not (Test-PostgresDataServerRunning)) {
+    throw "LoopTodo PostgreSQL failed to start. Check $runtime\postgres.log."
+  }
+}
+
+if (-not (Wait-PostgresReady 300)) {
+  throw "LoopTodo PostgreSQL did not become ready within 5 minutes. Check $runtime\postgres.log."
 }
 
 function Test-ApiDependencies {
@@ -290,7 +320,9 @@ do {
   $failedServices = @()
   if ((Test-StartedProcessExited $apiProcess) -and -not (Test-ListeningPort $ApiPort)) { $failedServices += 'API' }
   if ((Test-StartedProcessExited $studioProcess) -and -not (Test-ListeningPort $StudioPort)) { $failedServices += 'Studio' }
-  if ((Test-StartedProcessExited $metroProcess) -and -not (Test-LanListeningPort $MetroPort)) { $failedServices += 'Metro' }
+  if ((Test-StartedProcessExited $metroProcess) -and
+      -not (Test-LanListeningPort $MetroPort) -and
+      -not (Test-LoopTodoMetroProcessRunning)) { $failedServices += 'Metro' }
   if ($failedServices.Count -gt 0) {
     throw "LoopTodo services exited during startup: $($failedServices -join ', '). Check logs in $runtime."
   }
