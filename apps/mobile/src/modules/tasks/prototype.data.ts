@@ -22,7 +22,7 @@ export const prototypeTasks: Task[] = [
     status: 'pending',
     version: 1,
     syncStatus: 'synced',
-    remoteActive: false, whitelistMode: 'inherit', whitelistPackages: [],
+    remoteActive: false, restrictionMode: 'whitelist', whitelistMode: 'inherit', whitelistListId: null, whitelistPackages: [],
   },
   {
     id: 'task-weekly-report',
@@ -43,7 +43,7 @@ export const prototypeTasks: Task[] = [
     status: 'pending',
     version: 1,
     syncStatus: 'synced',
-    remoteActive: false, whitelistMode: 'inherit', whitelistPackages: [],
+    remoteActive: false, restrictionMode: 'whitelist', whitelistMode: 'inherit', whitelistListId: null, whitelistPackages: [],
   },
   {
     id: 'task-english-listening',
@@ -64,7 +64,7 @@ export const prototypeTasks: Task[] = [
     status: 'pending',
     version: 1,
     syncStatus: 'synced',
-    remoteActive: false, whitelistMode: 'inherit', whitelistPackages: [],
+    remoteActive: false, restrictionMode: 'whitelist', whitelistMode: 'inherit', whitelistListId: null, whitelistPackages: [],
   },
 ];
 
@@ -72,10 +72,10 @@ export const prototypeStrictOptions: StrictOption[] = [
   {
     id: 'whitelist',
     label: '仅允许白名单应用',
-    description: '专注期间只放行「设置 - 专注白名单」里勾选的应用，其余应用离开即被拉回（依赖无障碍增强约束）',
+    description: '专注期间只允许任务已选择的软件，需要使用情况访问和显示在其他应用上层权限',
     enabled: false,
     capabilityKey: 'whitelist',
-    unavailableReason: '需要开启无障碍增强约束',
+    unavailableReason: '需要开启使用情况访问和显示在其他应用上层',
   },
   {
     id: 'notifications',
@@ -94,7 +94,7 @@ export const prototypeStrictOptions: StrictOption[] = [
   {
     id: 'block-leaving',
     label: '阻止离开专注页',
-    description: '需要无障碍增强约束，离开后自动返回 LoopTodo',
+    description: '检测到离开后显示全屏拦截页并返回 LoopTodo',
     enabled: false,
     capabilityKey: 'blockLeaving',
   },

@@ -13,7 +13,8 @@ function setup(items: OutboxItem[], execute: SyncApiClient['execute']) {
     async listReady() { return items; },
     async markDone(id) { done.push(id); },
     async scheduleRetry(id, attempts, at) { retries.push({ id, attempts, at }); },
-    async recordConflict(item, code) { conflicts.push({ id: item.id, entityType: 'task', entityId: item.entityId, code, localSnapshot: null, serverSnapshot: null, createdAt: 0 }); },
+    async recordConflict(item, code, serverSnapshot) { conflicts.push({ id: item.id, entityType: 'task', entityId: item.entityId, code, localSnapshot: null,
+      serverSnapshot: serverSnapshot ? JSON.stringify(serverSnapshot) : null, createdAt: 0 }); },
     async saveEntityMap(_type, localId, serverId) { maps.set(localId, serverId); },
     async getEntityMap(_type, localId) { return maps.get(localId) ?? null; },
     async getCursor() { return null; },
@@ -30,7 +31,8 @@ describe('SyncEngine', () => {
   test('pushes start before finish and maps the server session', async () => {
     const calls: Array<{ type: string; mapped?: string }> = [];
     const items: OutboxItem[] = [
-      { id: '1', operation: { type: 'session.start', taskId: 'task', localSessionId: 'local-session', mode: 'focus', startedAt: 0, plannedMinutes: 25 }, entityId: 'task', idempotencyKey: 'start-key', attempts: 0 },
+      { id: '1', operation: { type: 'session.start', taskId: 'task', localSessionId: 'local-session', mode: 'focus', startedAt: 0, plannedMinutes: 25,
+        restrictionMode: 'whitelist', whitelistSource: 'list:default', restrictionEffective: true, allowedPackagesSnapshot: [] }, entityId: 'task', idempotencyKey: 'start-key', attempts: 0 },
       { id: '2', operation: { type: 'session.finish', taskId: 'task', localSessionId: 'local-session', outcome: 'completed', record: record() }, entityId: 'task', idempotencyKey: 'finish-key', attempts: 0 },
     ];
     const state = setup(items, async (operation, _key, mapped) => {
@@ -61,6 +63,25 @@ describe('SyncEngine', () => {
     await state.engine.run();
 
     expect(state.conflicts[0]?.code).toBe('VERSION_CONFLICT');
+    expect(state.retries).toHaveLength(0);
+  });
+
+  test('records a remote whitelist tombstone as a conflict instead of retrying', async () => {
+    const tombstone = {
+      id: 'list-1', name: '已删除名单', packages: ['com.reader'], isDefault: false, version: 4,
+      archivedAt: '2026-07-27T01:00:00.000Z', updatedAt: '2026-07-27T01:00:00.000Z',
+    };
+    const item: OutboxItem = { id: 'stale-update', operation: {
+      type: 'whitelist.update', listId: 'list-1', version: 2, name: '本地名单', packages: ['com.local'],
+    }, entityId: 'list-1', idempotencyKey: 'whitelist-update-list-1-3', attempts: 3 };
+    const state = setup([item], async () => { throw new SyncApiError(404, 'WHITELIST_LIST_NOT_FOUND', tombstone); });
+
+    await state.engine.run();
+
+    expect(state.conflicts[0]).toEqual(expect.objectContaining({
+      code: 'WHITELIST_LIST_NOT_FOUND',
+      serverSnapshot: JSON.stringify(tombstone),
+    }));
     expect(state.retries).toHaveLength(0);
   });
 });

@@ -12,7 +12,9 @@ export class PrismaScoringRepository implements ScoringRepository {
 
   getSession(userId: string, sessionId: string) {
     return this.prisma.focusSession.findFirst({ where: { id: sessionId, userId }, select: {
-      id: true, userId: true, timerMode: true, trustLevel: true, endedAt: true, actualMinutes: true, outcome: true,
+      id: true, userId: true, mode: true, timerMode: true, trustLevel: true, endedAt: true, actualMinutes: true,
+      restrictionMode: true, whitelistSource: true, whitelistPackageCount: true,
+      restrictionEffective: true, effectiveMinutes: true, outcome: true,
     } });
   }
 

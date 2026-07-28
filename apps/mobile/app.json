@@ -13,8 +13,13 @@
     "android": {
       "package": "com.looptodo.app",
       "versionCode": 1,
-      "blockedPermissions": [
+      "permissions": [
+        "android.permission.PACKAGE_USAGE_STATS",
         "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_SPECIAL_USE"
+      ],
+      "blockedPermissions": [
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE"
       ],

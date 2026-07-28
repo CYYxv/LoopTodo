@@ -1,4 +1,5 @@
 import type { CreateTaskInput, Task } from './task.types';
+import { normalizeTaskRestriction } from './task.whitelist';
 
 type ProgressTask = Pick<
   Task,
@@ -22,8 +23,7 @@ export function taskFromInput(id: string, input: CreateTaskInput): Task {
   const task: Task = {
     ...input,
     id,
-    whitelistMode: input.whitelistMode ?? 'inherit',
-    whitelistPackages: input.whitelistPackages ?? [],
+    ...normalizeTaskRestriction(input),
     status: 'pending',
     completedAmount: 0,
     version: 1,

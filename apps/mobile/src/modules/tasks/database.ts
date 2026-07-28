@@ -1,5 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { migrateLegacyWhitelist } from '@/modules/whitelist/whitelist.migration';
+
 let databasePromise: Promise<SQLiteDatabase> | null = null;
 
 export const legacyDurationRepairSql = `
@@ -28,6 +30,41 @@ export const legacyDurationRepairSql = `
   ), (planned_end_at - started_at - COALESCE(accumulated_paused_ms, 0)) / 1000)) AS INTEGER)
   WHERE planned_focus_seconds IS NULL AND timer_mode = 'countdown' AND planned_end_at IS NOT NULL;
   INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (7, unixepoch() * 1000);
+`;
+
+export const whitelistSchemaSql = `
+  CREATE TABLE IF NOT EXISTS whitelist_lists (
+    id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, packages TEXT NOT NULL DEFAULT '[]',
+    is_default INTEGER NOT NULL DEFAULT 0, version INTEGER NOT NULL DEFAULT 1,
+    sync_status TEXT NOT NULL DEFAULT 'pending', archived_at INTEGER,
+    server_updated_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS whitelist_lists_active_idx ON whitelist_lists(archived_at, is_default, created_at);
+  UPDATE whitelist_lists SET is_default = 0
+  WHERE is_default = 1 AND archived_at IS NULL AND id NOT IN (
+    SELECT id FROM whitelist_lists WHERE is_default = 1 AND archived_at IS NULL
+    ORDER BY updated_at DESC, created_at DESC, id ASC LIMIT 1
+  );
+  UPDATE whitelist_lists SET is_default = 1
+  WHERE id = (
+    SELECT id FROM whitelist_lists WHERE archived_at IS NULL
+    ORDER BY created_at ASC, id ASC LIMIT 1
+  ) AND NOT EXISTS (
+    SELECT 1 FROM whitelist_lists WHERE is_default = 1 AND archived_at IS NULL
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS whitelist_lists_one_active_default_idx
+    ON whitelist_lists(is_default) WHERE is_default = 1 AND archived_at IS NULL;
+  UPDATE tasks SET restriction_mode = COALESCE(restriction_mode, 'whitelist'),
+    whitelist_mode = CASE WHEN whitelist_mode = 'inherit' THEN 'list' ELSE whitelist_mode END,
+    whitelist_list_id = whitelist_list_id;
+  UPDATE active_sessions SET allowed_packages_snapshot = COALESCE(allowed_packages_snapshot, '[]');
+  UPDATE active_sessions SET whitelist_source = COALESCE(whitelist_source, 'none'),
+    restriction_effective = COALESCE(restriction_effective, 0);
+  UPDATE focus_sessions SET allowed_packages_snapshot = COALESCE(allowed_packages_snapshot, '[]'),
+    whitelist_source = COALESCE(whitelist_source, 'none'),
+    whitelist_package_count = COALESCE(whitelist_package_count, 0),
+    restriction_effective = COALESCE(restriction_effective, 0),
+    effective_minutes = COALESCE(effective_minutes, CAST(duration_seconds / 60 AS INTEGER));
 `;
 
 export function getLoopTodoDatabase() {
@@ -101,12 +138,24 @@ async function openAndMigrate() {
   await ensureColumn(database, 'tasks', 'category_id', 'TEXT');
   await ensureColumn(database, 'tasks', 'whitelist_mode', "TEXT NOT NULL DEFAULT 'inherit'");
   await ensureColumn(database, 'tasks', 'whitelist_packages', "TEXT NOT NULL DEFAULT '[]'");
+  await ensureColumn(database, 'tasks', 'restriction_mode', "TEXT NOT NULL DEFAULT 'whitelist'");
+  await ensureColumn(database, 'tasks', 'whitelist_list_id', 'TEXT');
   await ensureColumn(database, 'focus_sessions', 'synced_at', 'INTEGER');
   await ensureColumn(database, 'focus_sessions', 'completion_note', 'TEXT');
   await ensureColumn(database, 'focus_sessions', 'planned_focus_seconds', 'INTEGER');
+  await ensureColumn(database, 'focus_sessions', 'restriction_mode', "TEXT NOT NULL DEFAULT 'none'");
+  await ensureColumn(database, 'focus_sessions', 'allowed_packages_snapshot', "TEXT NOT NULL DEFAULT '[]'");
+  await ensureColumn(database, 'focus_sessions', 'whitelist_source', "TEXT NOT NULL DEFAULT 'none'");
+  await ensureColumn(database, 'focus_sessions', 'whitelist_package_count', 'INTEGER NOT NULL DEFAULT 0');
+  await ensureColumn(database, 'focus_sessions', 'restriction_effective', 'INTEGER NOT NULL DEFAULT 0');
+  await ensureColumn(database, 'focus_sessions', 'effective_minutes', 'INTEGER NOT NULL DEFAULT 0');
   await ensureColumn(database, 'active_sessions', 'paused_at', 'INTEGER');
   await ensureColumn(database, 'active_sessions', 'accumulated_paused_ms', 'INTEGER NOT NULL DEFAULT 0');
   await ensureColumn(database, 'active_sessions', 'planned_focus_seconds', 'INTEGER');
+  await ensureColumn(database, 'active_sessions', 'restriction_mode', "TEXT NOT NULL DEFAULT 'none'");
+  await ensureColumn(database, 'active_sessions', 'allowed_packages_snapshot', "TEXT NOT NULL DEFAULT '[]'");
+  await ensureColumn(database, 'active_sessions', 'whitelist_source', "TEXT NOT NULL DEFAULT 'none'");
+  await ensureColumn(database, 'active_sessions', 'restriction_effective', 'INTEGER NOT NULL DEFAULT 0');
   await database.execAsync(`
     CREATE TABLE IF NOT EXISTS sync_outbox (
       id TEXT PRIMARY KEY NOT NULL, operation TEXT NOT NULL, entity_id TEXT NOT NULL,
@@ -152,6 +201,8 @@ async function openAndMigrate() {
     CREATE INDEX IF NOT EXISTS resource_passes_task_idx ON resource_passes(task_id, created_at);
     INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (5, unixepoch() * 1000);
   `);
+  await database.execAsync(whitelistSchemaSql);
+  await migrateLegacyWhitelist(database);
   await database.execAsync(legacyDurationRepairSql);
   await ensureColumn(database, 'sync_conflicts', 'outbox_id', 'TEXT');
   return database;

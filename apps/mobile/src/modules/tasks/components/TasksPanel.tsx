@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import { StyleSheet, Vibration, View } from 'react-native';
 import Svg, { Circle, Path, Polygon, Rect } from 'react-native-svg';
@@ -7,13 +7,18 @@ import { PressableFeedback } from 'heroui-native/pressable-feedback';
 import { Surface } from 'heroui-native/surface';
 
 import type { ActiveSession, FocusSessionRecord, SessionMode } from '@/modules/focus-session/focus-session.types';
+import { lockEngine } from '@/modules/lock-engine/lock-engine.store';
+import type { InstalledApp } from '@/modules/lock-engine/lock-engine.types';
+import { AppIcon, ApplicationPicker } from '@/modules/whitelist/components/ApplicationPicker';
+import { useWhitelistStore } from '@/modules/whitelist/whitelist.store';
+import type { RestrictionMode, WhitelistMode } from '@/modules/whitelist/whitelist.types';
 import { Button, Card, Input, Label, Text, TextField } from '@/ui/hero-runtime';
 import { useLoopTodoTheme } from '@/ui/theme';
 import type { CreateTaskResult, UpdateTaskResult } from '../task.store';
 import { getTaskExecutionState, taskExecutionReason } from '../task.execution';
 import { taskSessionStatistics } from '../task-session.statistics';
 import type { CreateTaskInput, Task, TaskCategory, TaskKind, TimerMode, UpdateTaskInput } from '../task.types';
-import { useWhitelistStore } from '@/modules/focus-session/whitelist.store';
+import { normalizeTaskRestriction } from '../task.whitelist';
 
 const collapsedTaskGroupsKey = 'looptodo.collapsed-task-groups';
 
@@ -29,8 +34,8 @@ export function TaskCreateForm({ categories = [], onCreate, onCreated }: { categ
 
 export function TaskEditForm({ task, categories = [], onUpdate, onUpdated }: { task: Task; categories?: TaskCategory[]; onUpdate(input: UpdateTaskInput): Promise<UpdateTaskResult>; onUpdated?(): void }) {
   return <TaskForm initialTask={task} categories={categories} submitLabel="保存修改" onSubmit={(input) => {
-    const { title, categoryId, category, timerMode, estimateMinutes, restMinutes, deadlineAt, targetAmount, targetUnit, mustDo, forcedTriggerTime, whitelistMode, whitelistPackages } = input;
-    return onUpdate({ title, categoryId, category, timerMode, estimateMinutes, restMinutes, deadlineAt, targetAmount, targetUnit, mustDo, forcedTriggerTime, whitelistMode, whitelistPackages });
+    const { title, categoryId, category, timerMode, estimateMinutes, restMinutes, deadlineAt, targetAmount, targetUnit, mustDo, forcedTriggerTime, restrictionMode, whitelistMode, whitelistListId, whitelistPackages } = input;
+    return onUpdate({ title, categoryId, category, timerMode, estimateMinutes, restMinutes, deadlineAt, targetAmount, targetUnit, mustDo, forcedTriggerTime, restrictionMode, whitelistMode, whitelistListId, whitelistPackages });
   }} onSuccess={() => onUpdated?.()} />;
 }
 
@@ -41,6 +46,7 @@ function TaskForm({ initialTask, categories, submitLabel, onSubmit, onSuccess }:
   onSubmit(input: CreateTaskInput): Promise<CreateTaskResult | UpdateTaskResult>;
   onSuccess(result: Extract<CreateTaskResult | UpdateTaskResult, { ok: true }>): void;
 }) {
+  const initialRestriction = normalizeTaskRestriction(initialTask ?? {});
   const [title, setTitle] = useState(initialTask?.title ?? '');
   const [categoryId, setCategoryId] = useState(initialTask?.categoryId ?? '');
   const [kind, setKind] = useState<TaskKind>(initialTask?.kind ?? 'pomodoro');
@@ -53,23 +59,68 @@ function TaskForm({ initialTask, categories, submitLabel, onSubmit, onSuccess }:
   const [mustDo, setMustDo] = useState(initialTask?.mustDo ?? false);
   const [forcedTriggerTime, setForcedTriggerTime] = useState(initialTask?.forcedTriggerTime ?? '20:00');
   const [showMore, setShowMore] = useState(Boolean(initialTask));
-  const [whitelistMode, setWhitelistMode] = useState<'inherit' | 'custom'>(initialTask?.whitelistMode ?? 'inherit');
-  const [whitelistPackages, setWhitelistPackages] = useState<string[]>(initialTask?.whitelistPackages ?? []);
+  const [restrictionMode, setRestrictionMode] = useState<RestrictionMode>(initialRestriction.restrictionMode);
+  const [whitelistMode, setWhitelistMode] = useState<WhitelistMode>(initialRestriction.whitelistMode);
+  const [whitelistListId, setWhitelistListId] = useState<string | null>(initialRestriction.whitelistListId);
+  const [whitelistPackages, setWhitelistPackages] = useState<string[]>(initialRestriction.whitelistPackages);
+  const customWhitelistInitialized = useRef(initialRestriction.whitelistMode === 'custom');
+  const [whitelistApps, setWhitelistApps] = useState<InstalledApp[]>([]);
+  const [whitelistAppsError, setWhitelistAppsError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const globalSelected = useWhitelistStore((state) => state.selected);
-  const whitelistApps = useWhitelistStore((state) => state.apps);
+  const whitelistLists = useWhitelistStore((state) => state.lists);
+  const whitelistLoading = useWhitelistStore((state) => state.loading);
+  const whitelistError = useWhitelistStore((state) => state.error);
+  const whitelistLoadError = useWhitelistStore((state) => state.loadError);
   const hydrateWhitelist = useWhitelistStore((state) => state.hydrate);
-  const loadWhitelistApps = useWhitelistStore((state) => state.loadApps);
+  const updateWhitelist = useWhitelistStore((state) => state.update);
+  const selectedWhitelistList = whitelistLists.find((list) => list.id === whitelistListId) ?? null;
+  const whitelistPreviewApps = selectedWhitelistList?.packages
+    .map((packageName) => whitelistApps.find((app) => app.packageName === packageName))
+    .filter((app): app is InstalledApp => Boolean(app))
+    .slice(0, 5) ?? [];
+  const loadWhitelistApps = useCallback(async () => {
+    setWhitelistAppsError(null);
+    try {
+      setWhitelistApps(await lockEngine.listLaunchableApps());
+    } catch {
+      setWhitelistApps([]);
+      setWhitelistAppsError('本机软件读取失败，请重试');
+    }
+  }, []);
 
   useEffect(() => {
-    if (whitelistMode !== 'custom') return;
+    if (restrictionMode !== 'whitelist') return;
     void hydrateWhitelist();
+  }, [hydrateWhitelist, restrictionMode]);
+
+  useEffect(() => {
+    if (restrictionMode !== 'whitelist' || whitelistMode !== 'list' || whitelistListId) return;
+    const fallback = whitelistLists.find((list) => list.isDefault) ?? whitelistLists[0];
+    if (fallback) setWhitelistListId(fallback.id);
+  }, [restrictionMode, whitelistListId, whitelistLists, whitelistMode]);
+
+  useEffect(() => {
+    if (restrictionMode !== 'whitelist') return;
     void loadWhitelistApps();
-  }, [whitelistMode, hydrateWhitelist, loadWhitelistApps]);
+  }, [loadWhitelistApps, restrictionMode]);
 
   const submit = async () => {
     const parsedDeadline = deadline ? Date.parse(`${deadline}T23:59:59`) : null;
     setSubmitError(null);
+    if (restrictionMode === 'whitelist') {
+      if (whitelistError) {
+        setSubmitError(whitelistError);
+        return;
+      }
+      if (whitelistLoading) {
+        setSubmitError('名单仍在读取，请稍后重试');
+        return;
+      }
+      if (whitelistMode === 'list' && !selectedWhitelistList) {
+        setSubmitError('请选择可用名单');
+        return;
+      }
+    }
     const category = categories?.find((item) => item.id === categoryId);
     const result = await onSubmit({
       title: title.trim(), categoryId: category?.id ?? null, category: category?.name ?? '未分类', kind,
@@ -80,8 +131,10 @@ function TaskForm({ initialTask, categories, submitLabel, onSubmit, onSuccess }:
       targetUnit: kind === 'goal' ? targetUnit.trim() : null,
       mustDo, forcedTriggerTime: mustDo ? forcedTriggerTime : null,
       trustLevel: initialTask?.trustLevel ?? 'medium',
+      restrictionMode,
       whitelistMode,
-      whitelistPackages: whitelistMode === 'custom' ? whitelistPackages : [],
+      whitelistListId: restrictionMode === 'whitelist' && whitelistMode === 'list' ? whitelistListId : null,
+      whitelistPackages: restrictionMode === 'whitelist' && whitelistMode === 'custom' ? whitelistPackages : [],
     });
     if (result.ok) {
       if (!initialTask) setTitle('');
@@ -91,7 +144,73 @@ function TaskForm({ initialTask, categories, submitLabel, onSubmit, onSuccess }:
     }
   };
 
-  return <View className="gap-3"><Field label="任务名" value={title} onChange={setTitle} placeholder="例如：完成物理作业" /><View className="gap-2"><Text type="body-xs" color="muted">分类</Text><ChoiceRow value={categoryId} options={[["", "未分类"], ...(categories ?? []).map((item) => [item.id, item.name] as [string, string])]} onChange={setCategoryId} /></View>{kind === 'goal' ? <Text type="body-sm" color="muted">计时方式：倒计时</Text> : <ChoiceRow value={timerMode} options={[["countdown", "倒计时"], ["countup", "正计时"], ["untimed", "不计时"]]} onChange={(value) => setTimerMode(value as TimerMode)} />}{timerMode === 'countdown' || kind === 'goal' ? <Field label={kind === 'goal' ? '单次专注分钟' : '专注分钟'} value={minutes} onChange={setMinutes} keyboard="numeric" /> : null}<Button variant="secondary" onPress={() => setShowMore((value) => !value)}>{showMore ? '收起更多设置' : '更多设置'}</Button>{showMore ? <View className="gap-3">{!initialTask ? <ChoiceRow value={kind} options={[["pomodoro", "普通任务"], ["goal", "定目标"]]} onChange={(value) => setKind(value as TaskKind)} /> : null}{kind === 'goal' ? <><Field label="截止日期" value={deadline} onChange={setDeadline} placeholder="YYYY-MM-DD" /><View className="flex-row gap-2"><View className="flex-1"><Field label="目标量" value={targetAmount} onChange={setTargetAmount} placeholder="例如 30" keyboard="numeric" /></View><View className="flex-1"><Field label="单位" value={targetUnit} onChange={setTargetUnit} placeholder="页/个/套/小时/次" /></View></View></> : null}<Field label="休息分钟" value={restMinutes} onChange={setRestMinutes} keyboard="numeric" /><Button variant={mustDo ? 'danger-soft' : 'secondary'} onPress={() => setMustDo((value) => !value)}>{mustDo ? '今日必须，按时强制锁机' : '设为今日必须'}</Button>{mustDo ? <Field label="强制触发时间" value={forcedTriggerTime} onChange={setForcedTriggerTime} placeholder="HH:mm" /> : null}<View className="gap-2"><Text type="body-xs" color="muted">专注白名单</Text><ChoiceRow value={whitelistMode} options={[["inherit", "继承全局"], ["custom", "本任务自定义"]]} onChange={(value) => {const mode = value as 'inherit' | 'custom';setWhitelistMode(mode);if (mode === 'custom' && whitelistPackages.length === 0 && globalSelected.length > 0) setWhitelistPackages([...globalSelected]);}} />{whitelistMode === 'custom' ? <View className="gap-2"><Text type="body-xs" color="muted">在设置中维护的全局名单基础上改为本任务独立名单</Text><Text type="body-xs" color="muted">已选 {whitelistPackages.length} 项 · 从全局白名单勾选</Text>{globalSelected.length === 0 ? <Text type="body-xs" color="muted">请先在设置中配置全局白名单</Text> : <View className="flex-row flex-wrap gap-2">{globalSelected.map((pkg) => {const app = whitelistApps.find((item) => item.packageName === pkg);const selected = whitelistPackages.includes(pkg);return <Button key={pkg} size="sm" variant={selected ? 'primary' : 'secondary'} onPress={() => setWhitelistPackages((current) => selected ? current.filter((item) => item !== pkg) : [...current, pkg])}>{app?.label ?? pkg}</Button>;})}</View>}</View> : null}</View></View> : null}{submitError ? <Text type="body-sm" color="danger" accessibilityRole="alert">{submitError}</Text> : null}<Button isDisabled={!title.trim()} onPress={() => void submit()}>{submitLabel}</Button>{!title.trim() ? <Text type="body-xs" color="muted">填写任务名后即可保存</Text> : null}</View>;
+  const changeWhitelistMode = (value: string) => {
+    const nextMode = value as WhitelistMode;
+    if (nextMode === 'custom' && !customWhitelistInitialized.current) {
+      const selectedList = whitelistLists.find((list) => list.id === whitelistListId)
+        ?? whitelistLists.find((list) => list.isDefault)
+        ?? whitelistLists[0];
+      setWhitelistPackages(selectedList ? [...selectedList.packages] : []);
+      customWhitelistInitialized.current = true;
+    }
+    setWhitelistMode(nextMode);
+  };
+  const restrictionSummary = restrictionMode === 'none'
+    ? '不限制'
+    : restrictionMode === 'strict'
+      ? '严格模式'
+      : whitelistMode === 'custom'
+        ? `软件白名单 · 为此任务单独设置 · ${whitelistPackages.length} 个软件`
+        : `软件白名单 · ${selectedWhitelistList?.name ?? (whitelistLoading ? '正在读取场景白名单' : '未选择场景白名单')}`;
+
+  return <View className="gap-3">
+    <Field label="任务名" value={title} onChange={setTitle} placeholder="例如：完成物理作业" />
+    <View className="gap-2"><Text type="body-xs" color="muted">分类</Text><ChoiceRow value={categoryId} options={[["", "未分类"], ...(categories ?? []).map((item) => [item.id, item.name] as [string, string])]} onChange={setCategoryId} /></View>
+    {kind === 'goal' ? <Text type="body-sm" color="muted">计时方式：倒计时</Text> : <ChoiceRow value={timerMode} options={[["countdown", "倒计时"], ["countup", "正计时"], ["untimed", "不计时"]]} onChange={(value) => setTimerMode(value as TimerMode)} />}
+    {timerMode === 'countdown' || kind === 'goal' ? <Field label={kind === 'goal' ? '单次专注分钟' : '专注分钟'} value={minutes} onChange={setMinutes} keyboard="numeric" /> : null}
+    <Button variant="secondary" onPress={() => setShowMore((value) => !value)}>{showMore ? '收起更多设置' : '更多设置'}</Button>
+    {!showMore ? <Text type="body-xs" color="muted">当前限制：{restrictionSummary}</Text> : null}
+    {restrictionMode === 'whitelist' && whitelistAppsError ? <View className="gap-2">
+      <Text type="body-sm" color="danger" accessibilityRole="alert">{whitelistAppsError}</Text>
+      <Button size="sm" variant="secondary" accessibilityLabel="重试读取本机软件" onPress={() => void loadWhitelistApps()}>重试读取本机软件</Button>
+    </View> : null}
+    {showMore ? <View className="gap-3">
+      {!initialTask ? <ChoiceRow value={kind} options={[["pomodoro", "普通任务"], ["goal", "定目标"]]} onChange={(value) => setKind(value as TaskKind)} /> : null}
+      {kind === 'goal' ? <><Field label="截止日期" value={deadline} onChange={setDeadline} placeholder="YYYY-MM-DD" /><View className="flex-row gap-2"><View className="flex-1"><Field label="目标量" value={targetAmount} onChange={setTargetAmount} placeholder="例如 30" keyboard="numeric" /></View><View className="flex-1"><Field label="单位" value={targetUnit} onChange={setTargetUnit} placeholder="页/个/套/小时/次" /></View></View></> : null}
+      <Field label="休息分钟" value={restMinutes} onChange={setRestMinutes} keyboard="numeric" />
+      <Button variant={mustDo ? 'danger-soft' : 'secondary'} onPress={() => setMustDo((value) => !value)}>{mustDo ? '今日必须，按时强制锁机' : '设为今日必须'}</Button>
+      {mustDo ? <Field label="强制触发时间" value={forcedTriggerTime} onChange={setForcedTriggerTime} placeholder="HH:mm" /> : null}
+      <View className="gap-2">
+        <Text type="body-xs" color="muted">专注限制</Text>
+        <ChoiceRow value={restrictionMode} options={[["none", "不限制"], ["whitelist", "软件白名单"], ["strict", "严格模式"]]} onChange={(value) => setRestrictionMode(value as RestrictionMode)} />
+        {restrictionMode === 'whitelist' ? <View className="gap-2">
+          <ChoiceRow value={whitelistMode} options={[["list", "使用场景白名单"], ["custom", "为此任务单独设置"]]} onChange={changeWhitelistMode} />
+          {whitelistMode === 'list' ? <View className="gap-2">
+            <ChoiceRow value={whitelistListId ?? ''} options={whitelistLists.map((list) => [list.id, list.name])} onChange={setWhitelistListId} />
+            {selectedWhitelistList ? <>
+              <Text type="body-xs" color="muted">{selectedWhitelistList.packages.length} 个软件</Text>
+              {whitelistPreviewApps.length ? <View className="flex-row gap-2">
+                {whitelistPreviewApps.map((app) => <AppIcon key={app.packageName} app={app} size="small" testID={`task-whitelist-icon-${app.packageName}`} />)}
+              </View> : null}
+              {selectedWhitelistList.packages.length === 0 ? <Text type="body-xs" color="muted">未选择其他软件，专注期间只能使用 LoopTodo</Text> : null}
+              <Text type="body-xs" color="muted">修改后，使用此场景白名单且尚未开始的任务会同步更新。</Text>
+              <ApplicationPicker title={`编辑“${selectedWhitelistList.name}”`} source="task" listId={selectedWhitelistList.id}
+                triggerLabel="修改场景白名单" apps={whitelistApps} selected={selectedWhitelistList.packages}
+                onChange={(nextPackages) => updateWhitelist({ ...selectedWhitelistList, packages: nextPackages })} />
+            </> : <Text type="body-xs" color="danger">暂无可用场景白名单</Text>}
+          </View> : <ApplicationPicker title="本任务单独设置" source="task" listId={selectedWhitelistList?.id}
+            apps={whitelistApps} selected={whitelistPackages} onChange={setWhitelistPackages} />}
+        </View> : null}
+      </View>
+    </View> : null}
+    {restrictionMode === 'whitelist' && whitelistLoadError ? <View className="gap-2">
+      <Text type="body-sm" color="danger" accessibilityRole="alert">{whitelistLoadError}</Text>
+      <Button size="sm" variant="secondary" accessibilityLabel="重试读取场景白名单" onPress={() => { setSubmitError(null); void hydrateWhitelist(true); }}>重试读取场景白名单</Button>
+    </View> : null}
+    {submitError && submitError !== whitelistLoadError ? <Text type="body-sm" color="danger" accessibilityRole="alert">{submitError}</Text> : null}
+    <Button isDisabled={!title.trim()} onPress={() => void submit()}>{submitLabel}</Button>
+    {!title.trim() ? <Text type="body-xs" color="muted">填写任务名后即可保存</Text> : null}
+  </View>;
 }
 
 export function CategoryManager({ categories, onCreate, onUpdate, onDelete }: {
@@ -180,12 +299,12 @@ export function TaskGroups({ tasks, categories, activeSession = null, onStart, o
   }} variant="surface" hideSeparator className="gap-3">{allGroups.map((group) => <TaskGroup key={group.id} id={group.id} title={group.title} tasks={group.tasks} collapsed={collapsedGroups.has(group.id)} activeSession={activeSession} onStart={onStart} onOpenActions={onOpenActions} />)}</Accordion>;
 }
 
-export function TaskActionPanel({ task, records, activeSession, onEdit, onConfigureFocus, onGoalProgress, onDelete }: {
+export function TaskActionPanel({ task, records, activeSession, onEdit, onStart, onGoalProgress, onDelete }: {
   task: Task;
   records: FocusSessionRecord[];
   activeSession: ActiveSession | null;
   onEdit(): void;
-  onConfigureFocus(): void;
+  onStart(): void;
   onGoalProgress(amount: number): Promise<void>;
   onDelete(): Promise<void>;
 }) {
@@ -195,7 +314,7 @@ export function TaskActionPanel({ task, records, activeSession, onEdit, onConfig
   const executionState = getTaskExecutionState(task, activeSession);
   const canEdit = !['local_active', 'remote_active', 'stale_active', 'sync_conflict'].includes(executionState);
   const canFocus = executionState === 'available' || executionState === 'local_active';
-  return <View className="gap-4"><View className="flex-row gap-3"><Metric label="完成专注" value={`${statistics.completedSessions} 次`} /><Metric label="累计专注" value={`${statistics.completedMinutes} 分钟`} /></View><View className="flex-row gap-2"><Button className="flex-1" variant="secondary" isDisabled={!canEdit} onPress={onEdit}>编辑任务</Button><Button className="flex-1" variant="secondary" isDisabled={!canFocus} onPress={onConfigureFocus}>专注设置</Button></View>{!canEdit ? <Text type="body-xs" color="muted">任务执行中或存在同步问题，暂时不能编辑。</Text> : null}{task.kind === 'goal' && executionState === 'available' ? <View className="flex-row items-end gap-2"><View className="flex-1"><Field label={`补记完成量（${task.targetUnit}）`} value={progress} onChange={setProgress} keyboard="numeric" /></View><Button size="sm" onPress={() => void onGoalProgress(Number(progress))}>记录</Button></View> : null}{confirmDelete ? <View className="gap-2 rounded-panel-inner bg-surface-secondary p-3"><Text type="body-sm">删除后不会进入回收站，确定删除“{task.title}”吗？</Text><View className="flex-row gap-2"><Button className="flex-1" variant="danger" onPress={() => void onDelete()}>确认删除</Button><Button className="flex-1" variant="secondary" onPress={() => setConfirmDelete(false)}>取消</Button></View></View> : <Button variant="danger-soft" isDisabled={!canEdit} onPress={() => setConfirmDelete(true)}>删除任务</Button>}</View>;
+  return <View className="gap-4"><View className="flex-row gap-3"><Metric label="完成专注" value={`${statistics.completedSessions} 次`} /><Metric label="累计专注" value={`${statistics.completedMinutes} 分钟`} /></View><View className="flex-row gap-2"><Button className="flex-1" variant="secondary" isDisabled={!canEdit} onPress={onEdit}>编辑任务</Button><Button className="flex-1" isDisabled={!canFocus} onPress={onStart}>开始专注</Button></View>{!canEdit ? <Text type="body-xs" color="muted">任务执行中或存在同步问题，暂时不能编辑。</Text> : null}{task.kind === 'goal' && executionState === 'available' ? <View className="flex-row items-end gap-2"><View className="flex-1"><Field label={`补记完成量（${task.targetUnit}）`} value={progress} onChange={setProgress} keyboard="numeric" /></View><Button size="sm" onPress={() => void onGoalProgress(Number(progress))}>记录</Button></View> : null}{confirmDelete ? <View className="gap-2 rounded-panel-inner bg-surface-secondary p-3"><Text type="body-sm">删除后不会进入回收站，确定删除“{task.title}”吗？</Text><View className="flex-row gap-2"><Button className="flex-1" variant="danger" onPress={() => void onDelete()}>确认删除</Button><Button className="flex-1" variant="secondary" onPress={() => setConfirmDelete(false)}>取消</Button></View></View> : <Button variant="danger-soft" isDisabled={!canEdit} onPress={() => setConfirmDelete(true)}>删除任务</Button>}</View>;
 }
 
 function TaskGroup({ id, title, tasks, collapsed, activeSession, onStart, onOpenActions }: {

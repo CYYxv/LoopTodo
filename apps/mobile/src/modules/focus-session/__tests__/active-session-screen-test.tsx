@@ -19,6 +19,7 @@ const task: Task = {
   estimateMinutes: 25, restMinutes: 5, deadlineAt: null, targetAmount: null, targetUnit: null,
   completedAmount: 0, progressLabel: '倒计时 25 分钟', mustDo: false, forcedTriggerTime: null,
   trustLevel: 'medium', status: 'active', version: 2, syncStatus: 'pending', remoteActive: false,
+  restrictionMode: 'none', whitelistMode: 'list', whitelistListId: null, whitelistPackages: [],
 };
 
 test('renders a centered timer with icon controls and no instructional copy', async () => {
@@ -42,6 +43,21 @@ test('shows a play control for a paused session', async () => {
   const screen = await render(<ActiveSessionScreen session={{ ...session, pausedAt: Date.now() }} task={task} error={null}
     onTogglePause={jest.fn()} onComplete={jest.fn()} onExit={jest.fn()} onFinishRest={jest.fn()} />);
   expect(screen.getByLabelText('继续专注')).toBeTruthy();
+});
+
+test('identifies whitelist focus in the rest settlement message', async () => {
+  const screen = await render(<ActiveSessionScreen
+    session={{ ...session, phase: 'rest', plannedEndAt: null, restEndsAt: Date.now() + 5 * 60_000, restrictionMode: 'whitelist' }}
+    task={task}
+    error={null}
+    lastStarDelta={1}
+    onTogglePause={jest.fn()}
+    onComplete={jest.fn()}
+    onExit={jest.fn()}
+    onFinishRest={jest.fn()}
+  />);
+
+  expect(screen.getByText('完成白名单专注，本次 +1 星')).toBeTruthy();
 });
 
 test('requests automatic completion when a countdown is expired', async () => {
@@ -84,6 +100,22 @@ test('retries a failed automatic completion once when the app returns to foregro
 
   await waitFor(() => expect(onCountdownExpired).toHaveBeenCalledTimes(2));
   appStateSpy.mockRestore();
+});
+
+test('audits active restrictions when the app returns to foreground', async () => {
+  let appStateListener: ((state: string) => void) | undefined;
+  jest.spyOn(AppState, 'addEventListener').mockImplementation((_event, listener) => {
+    appStateListener = listener as (state: string) => void;
+    return { remove: jest.fn() } as never;
+  });
+  const onAuditRestriction = jest.fn(async () => ({ status: 'effective' as const, missingCapabilities: [] }));
+  await render(<ActiveSessionScreen session={session} task={task} error={null}
+    onTogglePause={jest.fn()} onComplete={jest.fn()} onExit={jest.fn()} onFinishRest={jest.fn()}
+    onAuditRestriction={onAuditRestriction} />);
+
+  await act(async () => { appStateListener?.('active'); });
+
+  expect(onAuditRestriction).toHaveBeenCalledWith('foreground');
 });
 
 test('submits a completion note when finishing focus', async () => {

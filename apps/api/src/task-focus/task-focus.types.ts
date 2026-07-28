@@ -7,6 +7,18 @@ export type CategoryView = {
   updatedAt: Date;
 };
 
+export type WhitelistListView = {
+  id: string;
+  userId: string;
+  name: string;
+  packages: string[];
+  isDefault: boolean;
+  version: number;
+  createdAt: Date;
+  updatedAt: Date;
+  archivedAt: Date | null;
+};
+
 export type TaskView = {
   id: string;
   categoryId: string | null;
@@ -21,7 +33,9 @@ export type TaskView = {
   completedAmount: number;
   isTodayRequired: boolean;
   forcedTriggerTime: string | null;
-  whitelistMode: 'inherit' | 'custom';
+  restrictionMode: 'none' | 'whitelist' | 'strict';
+  whitelistMode: 'list' | 'custom';
+  whitelistListId: string | null;
   whitelistPackages: string[];
   status: 'pending' | 'active' | 'completed' | 'failed' | 'archived';
   activeSessionId: string | null;
@@ -29,6 +43,8 @@ export type TaskView = {
   version: number;
   updatedAt: Date;
 };
+
+export type WhitelistSource = 'none' | 'strict' | 'custom' | `list:${string}`;
 
 export type SessionView = {
   id: string;
@@ -40,6 +56,12 @@ export type SessionView = {
   endedAt: Date | null;
   plannedMinutes: number;
   actualMinutes: number | null;
+  restrictionMode: TaskView['restrictionMode'];
+  whitelistSource: WhitelistSource;
+  whitelistPackageCount: number;
+  allowedPackagesSnapshot: string[];
+  restrictionEffective: boolean;
+  effectiveMinutes: number;
   outcome: 'completed' | 'failed' | 'cancelled' | 'emergency_exit' | null;
   completionNote: string | null;
   failureReasonType: string | null;
@@ -56,5 +78,5 @@ export type TaskPatch = Partial<Pick<
   TaskView,
   'categoryId' | 'title' | 'timerMode' | 'estimatedMinutes' | 'restMinutes' | 'deadlineAt' |
   'targetAmount' | 'targetUnit' | 'completedAmount' | 'isTodayRequired' | 'status'
-  | 'forcedTriggerTime' | 'whitelistMode' | 'whitelistPackages'
+  | 'forcedTriggerTime' | 'restrictionMode' | 'whitelistMode' | 'whitelistListId' | 'whitelistPackages'
 >>;

@@ -50,3 +50,25 @@ test('does not expose the removed advanced resource feature', async () => {
   expect(screen.queryByText(/可信/)).toBeNull();
   expect(screen.getByText('开始专注')).toBeTruthy();
 });
+
+test('does not expose the removed accessibility enhancement', async () => {
+  const screen = await render(<FocusPanel
+    selectedMode="lock"
+    strictOptions={[]}
+    selectedTask={null}
+    onModeChange={jest.fn()}
+    onStrictOptionToggle={jest.fn()}
+    onStart={jest.fn()}
+    lockCapabilities={{
+      supported: true, manufacturer: 'xiaomi', sdkInt: 36, vendorBackgroundSettingsAvailable: true,
+      notificationGranted: true, notificationListenerEnabled: true, accessibilityEnabled: false,
+      batteryOptimizationIgnored: true, riskConfirmed: true, emergencyExitsRemaining: 2, exactAlarmAllowed: true,
+      restrictions: {} as LockCapabilities['restrictions'],
+    }}
+    onRefreshLockCapabilities={jest.fn()}
+    onConfirmLockRisk={jest.fn()}
+    onOpenLockPermission={jest.fn()}
+  />);
+
+  expect(screen.queryByText(/增强约束/)).toBeNull();
+});

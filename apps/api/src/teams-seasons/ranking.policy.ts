@@ -49,7 +49,7 @@ export type SessionStarInput = {
   outcome: 'completed' | 'failed' | 'cancelled' | 'emergency_exit' | null;
   effectiveMinutes: number;
   mode: FocusModeForStars;
-  /** Minutes already counted toward star decay today before this session. */
+  /** Deprecated compatibility input; cross-session minutes do not affect settlement. */
   priorEffectiveMinutesToday?: number;
 };
 
@@ -67,35 +67,10 @@ export function calculateSessionStars(input: SessionStarInput): number {
     return 1;
   }
 
-  const prior = Math.max(0, input.priorEffectiveMinutesToday ?? 0);
-  const effectiveForStars = applyDailyDecay(minutes, prior);
-  if (effectiveForStars < MIN_STAR_MINUTES) return 0;
-
   const coefficient = modeCoefficients[input.mode];
-  const raw = Math.floor((effectiveForStars / MIN_STAR_MINUTES) * coefficient);
+  const raw = Math.floor((minutes / MIN_STAR_MINUTES) * coefficient);
   if (raw < 1) return 1;
   return Math.min(MAX_STARS_PER_SESSION, raw);
-}
-
-/** After ~3h of effective focus in a day, further minutes count at 25%. */
-function applyDailyDecay(sessionMinutes: number, priorMinutes: number): number {
-  const softCap = 180;
-  let remaining = sessionMinutes;
-  let scored = 0;
-  let cursor = priorMinutes;
-
-  while (remaining > 0) {
-    if (cursor >= softCap) {
-      scored += remaining * 0.25;
-      break;
-    }
-    const room = softCap - cursor;
-    const take = Math.min(remaining, room);
-    scored += take;
-    remaining -= take;
-    cursor += take;
-  }
-  return scored;
 }
 
 export function mapTrustToMode(trustLevel: 'high' | 'normal' | 'open' | 'invalid', timerMode: 'countdown' | 'countup' | 'untimed'): FocusModeForStars {

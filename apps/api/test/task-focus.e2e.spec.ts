@@ -20,10 +20,121 @@ import { RedisService } from '../src/infrastructure/redis/redis.service';
 import { ScoringService } from '../src/scoring/scoring.service';
 import { FamilyService } from '../src/family/family.service';
 
+type MemoryWhitelistList = {
+  id: string;
+  userId: string;
+  name: string;
+  packages: string[];
+  isDefault: boolean;
+  version: number;
+  createdAt: Date;
+  updatedAt: Date;
+  archivedAt: Date | null;
+};
+
 class MemoryTaskFocusRepository implements TaskFocusRepository {
   categories: Array<CategoryView & { userId: string }> = [];
   tasks: Array<TaskView & { userId: string }> = [];
   sessions: Array<SessionView & { userId: string; startKey: string; finishKey: string | null }> = [];
+  whitelistLists: MemoryWhitelistList[] = [];
+  private readonly whitelistMutations = new Map<string, { signature: string; response: MemoryWhitelistList }>();
+
+  private whitelistReplay(userId: string, key: string, signature: string) {
+    const mutation = this.whitelistMutations.get(`${userId}:${key}`);
+    if (!mutation) return null;
+    if (mutation.signature !== signature) return { status: 'idempotency-conflict' } as const;
+    return { status: 'ok', value: cloneWhitelistList(mutation.response), replayed: true } as const;
+  }
+
+  private rememberWhitelistMutation(userId: string, key: string, signature: string, response: MemoryWhitelistList) {
+    this.whitelistMutations.set(`${userId}:${key}`, { signature, response: cloneWhitelistList(response) });
+  }
+
+  private ensureDefaultWhitelistList(userId: string) {
+    const existing = this.whitelistLists.find((item) => item.userId === userId && item.isDefault && !item.archivedAt);
+    if (existing) return existing;
+    const now = new Date();
+    const value = { id: randomUUID(), userId, name: '默认白名单', packages: [], isDefault: true, version: 1, createdAt: now, updatedAt: now, archivedAt: null };
+    this.whitelistLists.push(value);
+    return value;
+  }
+
+  async listWhitelistLists(userId: string) {
+    this.ensureDefaultWhitelistList(userId);
+    return this.whitelistLists.filter((item) => item.userId === userId && !item.archivedAt);
+  }
+  async getWhitelistList(userId: string, id: string) {
+    return this.whitelistLists.find((item) => item.userId === userId && item.id === id && !item.archivedAt) ?? null;
+  }
+  async getDefaultWhitelistList(userId: string) { return this.ensureDefaultWhitelistList(userId); }
+  async createWhitelistList(userId: string, input: { id?: string; name: string; packages: string[] }, key: string) {
+    const signature = JSON.stringify({ operation: 'create', input });
+    const replay = this.whitelistReplay(userId, key, signature);
+    if (replay) return replay;
+    const now = new Date();
+    const value = { id: input.id ?? randomUUID(), userId, name: input.name, packages: input.packages, isDefault: false, version: 1, createdAt: now, updatedAt: now, archivedAt: null };
+    this.whitelistLists.push(value);
+    this.rememberWhitelistMutation(userId, key, signature, value);
+    return { status: 'ok', value } as const;
+  }
+  async updateWhitelistList(userId: string, id: string, version: number, patch: { name?: string; packages?: string[] }, key: string) {
+    const signature = JSON.stringify({ operation: 'update', id, version, patch });
+    const replay = this.whitelistReplay(userId, key, signature);
+    if (replay) return replay;
+    const list = await this.getWhitelistList(userId, id);
+    if (!list) return { status: 'not-found' } as const;
+    if (list.version !== version) return { status: 'conflict' } as const;
+    Object.assign(list, patch, { version: list.version + 1, updatedAt: new Date() });
+    this.rememberWhitelistMutation(userId, key, signature, list);
+    return { status: 'ok', value: list } as const;
+  }
+  async setDefaultWhitelistList(userId: string, id: string, version: number, key: string) {
+    const signature = JSON.stringify({ operation: 'set-default', id, version });
+    const replay = this.whitelistReplay(userId, key, signature);
+    if (replay) return replay;
+    const list = await this.getWhitelistList(userId, id);
+    if (!list) return { status: 'not-found' } as const;
+    if (list.version !== version) return { status: 'conflict' } as const;
+    this.whitelistLists.filter((item) => item.userId === userId && item.isDefault && !item.archivedAt).forEach((item) => {
+      item.isDefault = false;
+      item.version += 1;
+      item.updatedAt = new Date();
+    });
+    list.isDefault = true;
+    list.version += 1;
+    list.updatedAt = new Date();
+    this.rememberWhitelistMutation(userId, key, signature, list);
+    return { status: 'ok', value: list } as const;
+  }
+  async archiveWhitelistList(userId: string, id: string, version: number, replacementId: string | 'default' | undefined, key: string) {
+    const signature = JSON.stringify({ operation: 'archive', id, version, replacementId: replacementId ?? null });
+    const replay = this.whitelistReplay(userId, key, signature);
+    if (replay) return replay;
+    const list = await this.getWhitelistList(userId, id);
+    if (!list) return { status: 'not-found' } as const;
+    if (list.version !== version) return { status: 'conflict' } as const;
+    const referenced = this.tasks.filter((item) => item.userId === userId && (item as TaskView & { whitelistListId?: string | null }).whitelistListId === id);
+    let replacement = replacementId === 'default' ? this.ensureDefaultWhitelistList(userId) : replacementId ? await this.getWhitelistList(userId, replacementId) : null;
+    if (replacement?.id === id) replacement = null;
+    if (referenced.length && !replacement) return { status: 'replacement-required' } as const;
+    const remaining = this.whitelistLists.filter((item) => item.userId === userId && !item.archivedAt && item.id !== id);
+    if (!remaining.length) return { status: 'last-list' } as const;
+    if (list.isDefault && !replacement) return { status: 'replacement-required' } as const;
+    if (replacement) {
+      referenced.forEach((task) => Object.assign(task, { whitelistListId: replacement.id, version: task.version + 1, updatedAt: new Date() }));
+      if (list.isDefault) {
+        replacement.isDefault = true;
+        replacement.version += 1;
+        replacement.updatedAt = new Date();
+      }
+    }
+    list.isDefault = false;
+    list.archivedAt = new Date();
+    list.version += 1;
+    list.updatedAt = new Date();
+    this.rememberWhitelistMutation(userId, key, signature, list);
+    return { status: 'ok', value: list } as const;
+  }
 
   async listCategories(userId: string) { return this.categories.filter((item) => item.userId === userId && !item.archived); }
   async getCategory(userId: string, id: string) { return this.categories.find((item) => item.userId === userId && item.id === id && !item.archived) ?? null; }
@@ -96,10 +207,20 @@ class MemoryTaskFocusRepository implements TaskFocusRepository {
     const task = this.tasks.find((item) => item.userId === input.userId && item.id === input.taskId && item.status !== 'archived');
     if (!task) return { status: 'not-found' };
     if (task.activeSessionId) return { status: 'already-active' };
+    const restrictionMode = input.restrictionMode ?? (input.mode === 'lock' ? 'strict' : task.restrictionMode);
+    const whitelistSource = input.whitelistSource ?? (restrictionMode === 'whitelist'
+      ? task.whitelistMode === 'custom' ? 'custom' : `list:${task.whitelistListId ?? 'default'}`
+      : restrictionMode);
     const session: SessionView & { userId: string; startKey: string; finishKey: string | null } = {
       id: randomUUID(), userId: input.userId, taskId: task.id, mode: input.mode,
-      timerMode: task.timerMode, trustLevel: input.trustLevel, startedAt: new Date(), endedAt: null,
-      plannedMinutes: task.estimatedMinutes, actualMinutes: null, outcome: null, completionNote: null,
+      timerMode: task.timerMode, trustLevel: input.trustLevel, startedAt: input.startedAt ?? new Date(), endedAt: null,
+      plannedMinutes: input.plannedMinutes ?? task.estimatedMinutes, actualMinutes: null, outcome: null, completionNote: null,
+      restrictionMode,
+      whitelistSource,
+      whitelistPackageCount: input.allowedPackagesSnapshot?.length ?? 0,
+      allowedPackagesSnapshot: input.allowedPackagesSnapshot ?? [],
+      restrictionEffective: input.restrictionEffective ?? restrictionMode === 'none',
+      effectiveMinutes: 0,
       failureReasonType: null, failureReasonText: null, updatedAt: new Date(), startKey: input.idempotencyKey, finishKey: null,
     };
     this.sessions.push(session);
@@ -114,9 +235,19 @@ class MemoryTaskFocusRepository implements TaskFocusRepository {
     const session = this.sessions.find((item) => item.userId === input.userId && item.id === input.sessionId);
     if (!session) return { status: 'not-found' };
     if (session.endedAt) return { status: 'not-active' };
-    Object.assign(session, { endedAt: new Date(), actualMinutes: 1, outcome: input.outcome,
+    const now = new Date();
+    const endedAt = input.endedAt ?? now;
+    if (endedAt < session.startedAt || endedAt.getTime() > now.getTime() + 5 * 60_000) return { status: 'invalid-session-time' };
+    const elapsedMinutes = Math.max(0, Math.floor((Math.min(endedAt.getTime(), now.getTime()) - session.startedAt.getTime()) / 60_000));
+    const maximumMinutes = session.timerMode === 'countdown' ? Math.min(elapsedMinutes, session.plannedMinutes) : elapsedMinutes;
+    const actualMinutes = Math.min(Math.max(0, Math.floor(input.actualMinutes ?? maximumMinutes)), maximumMinutes);
+    const effectiveMinutes = Math.min(Math.max(0, Math.floor(input.effectiveMinutes ?? actualMinutes)), actualMinutes);
+    Object.assign(session, { endedAt, actualMinutes, outcome: input.outcome,
       completionNote: input.completionNote, failureReasonType: input.failureReasonType,
-      failureReasonText: input.failureReasonText, finishKey: input.idempotencyKey, updatedAt: new Date() });
+      failureReasonText: input.failureReasonText, whitelistPackageCount: input.whitelistPackageCount ?? session.whitelistPackageCount,
+      restrictionEffective: session.restrictionEffective && input.restrictionEffective !== false,
+      effectiveMinutes,
+      finishKey: input.idempotencyKey, updatedAt: new Date() });
     const task = this.tasks.find((item) => item.id === session.taskId && item.userId === input.userId);
     if (task) Object.assign(task, { activeSessionId: null, status: input.outcome === 'completed' ? 'completed' : 'failed', version: task.version + 1, updatedAt: new Date() });
     return { status: 'ok', value: session };
@@ -133,11 +264,22 @@ class MemoryTaskFocusRepository implements TaskFocusRepository {
     const cursor = new Date();
     return {
       categories: this.categories.filter((item) => item.userId === userId && item.updatedAt > since),
+      whitelistLists: this.whitelistLists.filter((item) => item.userId === userId && item.updatedAt > since),
       tasks: this.tasks.filter((item) => item.userId === userId && item.updatedAt > since),
       sessions: this.sessions.filter((item) => item.userId === userId && item.updatedAt > since),
       cursor,
     };
   }
+}
+
+function cloneWhitelistList(list: MemoryWhitelistList): MemoryWhitelistList {
+  return {
+    ...list,
+    packages: [...list.packages],
+    createdAt: new Date(list.createdAt),
+    updatedAt: new Date(list.updatedAt),
+    archivedAt: list.archivedAt ? new Date(list.archivedAt) : null,
+  };
 }
 
 describe('task focus API', () => {
@@ -232,6 +374,7 @@ describe('task focus API', () => {
     const finishReplay = (await app.inject({ method: 'POST', url: `/focus-sessions/${started.id}/finish`, headers: finishHeaders, payload: { outcome: 'completed', completionNote: '完成两套卷并订正错题' } })).json().data;
     expect(finishReplay.id).toBe(finished.id);
     expect(finished.completionNote).toBe('完成两套卷并订正错题');
+    expect(finished).toMatchObject({ whitelistPackageCount: 0, actualMinutes: 0, effectiveMinutes: 0 });
     expect((await app.inject({ method: 'POST', url: `/focus-sessions/${started.id}/finish`, headers: finishHeaders, payload: { outcome: 'failed' } })).statusCode).toBe(409);
 
     const completed = await app.inject({ method: 'POST', url: `/tasks/${secondTask.id}/complete`, headers: authOne, payload: { version: 1 } });
@@ -272,5 +415,197 @@ describe('task focus API', () => {
     expect(sync.json().data.tasks).toHaveLength(3);
     expect(sync.json().data.sessions).toHaveLength(1);
     expect(sync.json().data.categories).toEqual(expect.arrayContaining([expect.objectContaining({ id: category.id, archived: true })]));
+  });
+
+  test('manages whitelist lists, accepts legacy task payloads and syncs lists before tasks', async () => {
+    const userOne = await tokens.issue('whitelist-user-one', 'whitelist-device-one');
+    const userTwo = await tokens.issue('whitelist-user-two', 'whitelist-device-two');
+    const authOne = { authorization: `Bearer ${userOne.accessToken}` };
+    const authTwo = { authorization: `Bearer ${userTwo.accessToken}` };
+
+    const initial = await app.inject({ method: 'GET', url: '/whitelist-lists', headers: authOne });
+    expect(initial.statusCode).toBe(200);
+    expect(initial.json().data).toEqual([expect.objectContaining({ name: '默认白名单', packages: [], isDefault: true, version: 1, archivedAt: null })]);
+    const originalDefault = initial.json().data[0];
+
+    const createHeaders = { ...authOne, 'idempotency-key': 'whitelist-create-study-001' };
+    const createdResponse = await app.inject({ method: 'POST', url: '/whitelist-lists', headers: createHeaders, payload: {
+      name: '学习', packages: [' com.reader.app ', 'com.notes.app', 'com.reader.app', ''],
+    } });
+    expect(createdResponse.statusCode).toBe(201);
+    const studyList = createdResponse.json().data;
+    expect(studyList).toMatchObject({ name: '学习', packages: ['com.reader.app', 'com.notes.app'], isDefault: false, version: 1 });
+    const createReplay = await app.inject({ method: 'POST', url: '/whitelist-lists', headers: createHeaders, payload: {
+      name: '学习', packages: [' com.reader.app ', 'com.notes.app', 'com.reader.app'],
+    } });
+    expect(createReplay.statusCode).toBe(201);
+    expect(createReplay.json().data.id).toBe(studyList.id);
+    const createConflict = await app.inject({ method: 'POST', url: '/whitelist-lists', headers: createHeaders, payload: {
+      name: '工作', packages: ['com.notes.app'],
+    } });
+    expect(createConflict.statusCode).toBe(409);
+    expect(createConflict.json().error.code).toBe('IDEMPOTENCY_KEY_CONFLICT');
+
+    const crossUserGet = await app.inject({ method: 'GET', url: `/whitelist-lists/${studyList.id}`, headers: authTwo });
+    expect(crossUserGet.statusCode).toBe(404);
+
+    const listTaskResponse = await app.inject({ method: 'POST', url: '/tasks', headers: authOne, payload: {
+      title: '名单任务', taskType: 'pomodoro', timerMode: 'countdown', estimatedMinutes: 25, restMinutes: 5,
+      restrictionMode: 'whitelist', whitelistMode: 'list', whitelistListId: studyList.id, whitelistPackages: ['ignored.package'],
+    } });
+    expect(listTaskResponse.statusCode).toBe(201);
+    const listTask = listTaskResponse.json().data;
+    expect(listTask).toMatchObject({ restrictionMode: 'whitelist', whitelistMode: 'list', whitelistListId: studyList.id, whitelistPackages: [] });
+
+    const legacyInheritResponse = await app.inject({ method: 'POST', url: '/tasks', headers: authOne, payload: {
+      title: '旧继承任务', taskType: 'pomodoro', timerMode: 'countdown', estimatedMinutes: 25, restMinutes: 5,
+      whitelistMode: 'inherit', whitelistPackages: ['ignored.legacy'],
+    } });
+    expect(legacyInheritResponse.statusCode).toBe(201);
+    const legacyInherit = legacyInheritResponse.json().data;
+    expect(legacyInherit).toMatchObject({ restrictionMode: 'whitelist', whitelistMode: 'list', whitelistListId: originalDefault.id, whitelistPackages: [] });
+
+    const legacyCustomResponse = await app.inject({ method: 'POST', url: '/tasks', headers: authOne, payload: {
+      title: '旧自定义任务', taskType: 'pomodoro', timerMode: 'countdown', estimatedMinutes: 25, restMinutes: 5,
+      whitelistMode: 'custom', whitelistPackages: [' custom.one ', 'custom.two', 'custom.one'],
+    } });
+    expect(legacyCustomResponse.statusCode).toBe(201);
+    const legacyCustom = legacyCustomResponse.json().data;
+    expect(legacyCustom).toMatchObject({ restrictionMode: 'whitelist', whitelistMode: 'custom', whitelistListId: null, whitelistPackages: ['custom.one', 'custom.two'] });
+
+    const invalidSource = await app.inject({ method: 'POST', url: `/tasks/${legacyCustom.id}/start-focus`, headers: {
+      ...authOne, 'idempotency-key': 'invalid-whitelist-session-source',
+    }, payload: {
+      restrictionMode: 'whitelist', whitelistSource: 'unknown-source', restrictionEffective: true,
+    } });
+    expect(invalidSource.statusCode).toBe(400);
+
+    const sessionStart = await app.inject({ method: 'POST', url: `/tasks/${legacyCustom.id}/start-focus`, headers: {
+      ...authOne, 'idempotency-key': 'whitelist-session-start',
+    }, payload: {
+      startedAt: new Date(Date.now() - 30 * 60_000).toISOString(),
+      restrictionMode: 'whitelist', whitelistSource: 'custom', restrictionEffective: true,
+      allowedPackagesSnapshot: [' custom.one ', 'custom.two', 'custom.one'],
+    } });
+    expect(sessionStart.statusCode).toBe(201);
+    const restrictedSession = sessionStart.json().data;
+    expect(restrictedSession).toMatchObject({
+      restrictionMode: 'whitelist', whitelistSource: 'custom', whitelistPackageCount: 2,
+      allowedPackagesSnapshot: ['custom.one', 'custom.two'], restrictionEffective: true, effectiveMinutes: 0,
+    });
+    const sessionFinish = await app.inject({ method: 'POST', url: `/focus-sessions/${restrictedSession.id}/finish`, headers: {
+      ...authOne, 'idempotency-key': 'whitelist-session-finish',
+    }, payload: {
+      outcome: 'completed', actualMinutes: 1_440, whitelistPackageCount: 2,
+      restrictionMode: 'strict', whitelistSource: 'strict',
+      restrictionEffective: false, effectiveMinutes: 1_440,
+    } });
+    expect(sessionFinish.statusCode).toBe(201);
+    expect(sessionFinish.json().data).toMatchObject({
+      restrictionMode: 'whitelist', whitelistSource: 'custom', whitelistPackageCount: 2,
+      actualMinutes: 25, restrictionEffective: false, effectiveMinutes: 25,
+    });
+    const finishReplay = await app.inject({ method: 'POST', url: `/focus-sessions/${restrictedSession.id}/finish`, headers: {
+      ...authOne, 'idempotency-key': 'whitelist-session-finish',
+    }, payload: {
+      outcome: 'completed', endedAt: '2099-01-01T00:00:00.000Z', actualMinutes: 1_440,
+      restrictionMode: 'none', whitelistSource: 'none', restrictionEffective: true, effectiveMinutes: 1_440,
+    } });
+    expect(finishReplay.statusCode).toBe(201);
+    expect(finishReplay.json().data).toMatchObject({
+      restrictionMode: 'whitelist', whitelistSource: 'custom', actualMinutes: 25,
+      restrictionEffective: false, effectiveMinutes: 25,
+    });
+
+    const strictResponse = await app.inject({ method: 'POST', url: '/tasks', headers: authOne, payload: {
+      title: '严格任务', taskType: 'pomodoro', timerMode: 'countdown', estimatedMinutes: 25, restMinutes: 5,
+      restrictionMode: 'strict', whitelistMode: 'custom', whitelistListId: studyList.id, whitelistPackages: ['ignored.strict'],
+    } });
+    expect(strictResponse.statusCode).toBe(201);
+    expect(strictResponse.json().data).toMatchObject({ restrictionMode: 'strict', whitelistMode: 'custom', whitelistListId: null, whitelistPackages: [] });
+
+    const noneResponse = await app.inject({ method: 'POST', url: '/tasks', headers: authOne, payload: {
+      title: '无限制任务', taskType: 'pomodoro', timerMode: 'countdown', estimatedMinutes: 25, restMinutes: 5,
+      restrictionMode: 'none', whitelistMode: 'inherit', whitelistPackages: ['ignored.none'],
+    } });
+    expect(noneResponse.statusCode).toBe(201);
+    expect(noneResponse.json().data).toMatchObject({ restrictionMode: 'none', whitelistMode: 'list', whitelistListId: null, whitelistPackages: [] });
+
+    const foreignReference = await app.inject({ method: 'POST', url: '/tasks', headers: authTwo, payload: {
+      title: '跨用户任务', taskType: 'pomodoro', timerMode: 'countdown', estimatedMinutes: 25, restMinutes: 5,
+      restrictionMode: 'whitelist', whitelistMode: 'list', whitelistListId: studyList.id,
+    } });
+    expect(foreignReference.statusCode).toBe(404);
+    expect(foreignReference.json().error.code).toBe('WHITELIST_LIST_NOT_FOUND');
+
+    const updateHeaders = { ...authOne, 'idempotency-key': 'whitelist-update-study-001' };
+    const replacedPackages = await app.inject({ method: 'PATCH', url: `/whitelist-lists/${studyList.id}`, headers: updateHeaders, payload: {
+      version: 1, packages: ['com.video.app'],
+    } });
+    expect(replacedPackages.statusCode).toBe(200);
+    expect(replacedPackages.json().data).toMatchObject({ packages: ['com.video.app'], version: 2 });
+    const updateReplay = await app.inject({ method: 'PATCH', url: `/whitelist-lists/${studyList.id}`, headers: updateHeaders, payload: {
+      version: 1, packages: [' com.video.app ', 'com.video.app'],
+    } });
+    expect(updateReplay.statusCode).toBe(200);
+    expect(updateReplay.json().data).toMatchObject({ packages: ['com.video.app'], version: 2 });
+    const updateConflict = await app.inject({ method: 'PATCH', url: `/whitelist-lists/${studyList.id}`, headers: updateHeaders, payload: {
+      version: 1, packages: ['com.other.app'],
+    } });
+    expect(updateConflict.statusCode).toBe(409);
+    expect(updateConflict.json().error.code).toBe('IDEMPOTENCY_KEY_CONFLICT');
+
+    const defaultHeaders = { ...authOne, 'idempotency-key': 'whitelist-default-study-001' };
+    const madeDefault = await app.inject({ method: 'POST', url: `/whitelist-lists/${studyList.id}/default`, headers: defaultHeaders, payload: { version: 2 } });
+    expect(madeDefault.statusCode).toBe(201);
+    expect(madeDefault.json().data).toMatchObject({ isDefault: true, version: 3 });
+    const defaultReplay = await app.inject({ method: 'POST', url: `/whitelist-lists/${studyList.id}/default`, headers: defaultHeaders, payload: { version: 2 } });
+    expect(defaultReplay.statusCode).toBe(201);
+    expect(defaultReplay.json().data).toMatchObject({ isDefault: true, version: 3 });
+    const defaultConflict = await app.inject({ method: 'POST', url: `/whitelist-lists/${studyList.id}/default`, headers: defaultHeaders, payload: { version: 1 } });
+    expect(defaultConflict.statusCode).toBe(409);
+    expect(defaultConflict.json().error.code).toBe('IDEMPOTENCY_KEY_CONFLICT');
+
+    const missingReplacement = await app.inject({ method: 'DELETE', url: `/whitelist-lists/${studyList.id}?version=3`, headers: {
+      ...authOne, 'idempotency-key': 'whitelist-delete-missing-replacement-001',
+    } });
+    expect(missingReplacement.statusCode).toBe(409);
+    expect(missingReplacement.json().error.code).toBe('WHITELIST_REPLACEMENT_REQUIRED');
+
+    const deleteHeaders = { ...authOne, 'idempotency-key': 'whitelist-delete-study-001' };
+    const deleteUrl = `/whitelist-lists/${studyList.id}?version=3&replacementId=${originalDefault.id}`;
+    const replacement = await app.inject({ method: 'DELETE', url: deleteUrl, headers: deleteHeaders });
+    expect(replacement.statusCode).toBe(200);
+    expect(replacement.json().data.archivedAt).not.toBeNull();
+    const deleteReplay = await app.inject({ method: 'DELETE', url: deleteUrl, headers: deleteHeaders });
+    expect(deleteReplay.statusCode).toBe(200);
+    expect(deleteReplay.json().data).toMatchObject({ id: studyList.id, version: 4, archivedAt: replacement.json().data.archivedAt });
+    const deleteConflict = await app.inject({ method: 'DELETE', url: `/whitelist-lists/${studyList.id}?version=4&replacementId=${originalDefault.id}`, headers: deleteHeaders });
+    expect(deleteConflict.statusCode).toBe(409);
+    expect(deleteConflict.json().error.code).toBe('IDEMPOTENCY_KEY_CONFLICT');
+    const historicCreateReplay = await app.inject({ method: 'POST', url: '/whitelist-lists', headers: createHeaders, payload: {
+      name: '学习', packages: ['com.reader.app', 'com.notes.app'],
+    } });
+    expect(historicCreateReplay.statusCode).toBe(201);
+    expect(historicCreateReplay.json().data).toMatchObject({
+      id: studyList.id, name: '学习', packages: ['com.reader.app', 'com.notes.app'],
+      isDefault: false, version: 1, archivedAt: null,
+    });
+    const historicCreateConflict = await app.inject({ method: 'POST', url: '/whitelist-lists', headers: createHeaders, payload: {
+      name: '工作', packages: ['com.notes.app'],
+    } });
+    expect(historicCreateConflict.statusCode).toBe(409);
+    expect(historicCreateConflict.json().error.code).toBe('IDEMPOTENCY_KEY_CONFLICT');
+    const reassigned = await app.inject({ method: 'GET', url: `/tasks/${listTask.id}`, headers: authOne });
+    expect(reassigned.json().data).toMatchObject({ whitelistListId: originalDefault.id, version: 2 });
+
+    const sync = await app.inject({ method: 'GET', url: '/sync/task-focus?since=1970-01-01T00:00:00.000Z', headers: authOne });
+    expect(sync.statusCode).toBe(200);
+    expect(sync.json().data.whitelistLists).toEqual(expect.arrayContaining([expect.objectContaining({ id: studyList.id, archivedAt: expect.any(String) })]));
+    expect(sync.json().data.sessions).toEqual(expect.arrayContaining([expect.objectContaining({
+      id: restrictedSession.id, restrictionMode: 'whitelist', whitelistSource: 'custom',
+      whitelistPackageCount: 2, allowedPackagesSnapshot: ['custom.one', 'custom.two'], restrictionEffective: false, effectiveMinutes: 25,
+    })]));
+    expect(Object.keys(sync.json().data).indexOf('whitelistLists')).toBeLessThan(Object.keys(sync.json().data).indexOf('tasks'));
   });
 });

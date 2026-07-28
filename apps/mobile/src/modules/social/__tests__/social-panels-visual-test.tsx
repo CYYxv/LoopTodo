@@ -1,17 +1,22 @@
-﻿import { fireEvent, render } from '@testing-library/react-native';
+import { cleanup, fireEvent, render } from '@testing-library/react-native';
 
 const mockSocialState: any = {
   configured: true,
   friends: [],
   matches: [],
+  historyMatches: [],
   rooms: [],
   reactions: [],
   loading: false,
   error: null,
   load: jest.fn(async () => undefined),
+  refreshMatches: jest.fn(async () => undefined),
   setEnabled: jest.fn(),
   invite: jest.fn(async () => undefined),
   accept: jest.fn(async () => undefined),
+  remove: jest.fn(async () => undefined),
+  block: jest.fn(async () => undefined),
+  report: jest.fn(async () => true),
   createPk: jest.fn(async () => undefined),
   createRoom: jest.fn(async () => undefined),
   joinRoom: jest.fn(async () => undefined),
@@ -33,10 +38,13 @@ jest.mock('../social.store', () => ({ useSocialStore: (selector: (state: any) =>
 
 import { SocialChallengePanel } from '../components/SocialPanels';
 
+afterEach(cleanup);
+
 beforeEach(() => {
   mockSocialState.configured = true;
   mockSocialState.friends = [];
   mockSocialState.matches = [];
+  mockSocialState.historyMatches = [];
   mockSocialState.rooms = [];
   mockSocialState.reactions = [];
   mockSocialState.loading = false;
@@ -68,6 +76,16 @@ test('opens friend sheet from challenge badge', async () => {
   expect(screen.getByText('AL')).toBeTruthy();
 });
 
+test('opens the report sheet from a friend action', async () => {
+  mockSocialState.friends = [{ id: 'friend-1', status: 'accepted', direction: 'incoming', user: { id: 'user-1', nickname: 'Alice', avatarUrl: null }, createdAt: '2026-07-18T00:00:00.000Z' }];
+  const screen = await render(<SocialChallengePanel />);
+
+  await fireEvent.press(screen.getByText('好友 1'));
+  await fireEvent.press(screen.getByText('举报'));
+
+  expect(screen.getByLabelText('sheet-举报用户')).toBeTruthy();
+  expect(screen.getByText('举报 Alice，我们会记录并跟进处理。')).toBeTruthy();
+});
 test('uses a HeroUI skeleton while social data is loading', async () => {
   mockSocialState.loading = true;
 

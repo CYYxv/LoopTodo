@@ -4,7 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { SCORING_REPOSITORY, type ScoringRepository } from './scoring.repository';
 import type { ScoringSession } from './scoring.types';
 import { EventBusService } from '../common/event-bus.module';
-import { calculateSessionStars, IDLE_STAR_GAP_DAYS, mapTrustToMode } from '../teams-seasons/ranking.policy';
+import { calculateSessionStars, IDLE_STAR_GAP_DAYS, type FocusModeForStars } from '../teams-seasons/ranking.policy';
 
 @Injectable()
 export class ScoringService {
@@ -30,7 +30,7 @@ export class ScoringService {
       scoreDate,
       outcome: session.outcome,
       trustLevel: session.trustLevel,
-      durationMinutes: Math.max(0, session.actualMinutes ?? 0),
+      durationMinutes: Math.max(0, session.effectiveMinutes),
       streakDays,
       ...scores,
       formulaVersion: rules.version,
@@ -75,6 +75,9 @@ export class ScoringService {
 type Rules = ReturnType<ScoringService['rules']>;
 
 export function calculateScores(session: ScoringSession, streakDays: number, rules: Rules, priorEffectiveMinutesToday = 0) {
+  if (session.outcome === 'completed' && session.restrictionMode !== 'none' && !session.restrictionEffective) {
+    return { durationScore: 0, streakScore: 0, trustScore: 0, penaltyScore: 0, totalScore: 0 };
+  }
   if ((rules.version ?? 'v2-stars').startsWith('v2')) {
     return calculateStarScores(session, rules, priorEffectiveMinutesToday);
   }
@@ -82,14 +85,6 @@ export function calculateScores(session: ScoringSession, streakDays: number, rul
 }
 
 function calculateStarScores(session: ScoringSession, rules: Rules, priorEffectiveMinutesToday: number) {
-  const minutes = Math.max(0, session.actualMinutes ?? 0);
-  const mode = mapTrustToMode(session.trustLevel, session.timerMode);
-  const stars = calculateSessionStars({
-    outcome: session.outcome,
-    effectiveMinutes: minutes,
-    mode,
-    priorEffectiveMinutesToday,
-  });
   if (session.outcome === 'emergency_exit') {
     const penaltyScore = rules.emergencyPenalty;
     return { durationScore: 0, streakScore: 0, trustScore: 0, penaltyScore, totalScore: penaltyScore };
@@ -97,6 +92,13 @@ function calculateStarScores(session: ScoringSession, rules: Rules, priorEffecti
   if (session.outcome !== 'completed') {
     return { durationScore: 0, streakScore: 0, trustScore: 0, penaltyScore: 0, totalScore: 0 };
   }
+  const mode = starMode(session);
+  const stars = mode ? calculateSessionStars({
+    outcome: session.outcome,
+    effectiveMinutes: Math.max(0, session.effectiveMinutes),
+    mode,
+    priorEffectiveMinutesToday,
+  }) : 0;
   return {
     durationScore: Math.max(0, stars),
     streakScore: 0,
@@ -111,12 +113,22 @@ function calculateLegacyScores(session: ScoringSession, streakDays: number, rule
     const penaltyScore = session.outcome === 'emergency_exit' ? rules.emergencyPenalty : 0;
     return { durationScore: 0, streakScore: 0, trustScore: 0, penaltyScore, totalScore: penaltyScore };
   }
-  const minutes = Math.max(0, session.actualMinutes ?? 0);
+  const minutes = Math.max(0, session.effectiveMinutes);
   const effectiveMinutes = Math.min(minutes, 180) + Math.max(0, minutes - 180) * 0.25;
   const durationScore = session.timerMode === 'untimed' ? rules.untimedPoints : Math.round(effectiveMinutes * rules.durationWeight);
   const streakScore = Math.min(streakDays, 30) * rules.streakPointsPerDay;
   const trustScore = session.trustLevel === 'high' ? rules.highTrustPoints : session.trustLevel === 'normal' ? rules.normalTrustPoints : 0;
   return { durationScore, streakScore, trustScore, penaltyScore: 0, totalScore: durationScore + streakScore + trustScore };
+}
+
+function starMode(session: ScoringSession): FocusModeForStars | null {
+  if (session.restrictionMode !== 'none' && !session.restrictionEffective) return null;
+  if (session.timerMode === 'untimed') return 'untimed';
+  if (!session.restrictionEffective) return null;
+  if (session.mode === 'lock') return 'lock';
+  if (session.restrictionMode === 'strict') return 'strict';
+  if (session.restrictionMode === 'whitelist') return 'whitelist';
+  return null;
 }
 
 export function calculateStreak(dates: Date[], through: Date) {

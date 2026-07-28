@@ -4,6 +4,8 @@ import { createTaskStore } from '../task.store';
 import type { TaskRepository } from '../task.repository';
 import type { CreateTaskInput, Task, TaskCategory } from '../task.types';
 import type { LockEngine } from '@/modules/lock-engine/lock-engine.port';
+import type { FocusRestrictionOptions } from '@/modules/lock-engine/lock-engine.types';
+import { clearAnalyticsEvents, getAnalyticsEvents } from '@/modules/analytics/analytics';
 
 const pomodoroTask: Task = {
   id: 'task-one',
@@ -24,7 +26,7 @@ const pomodoroTask: Task = {
   status: 'pending',
   version: 1,
   syncStatus: 'pending',
-  remoteActive: false, whitelistMode: 'inherit', whitelistPackages: [],
+  remoteActive: false, restrictionMode: 'whitelist', whitelistMode: 'inherit', whitelistListId: null, whitelistPackages: [],
 };
 
 const goalTask: Task = {
@@ -107,6 +109,328 @@ function createRepository(options?: {
 }
 
 describe('task store local loop', () => {
+  test('records the whitelist permission, runtime and settlement lifecycle', async () => {
+    clearAnalyticsEvents();
+    let time = 1_000;
+    const store = createTaskStore(createRepository().repository, [pomodoroTask], () => time, testLockEngine([]));
+
+    await store.getState().startSession('task-one', 'focus');
+    time += 25 * 60_000;
+    await store.getState().finishSession('completed');
+
+    const events = getAnalyticsEvents();
+    expect(events).toEqual(expect.arrayContaining([
+      expect.objectContaining({ event: 'whitelist_permission_result', props: {
+        usageAccessGranted: true,
+        overlayGranted: true,
+        backgroundPopupAllowed: true,
+        deviceBrand: 'test',
+      } }),
+      expect.objectContaining({ event: 'focus_restriction_start', props: expect.objectContaining({
+        mode: 'whitelist',
+        source: 'list',
+        listId: 'missing',
+        packageCount: 0,
+        effective: true,
+      }) }),
+      expect.objectContaining({ event: 'focus_restriction_clear', props: { reason: 'completed', success: true } }),
+      expect.objectContaining({ event: 'whitelist_star_settled', props: { effectiveMinutes: 25, stars: 1 } }),
+    ]));
+  });
+
+  test('drains native blocker events during the foreground restriction audit', async () => {
+    clearAnalyticsEvents();
+    const engine = {
+      ...testLockEngine([]),
+      drainFocusRestrictionEvents: jest.fn(async () => ([
+        { event: 'app_blocked' as const, props: { sessionId: 'native-session', packageName: 'private.app' }, at: 2_000 },
+      ])),
+    } as LockEngine;
+    const store = createTaskStore(createRepository().repository, [pomodoroTask], () => 1_000, engine);
+    await store.getState().startSession('task-one', 'focus');
+
+    await store.getState().auditActiveRestriction('foreground');
+
+    expect(getAnalyticsEvents()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ event: 'app_blocked', props: { sessionId: 'native-session' } }),
+    ]));
+  });
+
+  test('freezes the resolved whitelist against launchable apps when focus starts', async () => {
+    const { repository } = createRepository();
+    const applied: Array<Record<string, unknown>> = [];
+    const engine = {
+      ...testLockEngine([]),
+      async listLaunchableApps() { return [{ packageName: 'com.reader', label: '阅读器' }, { packageName: 'com.other', label: '其他' }]; },
+      async applyFocusRestrictions(options: Record<string, unknown>) { applied.push(options); },
+    } as LockEngine;
+    const whitelistSource = { getState: () => ({
+      lists: [{ id: 'study', name: '学习', packages: ['com.reader', 'com.missing'], isDefault: true, version: 1, syncStatus: 'synced' as const }],
+      hydrated: true,
+      error: null,
+      hydrate: async () => undefined,
+    }) };
+    const scheduler = { schedule: async () => undefined, cancel: async () => undefined };
+    const store = createTaskStore(repository, [{ ...pomodoroTask, restrictionMode: 'whitelist', whitelistMode: 'list', whitelistListId: 'study' }],
+      () => 1_000, engine, scheduler as never, whitelistSource as never);
+
+    await store.getState().startSession('task-one', 'focus');
+
+    expect(store.getState().activeSession).toMatchObject({
+      restrictionMode: 'whitelist',
+      whitelistSource: 'list:study',
+      restrictionEffective: true,
+      allowedPackagesSnapshot: ['com.reader'],
+    });
+    expect(applied[0]).toMatchObject({ sessionId: store.getState().activeSession?.id, taskTitle: pomodoroTask.title, restrictionMode: 'whitelist', blockLeaving: true, allowedPackages: ['com.reader'] });
+  });
+
+  test.each([
+    ['unrestricted focus', 'focus', 'none'],
+    ['strict focus', 'focus', 'strict'],
+    ['lock session', 'lock', 'whitelist'],
+  ] as const)('does not read whitelist data for %s', async (_label, mode, restrictionMode) => {
+    const hydrate = jest.fn(async () => { throw new Error('不应读取白名单'); });
+    const listLaunchableApps = jest.fn(async () => { throw new Error('不应枚举应用'); });
+    const engine = { ...testLockEngine([]), listLaunchableApps } as LockEngine;
+    const whitelistSource = { getState: () => ({ lists: [], hydrated: false, error: '不可用', hydrate }) };
+    const task = { ...pomodoroTask, restrictionMode };
+    const store = createTaskStore(createRepository().repository, [task], () => 1_000, engine, undefined, whitelistSource as never);
+
+    const result = await store.getState().startSession(task.id, mode);
+
+    expect(result).toEqual({ ok: true });
+    expect(hydrate).not.toHaveBeenCalled();
+    expect(listLaunchableApps).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ['hydrate failed', true, '白名单数据库不可用', '白名单读取失败：白名单数据库不可用'],
+    ['hydrate incomplete', false, null, '白名单尚未完成加载'],
+  ] as const)('aborts whitelist start when %s and preserves task settings', async (_label, hydrated, sourceError, expectedError) => {
+    const listLaunchableApps = jest.fn(async () => []);
+    const engine = { ...testLockEngine([]), listLaunchableApps } as LockEngine;
+    const hydrate = jest.fn(async () => undefined);
+    const whitelistSource = { getState: () => ({ lists: [], hydrated, error: sourceError, hydrate }) };
+    const configuredTask = {
+      ...pomodoroTask,
+      restrictionMode: 'whitelist' as const,
+      whitelistMode: 'custom' as const,
+      whitelistListId: null,
+      whitelistPackages: ['com.reader'],
+    };
+    const store = createTaskStore(createRepository().repository, [configuredTask], () => 1_000, engine, undefined, whitelistSource as never);
+
+    const result = await store.getState().startSession(configuredTask.id, 'focus');
+
+    expect(result).toEqual({ ok: false, error: expectedError, missingCapabilities: [] });
+    expect(store.getState().activeSession).toBeNull();
+    expect(store.getState().tasks[0]).toEqual(configuredTask);
+    expect(listLaunchableApps).not.toHaveBeenCalled();
+  });
+
+  test('does not start a restricted session when native enforcement is ineffective', async () => {
+    const { repository } = createRepository();
+    const engine = {
+      ...testLockEngine([]),
+      async applyFocusRestrictions() { return { supported: true, effective: false, reason: '请开启使用情况访问权限' }; },
+    } as LockEngine;
+    const store = createTaskStore(repository, [pomodoroTask], () => 1_000, engine);
+
+    await store.getState().startSession('task-one', 'focus');
+
+    expect(store.getState().activeSession).toBeNull();
+    expect(store.getState().error).toBe('请开启使用情况访问权限');
+  });
+
+  test('returns structured missing capabilities before starting a restricted session', async () => {
+    const engine = {
+      ...testLockEngine([]),
+      async checkCapabilities() {
+        return {
+          ...testCapabilities(),
+          usageAccess: { supported: true, effective: false, reason: '未授权' },
+          overlay: { supported: true, effective: false, reason: '未授权' },
+          backgroundLaunch: { supported: true, effective: false, reason: '未授权' },
+        };
+      },
+    } as LockEngine;
+    const store = createTaskStore(createRepository().repository, [pomodoroTask], () => 1_000, engine);
+
+    const result = await store.getState().startSession('task-one', 'focus');
+
+    expect(result).toEqual({
+      ok: false,
+      error: '需要恢复软件限制权限后才能开始专注',
+      missingCapabilities: ['usageAccess', 'overlay', 'vendorBackground'],
+    });
+    expect(store.getState().activeSession).toBeNull();
+  });
+
+  test('serializes repeated start taps before whitelist hydration finishes', async () => {
+    const { repository } = createRepository();
+    let releaseHydration!: () => void;
+    const hydration = new Promise<void>((resolve) => { releaseHydration = resolve; });
+    const applyFocusRestrictions = jest.fn(async () => ({ supported: true, effective: true, reason: null }));
+    const engine = { ...testLockEngine([]), applyFocusRestrictions } as LockEngine;
+    const whitelistState = { lists: [], hydrated: false, error: null as string | null, hydrate: async () => {
+      await hydration;
+      whitelistState.hydrated = true;
+    } };
+    const whitelistSource = { getState: () => whitelistState };
+    const store = createTaskStore(repository, [pomodoroTask], () => 1_000, engine, undefined, whitelistSource as never);
+
+    const first = store.getState().startSession('task-one', 'focus');
+    const second = store.getState().startSession('task-one', 'focus');
+    releaseHydration();
+    await Promise.all([first, second]);
+
+    expect(applyFocusRestrictions).toHaveBeenCalledTimes(1);
+    expect(store.getState().activeSession?.taskId).toBe('task-one');
+  });
+
+  test('ends the session after restrictions fail during pause', async () => {
+    let applyCount = 0;
+    const engine = {
+      ...testLockEngine([]),
+      async applyFocusRestrictions() {
+        applyCount += 1;
+        return applyCount === 1
+          ? { supported: true, effective: true, reason: null }
+          : { supported: true, effective: false, reason: '权限已关闭' };
+      },
+    } as LockEngine;
+    const store = createTaskStore(createRepository().repository, [pomodoroTask], () => 1_000, engine);
+    await store.getState().startSession('task-one', 'focus');
+
+    await store.getState().toggleSessionPause();
+
+    expect(store.getState().activeSession).toBeNull();
+    expect(store.getState().sessionRecords[0]).toMatchObject({ outcome: 'exited', restrictionEffective: false });
+    expect(store.getState().error).toContain('软件限制已失效，本次专注已异常结束');
+  });
+
+  test('audits foreground restrictions, persists invalidation and ends only once', async () => {
+    let applyCount = 0;
+    const clearFocusRestrictions = jest.fn(async () => undefined);
+    const engine = {
+      ...testLockEngine([]),
+      async applyFocusRestrictions() {
+        applyCount += 1;
+        return applyCount === 1
+          ? { supported: true, effective: true, reason: null }
+          : { supported: true, effective: false, reason: '显示在其他应用上层已关闭' };
+      },
+      clearFocusRestrictions,
+    } as LockEngine;
+    const { repository, sessions } = createRepository();
+    const updateActiveSession = jest.spyOn(repository, 'updateActiveSession');
+    const store = createTaskStore(repository, [pomodoroTask], () => 1_000, engine);
+    await store.getState().startSession('task-one', 'focus');
+
+    const first = await store.getState().auditActiveRestriction('foreground');
+    const second = await store.getState().auditActiveRestriction('foreground');
+
+    expect(first).toMatchObject({ status: 'ended', missingCapabilities: [] });
+    expect(second).toEqual({ status: 'skipped' });
+    expect(updateActiveSession).toHaveBeenCalledWith(expect.objectContaining({ restrictionEffective: false }));
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]).toMatchObject({ outcome: 'exited', restrictionEffective: false });
+    expect(clearFocusRestrictions).toHaveBeenCalled();
+  });
+
+  test('ends a recovered restricted session when permissions are no longer effective', async () => {
+    const recovered: ActiveSession = {
+      id: 'recovered', taskId: 'task-one', mode: 'focus', timerMode: 'countdown', phase: 'focus',
+      startedAt: 1_000, plannedEndAt: 61_000, restEndsAt: null, pausedAt: null, accumulatedPausedMs: 0,
+      restrictionMode: 'whitelist', whitelistSource: 'custom', restrictionEffective: true, allowedPackagesSnapshot: [],
+    };
+    const engine = {
+      ...testLockEngine([]),
+      async checkCapabilities() {
+        return { ...testCapabilities(), usageAccess: { supported: true, effective: false, reason: '未授权' } };
+      },
+    } as LockEngine;
+    const { repository, sessions } = createRepository({ activeSession: recovered });
+    const store = createTaskStore(repository, [], () => 2_000, engine);
+
+    await store.getState().hydrate();
+
+    expect(store.getState().activeSession).toBeNull();
+    expect(sessions[0]).toMatchObject({ id: 'recovered', outcome: 'exited', restrictionEffective: false });
+    expect(store.getState().error).toContain('软件限制已失效，本次专注已异常结束');
+  });
+
+  test('does not preview stars after a whitelist restriction becomes ineffective', async () => {
+    let time = 1_000;
+    const store = createTaskStore(createRepository().repository, [pomodoroTask], () => time, testLockEngine([]));
+    await store.getState().startSession('task-one', 'focus');
+    store.setState((state) => ({ activeSession: state.activeSession ? { ...state.activeSession, restrictionEffective: false } : null }));
+    time += 25 * 60_000;
+
+    await store.getState().finishSession('completed');
+
+    expect(store.getState().lastStarDelta).toBe(0);
+  });
+
+  test('retains the settled restriction mode with the star delta', async () => {
+    let time = 1_000;
+    const store = createTaskStore(createRepository().repository, [pomodoroTask], () => time, testLockEngine([]));
+    await store.getState().startSession('task-one', 'focus');
+    time += 25 * 60_000;
+
+    await store.getState().finishSession('completed');
+
+    expect(store.getState().lastStarDelta).toBe(1);
+    expect(store.getState().lastStarRestrictionMode).toBe('whitelist');
+  });
+
+  test('clears native restrictions even when finishing persistence fails', async () => {
+    const clearFocusRestrictions = jest.fn(async () => undefined);
+    const engine = { ...testLockEngine([]), clearFocusRestrictions } as LockEngine;
+    const store = createTaskStore(createRepository({ finishError: new Error('记录保存失败') }).repository, [pomodoroTask], () => 2_000, engine);
+    await store.getState().startSession('task-one', 'focus');
+
+    await store.getState().finishSession('completed');
+
+    expect(clearFocusRestrictions).toHaveBeenCalled();
+    expect(store.getState().error).toBe('记录保存失败');
+  });
+
+  test('retries transient native cleanup failures before entering rest', async () => {
+    const clearFocusRestrictions = jest.fn()
+      .mockRejectedValueOnce(new Error('原生清理暂时失败'))
+      .mockResolvedValue(undefined);
+    const engine = { ...testLockEngine([]), clearFocusRestrictions } as LockEngine;
+    const store = createTaskStore(createRepository().repository, [pomodoroTask], () => 2_000, engine);
+    await store.getState().startSession('task-one', 'focus');
+
+    await store.getState().finishSession('completed');
+
+    expect(clearFocusRestrictions).toHaveBeenCalledTimes(2);
+    expect(store.getState().activeSession?.phase).toBe('rest');
+    expect(store.getState().error).toBeNull();
+  });
+
+  test('repairs a persistent cleanup failure when the rest screen returns to foreground', async () => {
+    const clearFocusRestrictions = jest.fn()
+      .mockRejectedValueOnce(new Error('清理失败 1'))
+      .mockRejectedValueOnce(new Error('清理失败 2'))
+      .mockRejectedValueOnce(new Error('清理失败 3'))
+      .mockResolvedValue(undefined);
+    const engine = { ...testLockEngine([]), clearFocusRestrictions } as LockEngine;
+    const store = createTaskStore(createRepository().repository, [pomodoroTask], () => 2_000, engine);
+    await store.getState().startSession('task-one', 'focus');
+    await store.getState().finishSession('completed');
+
+    expect(clearFocusRestrictions).toHaveBeenCalledTimes(3);
+    expect(store.getState().activeSession?.phase).toBe('rest');
+    expect(store.getState().error).toContain('清理失败 3');
+
+    expect(await store.getState().auditActiveRestriction('foreground')).toEqual({ status: 'skipped' });
+    expect(clearFocusRestrictions).toHaveBeenCalledTimes(4);
+    expect(store.getState().error).toBeNull();
+  });
   test('archives a task and removes it from the visible list', async () => {
     const store = createTaskStore(createRepository().repository, [pomodoroTask]);
     const state = store.getState() as typeof store.getState extends () => infer Value ? Value & { deleteTask(taskId: string, version: number): Promise<{ ok: boolean; error?: string }> } : never;
@@ -123,7 +447,14 @@ describe('task store local loop', () => {
 
     await (store.getState().finishSession as unknown as (outcome: 'completed', amount?: number, reason?: string, note?: string) => Promise<void>)('completed', undefined, undefined, '完成第一章练习');
 
-    expect(sessions[0]).toMatchObject({ completionNote: '完成第一章练习' });
+    expect(sessions[0]).toMatchObject({
+      completionNote: '完成第一章练习',
+      restrictionMode: 'whitelist',
+      whitelistSource: 'list:missing',
+      whitelistPackageCount: 0,
+      restrictionEffective: true,
+      effectiveMinutes: 0,
+    });
   });
 
   test('creates, renames and archives a task category', async () => {
@@ -212,6 +543,7 @@ describe('task store local loop', () => {
       async getActiveSession() { return { id: 'native-lock', taskId: 'task-one', taskTitle: '第一项任务', startedAt: 1000, endsAt: 61_000, enhanced: true }; },
       async startLockSession() { return undefined; }, async endLockSession() { return undefined; }, async emergencyExit() { return undefined; },
       async applyFocusRestrictions() { return undefined; }, async clearFocusRestrictions() { return undefined; },
+      async drainFocusRestrictionEvents() { return []; },
       async scheduleForcedRule() { return undefined; }, async cancelForcedRule() { return undefined; }, async markForcedRuleSatisfied() { return undefined; }, async openPermissionSettings() { return undefined; }, async listLaunchableApps() { return []; },
     };
     const store = createTaskStore(repository, [], () => 2000, engine);
@@ -223,18 +555,21 @@ describe('task store local loop', () => {
     const { repository, sessions } = createRepository();
     const calls: string[] = [];
     const engine: LockEngine = {
-      async checkCapabilities() { return { supported: true, manufacturer: 'test', sdkInt: 36, vendorBackgroundSettingsAvailable: true, notificationGranted: true, notificationListenerEnabled: true, accessibilityEnabled: true, batteryOptimizationIgnored: true, riskConfirmed: true, emergencyExitsRemaining: 2, exactAlarmAllowed: true, restrictions: { hideRecents: supportedRestriction(), blockLeaving: supportedRestriction(), blockNotifications: supportedRestriction(), whitelist: supportedRestriction(), hideLauncherIcon: { supported: false, effective: false, reason: 'unsupported', experimental: true } } }; },
+      async checkCapabilities() { return { ...testCapabilities(), notificationGranted: true, notificationListenerEnabled: true, riskConfirmed: true,
+        usageAccess: { supported: true, effective: false, reason: '未授权' }, overlay: { supported: true, effective: false, reason: '未授权' },
+        backgroundLaunch: { supported: true, effective: false, reason: '未授权' } }; },
       async confirmRisk() { return undefined; }, async getActiveSession() { return null; },
       async startLockSession(input) { calls.push(`start:${input.taskId}`); }, async endLockSession(id) { calls.push(`end:${id}`); },
       async emergencyExit(_id, reason) { calls.push(`emergency:${reason}`); }, async scheduleForcedRule() { return undefined; }, async cancelForcedRule() { return undefined; }, async markForcedRuleSatisfied() { return undefined; }, async openPermissionSettings() { return undefined; }, async listLaunchableApps() { return []; },
-      async applyFocusRestrictions(options) { calls.push(`restrict:${options.hideRecents}:${options.blockLeaving}:${options.blockNotifications}`); }, async clearFocusRestrictions() { calls.push('clear'); },
+      async drainFocusRestrictionEvents() { return []; },
+      async applyFocusRestrictions() { throw new Error('锁机不应调用普通软件限制'); }, async clearFocusRestrictions() { calls.push('clear'); },
     };
     const store = createTaskStore(repository, [pomodoroTask], () => 1000, engine);
 
     await store.getState().startSession('task-one', 'lock');
     await store.getState().finishSession('exited', undefined, '临时就医');
 
-    expect(calls).toEqual(['restrict:true:true:true', 'start:task-one', 'emergency:临时就医', 'clear']);
+    expect(calls).toEqual(['start:task-one', 'emergency:临时就医', 'clear']);
     expect(sessions[0]).toMatchObject({ mode: 'lock', failureReason: '临时就医' });
   });
 
@@ -246,7 +581,7 @@ describe('task store local loop', () => {
     await store.getState().startSession('task-one', 'focus');
     await store.getState().finishSession('completed');
 
-    expect(calls).toEqual(['restrict:false:false:true', 'clear']);
+    expect(calls).toEqual(['restrict:false:true:true', 'clear']);
   });
 
   test('enforces no-pause, no-early-complete and no-cancel strict options', async () => {
@@ -290,6 +625,23 @@ describe('task store local loop', () => {
     time = 181_000;
     await store.getState().finishSession('completed');
     expect(sessions[0].durationSeconds).toBe(120);
+  });
+
+  test('keeps native restrictions active for an indefinitely paused session', async () => {
+    const applied: FocusRestrictionOptions[] = [];
+    const engine = {
+      ...testLockEngine([]),
+      async applyFocusRestrictions(options: FocusRestrictionOptions) {
+        applied.push(options);
+        return { supported: true, effective: true, reason: null };
+      },
+    } as LockEngine;
+    const store = createTaskStore(createRepository().repository, [pomodoroTask], () => 1_000, engine);
+    await store.getState().startSession('task-one', 'focus');
+
+    await store.getState().toggleSessionPause();
+
+    expect(applied.at(-1)?.expiresAt).toBe(Number.MAX_SAFE_INTEGER);
   });
 
   test('automatically completes an expired countdown once and enters rest', async () => {
@@ -356,7 +708,7 @@ describe('task store local loop', () => {
 
     await store.getState().startSession('task-one', 'focus');
 
-    expect(calls).toEqual(['restrict:false:false:true', 'clear']);
+    expect(calls).toEqual(['restrict:false:true:true', 'clear']);
     expect(store.getState().activeSession).toBeNull();
   });
 
@@ -368,22 +720,50 @@ describe('task store local loop', () => {
     await store.getState().startSession('task-one', 'focus');
     await store.getState().hydrate();
 
-    expect(calls).toEqual(['restrict:false:false:true']);
+    expect(calls).toEqual(['restrict:false:true:true']);
     expect(store.getState().activeSession?.taskId).toBe('task-one');
   });
 
   test('hydrates the active session for restart recovery', async () => {
+    clearAnalyticsEvents();
     const recovered: ActiveSession = {
       id: 'session-recovered', taskId: 'task-one', mode: 'focus', timerMode: 'countdown',
       phase: 'focus', startedAt: 1000, plannedEndAt: 2000, restEndsAt: null,
     };
     const { repository } = createRepository({ activeSession: recovered });
-    const store = createTaskStore(repository, [], () => 1_500, testLockEngine([]));
+    const calls: string[] = [];
+    const store = createTaskStore(repository, [], () => 1_500, testLockEngine(calls));
 
     await store.getState().hydrate();
 
-    expect(store.getState().activeSession).toEqual(recovered);
+    expect(store.getState().activeSession).toMatchObject({ id: recovered.id, restrictionMode: 'whitelist', restrictionEffective: true });
+    expect(calls).toEqual(['restrict:false:true:true']);
     expect(store.getState().tasks).toHaveLength(2);
+    expect(getAnalyticsEvents()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ event: 'focus_restriction_recovered', props: {
+        activeSessionFound: true,
+        nativeStateFound: true,
+        action: 'restored',
+      } }),
+    ]));
+  });
+
+  test('closes a recovered session without reapplying restrictions when signed out', async () => {
+    const recovered: ActiveSession = {
+      id: 'session-signed-out', taskId: 'task-one', mode: 'focus', timerMode: 'countdown',
+      phase: 'focus', startedAt: 1_000, plannedEndAt: 61_000, plannedFocusSeconds: 60,
+      restEndsAt: null, pausedAt: null, accumulatedPausedMs: 0,
+    };
+    const { repository, sessions } = createRepository({ activeSession: recovered });
+    const calls: string[] = [];
+    const store = createTaskStore(repository, [], () => 10_000, testLockEngine(calls));
+
+    await store.getState().hydrate(false);
+
+    expect(calls).toEqual(['clear']);
+    expect(store.getState().activeSession).toBeNull();
+    expect(store.getState().tasks.find((task) => task.id === 'task-one')?.status).toBe('pending');
+    expect(sessions[0]).toMatchObject({ id: recovered.id, outcome: 'exited', failureReason: '退出登录' });
   });
 
   test('completes an expired recovered countdown during hydration', async () => {
@@ -455,7 +835,7 @@ describe('task store local loop', () => {
 
   test('starts countdown with a recoverable planned end timestamp', async () => {
     const { repository } = createRepository();
-    const store = createTaskStore(repository, [pomodoroTask], () => 1000);
+    const store = createTaskStore(repository, [pomodoroTask], () => 1000, testLockEngine([]));
 
     await store.getState().startSession('task-one', 'focus');
 
@@ -468,7 +848,7 @@ describe('task store local loop', () => {
   test('requires user-confirmed amount for goal completion', async () => {
     const { repository, sessions } = createRepository();
     let time = 1000;
-    const store = createTaskStore(repository, [goalTask], () => time++);
+    const store = createTaskStore(repository, [goalTask], () => time++, testLockEngine([]));
     await store.getState().startSession('task-goal', 'focus');
 
     await store.getState().finishSession('completed');
@@ -515,7 +895,7 @@ describe('task store local loop', () => {
   test('enters rest and writes only one record when finish actions race', async () => {
     const { repository, sessions } = createRepository();
     let time = 1000;
-    const store = createTaskStore(repository, [pomodoroTask], () => time++);
+    const store = createTaskStore(repository, [pomodoroTask], () => time++, testLockEngine([]));
     await store.getState().startSession('task-one', 'focus');
 
     await Promise.all([
@@ -531,7 +911,7 @@ describe('task store local loop', () => {
 
   test('keeps the focus session retryable after transaction failure', async () => {
     const { repository, sessions } = createRepository({ finishError: new Error('事务失败') });
-    const store = createTaskStore(repository, [pomodoroTask]);
+    const store = createTaskStore(repository, [pomodoroTask], Date.now, testLockEngine([]));
     await store.getState().startSession('task-one', 'focus');
 
     await store.getState().finishSession('completed');
@@ -579,6 +959,7 @@ function testLockEngine(calls: string[]): LockEngine {
     async confirmRisk() { return undefined; }, async getActiveSession() { return null; },
     async startLockSession() { return undefined; }, async endLockSession() { return undefined; }, async emergencyExit() { return undefined; },
     async applyFocusRestrictions(options) { calls.push(`restrict:${options.hideRecents}:${options.blockLeaving}:${options.blockNotifications}`); },
+    async drainFocusRestrictionEvents() { return []; },
     async clearFocusRestrictions() { calls.push('clear'); }, async scheduleForcedRule() { return undefined; }, async cancelForcedRule() { return undefined; }, async markForcedRuleSatisfied() { return undefined; }, async openPermissionSettings() { return undefined; }, async listLaunchableApps() { return []; },
   };
 }

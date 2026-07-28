@@ -6,6 +6,7 @@ import { SyncEngine } from './sync.engine';
 import { createSQLiteSyncRepository } from './sqlite-sync.repository';
 import type { SyncConflict } from './sync.types';
 import { taskStore } from '@/modules/tasks/task.store';
+import { whitelistStore } from '@/modules/whitelist/whitelist.store';
 
 type SyncStore = {
   configured: boolean;
@@ -34,6 +35,7 @@ export const syncStore = createStore<SyncStore>((set, get) => ({
     try {
       const summary = await engine.run();
       await taskStore.getState().hydrate();
+      await whitelistStore.getState().hydrate(true);
       set({ isSyncing: false, pending: summary.pending, conflicts: summary.conflicts, error: summary.lastError });
     } catch (error) {
       set({ isSyncing: false, error: error instanceof Error ? error.message : '同步失败' });

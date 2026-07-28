@@ -7,6 +7,7 @@ import { StatusBar } from 'expo-status-bar';
 import { ActiveSessionScreen } from '@/modules/focus-session/components/ActiveSessionScreen';
 import { track } from '@/modules/analytics/analytics';
 import { taskStore, useTaskStore } from '@/modules/tasks/task.store';
+import type { RestrictionMode } from '@/modules/whitelist/whitelist.types';
 import { Button, Text } from '@/ui/hero-runtime';
 
 export default function SessionRoute() {
@@ -21,8 +22,10 @@ export default function SessionRoute() {
   const isPausePending = useTaskStore((state) => state.isTogglingPause);
   const error = useTaskStore((state) => state.error);
   const lastStarDelta = useTaskStore((state) => state.lastStarDelta);
+  const lastStarRestrictionMode = useTaskStore((state) => state.lastStarRestrictionMode);
+  const auditActiveRestriction = useTaskStore((state) => state.auditActiveRestriction);
   const clearStarDelta = useCallback(() => {
-    taskStore.setState({ lastStarDelta: null });
+    taskStore.setState({ lastStarDelta: null, lastStarRestrictionMode: null });
   }, []);
   const goTasks = useCallback(() => {
     clearStarDelta();
@@ -42,7 +45,7 @@ export default function SessionRoute() {
       return (
         <SafeAreaView style={{ flex: 1, backgroundColor: dark ? '#101114' : '#F7F8FA' }}>
           <StatusBar style={dark ? 'light' : 'dark'} />
-          <StarSettleView delta={lastStarDelta} onDone={goTasks} />
+          <StarSettleView delta={lastStarDelta} restrictionMode={lastStarRestrictionMode} onDone={goTasks} />
         </SafeAreaView>
       );
     }
@@ -84,12 +87,13 @@ export default function SessionRoute() {
         onExit={exit}
         onFinishRest={endRest}
         onCountdownExpired={completeExpired}
+        onAuditRestriction={auditActiveRestriction}
       />
     </SafeAreaView>
   );
 }
 
-function StarSettleView({ delta, onDone }: { delta: number; onDone: () => void }) {
+function StarSettleView({ delta, restrictionMode, onDone }: { delta: number; restrictionMode: RestrictionMode | null; onDone: () => void }) {
   // Approximate promotion feedback from session records sum is not available here; celebrate any +star burst.
   if (delta > 0) {
     track('star_settle', { delta, surface: 'session_end' });
@@ -98,7 +102,9 @@ function StarSettleView({ delta, onDone }: { delta: number; onDone: () => void }
     <View className="flex-1 items-center justify-center gap-4 px-6" accessibilityLabel="专注星结算">
       <Text type="h3" weight="semibold">专注已结束</Text>
       <Text type="h2" weight="bold" color="accent">
-        {delta > 0 ? `本次 +${delta} 星` : delta < 0 ? `本次 ${delta} 星` : '本次 +0 星'}
+        {restrictionMode === 'whitelist'
+          ? `完成白名单专注，本次 ${delta >= 0 ? '+' : ''}${delta} 星`
+          : delta > 0 ? `本次 +${delta} 星` : delta < 0 ? `本次 ${delta} 星` : '本次 +0 星'}
       </Text>
       {delta > 0 ? (
         <View className="items-center gap-1 rounded-2xl bg-accent/10 px-4 py-3" accessibilityLabel="段位成长反馈">

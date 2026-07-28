@@ -1,11 +1,10 @@
 import { useEffect } from 'react';
-import { ScrollView, View } from 'react-native';
+import { AppState, View } from 'react-native';
 
 import { Button, Card, Chip, Input, Switch, Text } from '@/ui/hero-runtime';
 
 import { useLockEngineStore } from '@/modules/lock-engine/lock-engine.store';
 import { useNotificationStore } from '@/modules/notifications/notification.store';
-import { useWhitelistStore } from '@/modules/focus-session/whitelist.store';
 import { track } from '@/modules/analytics/analytics';
 import { normalizeBottomTabs, optionalTabKeys, replaceBottomTab, tabLabels, type OptionalTabKey } from '@/ui/tab-navigation';
 
@@ -27,18 +26,15 @@ export function SettingsPanel() {
   const refresh = useLockEngineStore((state) => state.refresh);
   const open = useLockEngineStore((state) => state.open);
   const notificationPermission = useNotificationStore((state) => state.permission);
-  const whitelistSelected = useWhitelistStore((state) => state.selected);
-  const whitelistApps = useWhitelistStore((state) => state.apps);
-  const whitelistLoading = useWhitelistStore((state) => state.loadingApps);
-  const hydrateWhitelist = useWhitelistStore((state) => state.hydrate);
-  const loadWhitelistApps = useWhitelistStore((state) => state.loadApps);
-  const toggleWhitelist = useWhitelistStore((state) => state.toggle);
 
   useEffect(() => {
     if (configured) void load();
     void refresh();
-    void hydrateWhitelist();
-  }, [configured, load, refresh, hydrateWhitelist]);
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void refresh();
+    });
+    return () => subscription.remove();
+  }, [configured, load, refresh]);
 
   const bottomTabs = normalizeBottomTabs(value?.bottomTabs);
   const moreTab = optionalTabKeys.find((key) => !bottomTabs.includes(key))!;
@@ -148,52 +144,16 @@ export function SettingsPanel() {
 
       <Card variant="secondary">
         <Card.Body className="gap-2">
-          <Card.Title>锁机权限实时检查</Card.Title>
+          <Card.Title>专注限制权限</Card.Title>
           <Text type="body-xs">设备：{capabilities?.manufacturer || 'Android'} · API {capabilities?.sdkInt ?? '-'}</Text>
-          <Text type="body-xs">通知监听 {yes(capabilities?.notificationListenerEnabled)} · 无障碍 {yes(capabilities?.accessibilityEnabled)} · 电池白名单 {yes(capabilities?.batteryOptimizationIgnored)} · 精确闹钟 {yes(capabilities?.exactAlarmAllowed)}</Text>
+          <Text type="body-xs">使用情况访问 {capabilityStatus(capabilities?.usageAccess?.effective)} · 显示在其他应用上层 {capabilityStatus(capabilities?.overlay?.effective)} · 后台弹出 {capabilityStatus(capabilities?.backgroundLaunch?.effective)}</Text>
           <View className="flex-row flex-wrap gap-2">
             <Button size="sm" onPress={() => void refresh()}>重新检查</Button>
-            <Button size="sm" variant="secondary" onPress={() => void open('accessibility')}>无障碍设置</Button>
-            <Button size="sm" variant="secondary" onPress={() => void open('notificationListener')}>通知监听</Button>
+            <Button size="sm" variant="secondary" accessibilityLabel="使用情况访问" onPress={() => void open('usageAccess')}>使用情况访问</Button>
+            <Button size="sm" variant="secondary" accessibilityLabel="显示在其他应用上层" onPress={() => void open('overlay')}>显示在其他应用上层</Button>
             <Button size="sm" variant="secondary" onPress={() => void open('vendorBackground')}>厂商后台设置</Button>
           </View>
-          <Text type="body-xs" color="muted">请允许自启动、后台运行和后台弹出。厂商设置页不可用时会安全回退到应用详情页。</Text>
-        </Card.Body>
-      </Card>
-
-      <Card variant="secondary">
-        <Card.Body className="gap-3">
-          <View className="flex-row items-center justify-between gap-3">
-            <Card.Title>专注应用白名单</Card.Title>
-            <Chip color={whitelistSelected.length > 0 ? 'success' : 'default'} variant="soft">
-              已选 {whitelistSelected.length}
-            </Chip>
-          </View>
-          <Text type="body-xs" color="muted">
-            仅用于专注模式的「仅允许任务白名单」严格项：开启后离开 LoopTodo 只允许切换到下方勾选的应用（拨号与相机始终放行）。锁机模式不使用白名单。需先开启无障碍增强约束。
-          </Text>
-          <Button size="sm" variant="secondary" onPress={() => void loadWhitelistApps()} isDisabled={whitelistLoading}>
-            {whitelistLoading ? '正在读取已安装应用…' : whitelistApps.length > 0 ? '刷新已安装应用' : '读取已安装应用'}
-          </Button>
-          {whitelistApps.length === 0 ? (
-            <Text type="body-xs" color="muted">点击上方按钮读取本机可启动的应用列表。</Text>
-          ) : (
-            <View className="gap-2">
-              {whitelistApps.map((app) => (
-                <View key={app.packageName} className="flex-row items-center justify-between gap-3">
-                  <View className="flex-1">
-                    <Text type="body-sm">{app.label}</Text>
-                    <Text type="body-xs" color="muted">{app.packageName}</Text>
-                  </View>
-                  <Switch
-                    accessibilityLabel={`允许 ${app.label}`}
-                    isSelected={whitelistSelected.includes(app.packageName)}
-                    onSelectedChange={() => void toggleWhitelist(app.packageName)}
-                  />
-                </View>
-              ))}
-            </View>
-          )}
+          <Text type="body-xs" color="muted">软件白名单只使用以上权限，不读取屏幕内容或输入内容。从系统设置返回后会自动重新检查。</Text>
         </Card.Body>
       </Card>
 
@@ -208,6 +168,6 @@ function Setting({ label, value, onChange, disabled }: { label: string; value: b
 
 type BooleanSettingKey = Exclude<keyof Settings, 'bottomTabs' | 'networkPolicy' | 'themePreference'>;
 
-function yes(value?: boolean) {
+function capabilityStatus(value?: boolean) {
   return value ? '已开启' : '未开启';
 }

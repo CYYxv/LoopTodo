@@ -40,6 +40,15 @@ function Chip({ children }: PropsWithChildren) {
 }
 Chip.Label = NativeText;
 
+function Checkbox({ isSelected, onSelectedChange, accessibilityLabel }: {
+  isSelected?: boolean;
+  onSelectedChange?(selected: boolean): void;
+  accessibilityLabel?: string;
+}) {
+  return <Pressable accessibilityRole="checkbox" accessibilityLabel={accessibilityLabel}
+    accessibilityState={{ checked: Boolean(isSelected) }} onPress={() => onSelectedChange?.(!isSelected)} />;
+}
+
 function Provider({ children }: PropsWithChildren) {
   return children;
 }
@@ -55,6 +64,12 @@ BottomSheet.Close = Pressable;
 
 function BottomSheetScrollView({ children }: PropsWithChildren) {
   return <View>{children}</View>;
+}
+
+function BottomSheetFlatList({ data = [], renderItem, ListEmptyComponent }: any) {
+  return <View>{data.length
+    ? data.map((item: any, index: number) => <View key={item.packageName ?? index}>{renderItem({ item, index })}</View>)
+    : ListEmptyComponent}</View>;
 }
 
 function Surface({ children, testID, ...props }: PropsWithChildren<{ testID?: string }>) {
@@ -110,6 +125,7 @@ function Separator(props: any) {
 export const buttonModule = { Button };
 export const cardModule = { Card };
 export const chipModule = { Chip };
+export const checkboxModule = { Checkbox };
 export const descriptionModule = { Description: NativeText };
 export const inputModule = { Input: TextInput };
 export const labelModule = { Label: NativeText };
@@ -122,7 +138,7 @@ export const switchModule = {
 export const textModule = { Text: NativeText };
 export const textFieldModule = { TextField: View };
 export const bottomSheetModule = { BottomSheet };
-export const gorhomBottomSheetModule = { BottomSheetScrollView };
+export const gorhomBottomSheetModule = { BottomSheetScrollView, BottomSheetFlatList };
 export const surfaceModule = { Surface };
 export const pressableFeedbackModule = { PressableFeedback };
 export const accordionModule = { Accordion };

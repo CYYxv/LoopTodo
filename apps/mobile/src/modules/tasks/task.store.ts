@@ -12,9 +12,7 @@ import type {
 import { calculateRecordedDurationSeconds, sessionElapsedMilliseconds } from '@/modules/focus-session/focus-session.utils';
 
 import { prototypeStrictOptions } from './prototype.data';
-import { selectedWhitelistPackages, whitelistStore } from '@/modules/focus-session/whitelist.store';
 import { track } from '@/modules/analytics/analytics';
-import { resolveTaskWhitelistPackages } from './task.whitelist';
 import { createSQLiteTaskRepository } from './sqlite-task.repository';
 import { taskProgressLabel } from './task.presentation';
 import { createUuid } from '@/shared/uuid';
@@ -27,9 +25,26 @@ import type { LockEngine } from '@/modules/lock-engine/lock-engine.port';
 import type { FocusRestrictionOptions, LockCapabilities } from '@/modules/lock-engine/lock-engine.types';
 import { createNativeForcedTriggerScheduler } from '@/modules/forced-trigger/native-forced-trigger.scheduler';
 import type { ForcedTriggerScheduler } from '@/modules/forced-trigger/forced-trigger.scheduler';
-import { calculateSessionStars, mapTrustToMode } from '../competition/star-rank';
+import { calculateSessionStars, type FocusModeForStars } from '../competition/star-rank';
 import { familyStore } from '@/modules/family/family.store';
 import { collectFamilyAnomalies, isPermissionAnomaly, overdueMustDoTasks } from '@/modules/family/family-anomaly';
+import { whitelistStore } from '@/modules/whitelist/whitelist.store';
+import { resolveTaskRestriction } from '@/modules/whitelist/whitelist.resolution';
+import type { RestrictionMode, SessionRestrictionSnapshot, WhitelistList } from '@/modules/whitelist/whitelist.types';
+import { normalizeTaskRestriction } from './task.whitelist';
+
+type WhitelistSource = {
+  getState(): {
+    lists: WhitelistList[];
+    hydrated: boolean;
+    error: string | null;
+    hydrate(force?: boolean): Promise<void>;
+  };
+};
+type RestrictedSession = ActiveSession & SessionRestrictionSnapshot;
+const emptyWhitelistSource: WhitelistSource = {
+  getState: () => ({ lists: [], hydrated: true, error: null, hydrate: async () => undefined }),
+};
 
 export type TaskStore = {
   tasks: Task[];
@@ -43,20 +58,27 @@ export type TaskStore = {
   isStartingSession: boolean;
   isFinishingSession: boolean;
   isTogglingPause: boolean;
+  isAuditingRestriction: boolean;
+  restrictionCleanupPending: boolean;
+  restrictionCleanupError: string | null;
   error: string | null;
   lastStarDelta: number | null;
-  hydrate(): Promise<void>;
+  lastStarRestrictionMode: RestrictionMode | null;
+  hydrate(restoreActiveSession?: boolean): Promise<void>;
   createTask(input: CreateTaskInput): Promise<CreateTaskResult>;
   updateTask(taskId: string, expectedVersion: number, input: UpdateTaskInput): Promise<UpdateTaskResult>;
   deleteTask(taskId: string, expectedVersion: number): Promise<UpdateTaskResult>;
   createCategory(name: string): Promise<CategoryMutationResult>;
   updateCategory(categoryId: string, expectedVersion: number, name: string): Promise<UpdateTaskResult>;
   deleteCategory(categoryId: string, expectedVersion: number): Promise<UpdateTaskResult>;
-  startSession(taskId: string, mode: SessionMode): Promise<void>;
+  startSession(taskId: string, mode: SessionMode): Promise<StartSessionResult>;
+  auditActiveRestriction(source: RestrictionAuditSource): Promise<RestrictionAuditResult>;
   toggleSessionPause(): Promise<void>;
   completeExpiredCountdown(source: CountdownCompletionSource): Promise<CountdownCompletionResult>;
-  finishSession(outcome: SessionOutcome, completedAmount?: number, exitReason?: string, completionNote?: string): Promise<void>;
+  finishSession(outcome: SessionOutcome, completedAmount?: number, exitReason?: string, completionNote?: string, forceAbnormalRestrictionExit?: boolean): Promise<void>;
   finishRest(): Promise<void>;
+  clearSessionForSignOut(): Promise<void>;
+  scanFamilyAnomalies(): Promise<void>;
   addGoalProgress(taskId: string, amount: number): Promise<void>;
   selectTask(taskId: string): void;
   selectMode(mode: SessionMode): void;
@@ -67,10 +89,22 @@ export type TaskStore = {
 export type CreateTaskResult = { ok: true; taskId: string } | { ok: false; error: string };
 export type UpdateTaskResult = { ok: true } | { ok: false; error: string };
 export type CategoryMutationResult = { ok: true; categoryId: string } | { ok: false; error: string };
+export type RestrictionPermissionKind = 'usageAccess' | 'overlay' | 'vendorBackground';
+export type StartSessionResult = { ok: true } | { ok: false; error: string; missingCapabilities: readonly RestrictionPermissionKind[] };
+export type RestrictionAuditSource = 'foreground' | 'recovery' | 'pause';
+export type RestrictionAuditResult =
+  | { status: 'skipped' }
+  | { status: 'effective'; missingCapabilities: RestrictionPermissionKind[] }
+  | { status: 'ended' | 'failed'; missingCapabilities: RestrictionPermissionKind[] };
 export type CountdownCompletionSource = 'foreground' | 'resume' | 'recovery';
 export type CountdownCompletionResult = 'completed' | 'goal-confirmation-required' | 'failed' | 'ignored';
 
 const strictOptionsKey = 'looptodo.strict-options';
+const noOpForcedScheduler: ForcedTriggerScheduler = {
+  schedule: async () => undefined,
+  cancel: async () => undefined,
+  markSatisfied: async () => undefined,
+};
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : '发生未知错误';
@@ -81,7 +115,8 @@ export function createTaskStore(
   initialTasks: Task[] = [],
   now: () => number = Date.now,
   nativeLockEngine: LockEngine = lockEngine,
-  forcedScheduler: ForcedTriggerScheduler = createNativeForcedTriggerScheduler()
+  forcedScheduler: ForcedTriggerScheduler = noOpForcedScheduler,
+  whitelistSource: WhitelistSource = emptyWhitelistSource,
 ) {
   return createStore<TaskStore>((set, get) => ({
     tasks: initialTasks,
@@ -95,9 +130,13 @@ export function createTaskStore(
     isStartingSession: false,
     isFinishingSession: false,
     isTogglingPause: false,
+    isAuditingRestriction: false,
+    restrictionCleanupPending: false,
+    restrictionCleanupError: null,
     error: null,
     lastStarDelta: null,
-    async hydrate() {
+    lastStarRestrictionMode: null,
+    async hydrate(restoreActiveSession = true) {
       if (get().isHydrating) return;
       const existingSessionId = get().activeSession?.id ?? null;
       set({ isHydrating: true, error: null });
@@ -106,7 +145,7 @@ export function createTaskStore(
           repository.hydrate(),
           nativeLockEngine.getActiveSession(),
           loadStrictOptions().catch(() => prototypeStrictOptions),
-          whitelistStore.getState().hydrate().catch(() => undefined),
+          whitelistSource.getState().hydrate().catch(() => undefined),
         ]);
         let recoveredTasks = snapshot.tasks;
         let recoveredSession = snapshot.activeSession;
@@ -159,22 +198,16 @@ export function createTaskStore(
             : recoveredTasks.find((task) => task.status !== 'completed')?.id ?? null,
           isHydrating: false,
         }));
-        // 仅「锁机」会话在进程重启后重新施加限制（PRD：锁机杀不掉、可重启恢复）。
-        // 「专注」会话可自由退出，进程死亡后不得重新困人——否则残留的 active 会话会让无障碍持续拉回，用户退不出。
-        if (recoveredSession?.phase === 'focus' && recoveredSession.mode === 'lock') {
-          const capabilities = await nativeLockEngine.checkCapabilities();
-          const recoveredTask = recoveredTasks.find((candidate) => candidate.id === recoveredSession.taskId);
-          await nativeLockEngine.applyFocusRestrictions(restrictionsFor(
-            recoveredSession.mode,
-            savedStrictOptions,
-            capabilities,
-            recoveredTask ? packagesForTask(recoveredTask) : selectedWhitelistPackages(),
-            recoveredSession.plannedEndAt ?? 0,
-          ));
-          if (isPermissionAnomaly(capabilities)) {
-            void familyStore.getState().reportAnomaly('permission_disabled', recoveredSession.taskId);
-          }
-        } else if (recoveredSession?.phase !== 'focus' || recoveredSession.id !== existingSessionId) {
+        if (!restoreActiveSession) {
+          await get().clearSessionForSignOut();
+          return;
+        }
+        const recoveredFocusExpired = recoveredSession?.phase === 'focus' && recoveredSession.timerMode === 'countdown' &&
+          recoveredSession.pausedAt == null && recoveredSession.plannedEndAt != null && recoveredSession.plannedEndAt <= now();
+        if (recoveredSession?.phase === 'focus' && recoveredSession.id !== existingSessionId && !recoveredFocusExpired) {
+          await get().auditActiveRestriction('recovery');
+          recoveredSession = get().activeSession;
+        } else if (recoveredSession?.phase !== 'focus' || recoveredFocusExpired) {
           await nativeLockEngine.clearFocusRestrictions();
         }
         try { await Promise.all(recoveredTasks.filter((task) => task.mustDo && task.forcedTriggerTime && task.status === 'pending').map((task) => scheduleTask(forcedScheduler, task))); }
@@ -329,10 +362,34 @@ export function createTaskStore(
       const state = get();
       const task = state.tasks.find((candidate) => candidate.id === taskId);
       if (!task || !['available', 'local_active'].includes(getTaskExecutionState(task, state.activeSession)) || state.isHydrating ||
-          state.isStartingSession || state.activeSession) return;
+          state.isStartingSession || state.activeSession) {
+        return { ok: false, error: '当前任务暂时无法开始', missingCapabilities: [] };
+      }
 
+      set({ error: null, isStartingSession: true, lastStarDelta: null, lastStarRestrictionMode: null });
       const startedAt = now();
-      const session: ActiveSession = {
+      const normalizedTask = normalizeTaskRestriction(task);
+      const requiresWhitelist = mode !== 'lock' && normalizedTask.restrictionMode === 'whitelist';
+      let launchablePackages: string[] = [];
+      let whitelistLists: WhitelistList[] = [];
+      try {
+        if (requiresWhitelist) {
+          await whitelistSource.getState().hydrate();
+          const whitelistState = whitelistSource.getState();
+          if (whitelistState.error) throw new Error(`白名单读取失败：${whitelistState.error}`);
+          if (!whitelistState.hydrated) throw new Error('白名单尚未完成加载');
+          whitelistLists = whitelistState.lists;
+          launchablePackages = (await nativeLockEngine.listLaunchableApps()).map((app) => app.packageName);
+        }
+      } catch (error) {
+        const nextError = errorMessage(error);
+        set({ error: nextError, isStartingSession: false });
+        return { ok: false, error: nextError, missingCapabilities: [] };
+      }
+      const restriction = mode === 'lock'
+        ? { restrictionMode: 'strict' as const, whitelistSource: 'strict' as const, restrictionEffective: false, allowedPackagesSnapshot: [] }
+        : resolveTaskRestriction({ task: normalizedTask, lists: whitelistLists, launchablePackages });
+      const session: RestrictedSession = {
         id: createUuid(),
         taskId,
         mode,
@@ -346,23 +403,53 @@ export function createTaskStore(
         restEndsAt: null,
         pausedAt: null,
         accumulatedPausedMs: 0,
+        ...restriction,
       };
       const activeTask: Task = { ...task, status: 'active', version: task.version + 1, syncStatus: 'pending' };
-      set({ error: null, isStartingSession: true, lastStarDelta: null });
+      let missingCapabilities: RestrictionPermissionKind[] = [];
+      let lockSessionStarted = false;
       try {
         const capabilities = await nativeLockEngine.checkCapabilities();
+        if (mode !== 'lock' && restriction.restrictionMode !== 'none') {
+          track('whitelist_permission_result', {
+            usageAccessGranted: capabilities.usageAccess?.effective !== false,
+            overlayGranted: capabilities.overlay?.effective !== false,
+            backgroundPopupAllowed: capabilities.backgroundLaunch?.effective !== false,
+            deviceBrand: capabilities.manufacturer,
+          });
+        }
         if (mode === 'lock') {
           if (!capabilities.supported || !capabilities.notificationGranted || !capabilities.notificationListenerEnabled || !capabilities.riskConfirmed) {
             throw new Error('请先完成锁机风险确认并开启通知与通知读取权限');
           }
-        }
-        const whitelistPackages = packagesForTask(task);
-        await nativeLockEngine.applyFocusRestrictions(restrictionsFor(mode, state.strictOptions, capabilities, whitelistPackages, session.plannedEndAt ?? startedAt + 4 * 60 * 60 * 1000));
-        if (mode === 'lock') {
           await nativeLockEngine.startLockSession({ id: session.id, taskId, taskTitle: task.title,
             startedAt, endsAt: session.plannedEndAt!, enhanced: capabilities.accessibilityEnabled });
+          lockSessionStarted = true;
+          session.restrictionEffective = true;
           if (isPermissionAnomaly(capabilities)) {
             void familyStore.getState().reportAnomaly('permission_disabled', taskId);
+          }
+        } else {
+          missingCapabilities = restriction.restrictionMode === 'none' ? [] : restrictionMissingCapabilities(capabilities);
+          if (missingCapabilities.length > 0) {
+            throw new Error('需要恢复软件限制权限后才能开始专注');
+          }
+          const restrictionResult = await nativeLockEngine.applyFocusRestrictions({
+            ...restrictionsFor(mode, state.strictOptions, capabilities, restriction, session.plannedEndAt ?? startedAt + 4 * 60 * 60 * 1000),
+            sessionId: session.id,
+            taskTitle: task.title,
+          });
+          if (restriction.restrictionMode !== 'none' && restrictionResult?.effective === false) {
+            throw new Error(restrictionResult.reason ?? '软件限制未能生效，请检查系统权限');
+          }
+          session.restrictionEffective = restriction.restrictionMode === 'none' || restrictionResult?.effective !== false;
+          if (restriction.restrictionMode !== 'none') {
+            track('focus_restriction_start', {
+              mode: restriction.restrictionMode,
+              ...restrictionAnalyticsSource(restriction.whitelistSource),
+              packageCount: restriction.allowedPackagesSnapshot.length,
+              effective: session.restrictionEffective,
+            });
           }
         }
         await repository.startSession(activeTask, session);
@@ -381,13 +468,126 @@ export function createTaskStore(
         track(mode === 'lock' ? 'lock_start' : 'focus_start', {
           taskId,
           mode,
-          whitelistMode: task.whitelistMode ?? 'inherit',
-          packageCount: whitelistPackages.length,
+          restrictionMode: restriction.restrictionMode,
+          whitelistMode: task.whitelistMode === 'inherit' ? 'list' : task.whitelistMode,
+          packageCount: restriction.allowedPackagesSnapshot.length,
         });
+        return { ok: true };
       } catch (error) {
-        if (mode === 'lock') await nativeLockEngine.endLockSession(session.id).catch(() => undefined);
-        await nativeLockEngine.clearFocusRestrictions().catch(() => undefined);
-        set({ error: errorMessage(error), isStartingSession: false });
+        if (lockSessionStarted) await nativeLockEngine.endLockSession(session.id).catch(() => undefined);
+        const cleared = await nativeLockEngine.clearFocusRestrictions().then(() => true).catch(() => false);
+        if (restriction.restrictionMode !== 'none') {
+          track('focus_restriction_clear', { reason: 'start_failed', success: cleared });
+        }
+        const nextError = errorMessage(error);
+        set({ error: nextError, isStartingSession: false });
+        return { ok: false, error: nextError, missingCapabilities };
+      }
+    },
+    async auditActiveRestriction(source) {
+      await drainNativeRestrictionEvents(nativeLockEngine);
+      const state = get();
+      const session = state.activeSession;
+      if (state.isFinishingSession || state.isAuditingRestriction) {
+        return { status: 'skipped' };
+      }
+      if (!session || session.phase !== 'focus') {
+        if (!state.restrictionCleanupPending) return { status: 'skipped' };
+        set({ isAuditingRestriction: true });
+        try {
+          const cleanupError = await clearFocusRestrictionsWithRetry(nativeLockEngine);
+          set((current) => ({
+            restrictionCleanupPending: cleanupError != null,
+            restrictionCleanupError: cleanupError,
+            error: cleanupError ?? removeErrorDetail(current.error, current.restrictionCleanupError),
+          }));
+        } finally {
+          set({ isAuditingRestriction: false });
+        }
+        return { status: 'skipped' };
+      }
+      const task = state.tasks.find((candidate) => candidate.id === session.taskId);
+      const restriction = restrictionSnapshotForSession(session, task);
+      if (restriction.restrictionMode === 'none') return { status: 'skipped' };
+
+      set({ isAuditingRestriction: true });
+      let missingCapabilities: RestrictionPermissionKind[] = [];
+      try {
+        let ineffectiveReason: string | null = null;
+        try {
+          const capabilities = await nativeLockEngine.checkCapabilities();
+          missingCapabilities = restrictionMissingCapabilities(capabilities);
+          if (missingCapabilities.length > 0) {
+            void familyStore.getState().reportAnomaly('permission_disabled', session.taskId);
+          }
+          if (missingCapabilities.length > 0) {
+            ineffectiveReason = '软件限制所需系统权限已关闭';
+          } else {
+            const restrictionResult = await nativeLockEngine.applyFocusRestrictions({
+              ...restrictionsFor(
+                session.mode,
+                state.strictOptions,
+                capabilities,
+                restriction,
+                session.pausedAt == null
+                  ? session.plannedEndAt ?? now() + 4 * 60 * 60 * 1000
+                  : Number.MAX_SAFE_INTEGER,
+              ),
+              sessionId: session.id,
+            });
+            if (restrictionResult?.effective === false) {
+              ineffectiveReason = restrictionResult.reason ?? '软件限制未能继续生效';
+            }
+          }
+        } catch (error) {
+          ineffectiveReason = errorMessage(error);
+        }
+
+        if (!ineffectiveReason) {
+          const effectiveSession = { ...session, ...restriction, restrictionEffective: true };
+          await repository.updateActiveSession(effectiveSession);
+          if (get().activeSession?.id === session.id) set({ activeSession: effectiveSession, error: null });
+          if (source === 'recovery') {
+            track('focus_restriction_recovered', {
+              activeSessionFound: true,
+              nativeStateFound: true,
+              action: 'restored',
+            });
+          }
+          return { status: 'effective', missingCapabilities };
+        }
+
+        const invalidSession = { ...session, ...restriction, restrictionEffective: false };
+        let invalidationError: string | null = null;
+        try {
+          await repository.updateActiveSession(invalidSession);
+        } catch (error) {
+          invalidationError = errorMessage(error);
+        }
+        if (get().activeSession?.id === session.id) set({ activeSession: invalidSession });
+
+        const cleanupError = await clearFocusRestrictionsWithRetry(nativeLockEngine);
+        const failureReason = `${ineffectiveReason}；软件限制已失效，本次专注已异常结束`;
+        if (source === 'recovery') {
+          track('focus_restriction_recovered', {
+            activeSessionFound: true,
+            nativeStateFound: false,
+            action: 'ended',
+          });
+        }
+        await get().finishSession('exited', undefined, failureReason, undefined, true);
+        const ended = get().activeSession?.id !== session.id;
+        const finishError = ended ? null : get().error;
+        const details = [
+          failureReason,
+          invalidationError ? `失效状态保存失败：${invalidationError}` : null,
+          cleanupError ? `限制清理失败：${cleanupError}` : null,
+          finishError ? `异常结束保存失败：${finishError}` : null,
+        ].filter(Boolean).join('；');
+        set({ error: details });
+        return { status: ended ? 'ended' : 'failed', missingCapabilities };
+      } finally {
+        set({ isAuditingRestriction: false });
       }
     },
     async toggleSessionPause() {
@@ -405,24 +605,8 @@ export function createTaskStore(
       set({ isTogglingPause: true, error: null });
       try {
         await repository.updateActiveSession(nextSession);
-        set({ activeSession: nextSession });
-        let restrictionError: string | null = null;
-        try {
-          const capabilities = await nativeLockEngine.checkCapabilities();
-          const pauseTask = state.tasks.find((candidate) => candidate.id === session.taskId);
-          await nativeLockEngine.applyFocusRestrictions(restrictionsFor(
-            session.mode,
-            state.strictOptions,
-            capabilities,
-            pauseTask ? packagesForTask(pauseTask) : selectedWhitelistPackages(),
-            nextSession.pausedAt == null
-              ? nextSession.plannedEndAt ?? timestamp + 4 * 60 * 60 * 1000
-              : timestamp + 24 * 60 * 60 * 1000,
-          ));
-        } catch (error) {
-          restrictionError = errorMessage(error);
-        }
-        set({ isTogglingPause: false, error: restrictionError });
+        set({ activeSession: nextSession, isTogglingPause: false });
+        await get().auditActiveRestriction('pause');
       } catch (error) {
         set({ isTogglingPause: false, error: errorMessage(error) });
       }
@@ -448,12 +632,12 @@ export function createTaskStore(
       if (get().sessionRecords.some((record) => record.id === session.id)) return 'completed';
       return get().activeSession?.id === session.id && get().error ? 'failed' : 'ignored';
     },
-    async finishSession(outcome, completedAmount, exitReason, completionNote) {
+    async finishSession(outcome, completedAmount, exitReason, completionNote, forceAbnormalRestrictionExit = false) {
       const { activeSession, isFinishingSession, isTogglingPause, tasks } = get();
       if (!activeSession || activeSession.phase !== 'focus' || isFinishingSession || isTogglingPause) return;
       const task = tasks.find((candidate) => candidate.id === activeSession.taskId);
       if (!task) return set({ error: '当前专注任务不存在' });
-      if (activeSession.mode === 'focus' && outcome === 'exited' && strictEnabled(get().strictOptions, 'no-cancel')) return set({ error: '当前专注禁止取消' });
+      if (!forceAbnormalRestrictionExit && activeSession.mode === 'focus' && outcome === 'exited' && strictEnabled(get().strictOptions, 'no-cancel')) return set({ error: '当前专注禁止取消' });
       if (outcome === 'completed' && activeSession.plannedEndAt && now() < activeSession.plannedEndAt && strictEnabled(get().strictOptions, 'no-early-complete')) return set({ error: '当前专注禁止提前完成' });
       if (outcome === 'completed' && task.kind === 'goal' && (!completedAmount || completedAmount <= 0)) {
         return set({ error: '请输入本次完成量' });
@@ -476,14 +660,19 @@ export function createTaskStore(
         progressLabel: '',
       };
       nextTask.progressLabel = taskProgressLabel(nextTask);
+      const restrictionSnapshot = restrictionSnapshotForSession(activeSession, task);
+      const durationSeconds = calculateRecordedDurationSeconds(activeSession, task, endedAt, outcome);
       const record: FocusSessionRecord = {
         ...activeSession,
         endedAt,
         outcome,
         failureReason: outcome === 'exited' ? (exitReason?.trim() || '用户主动退出专注') : null,
-        durationSeconds: calculateRecordedDurationSeconds(activeSession, task, endedAt, outcome),
+        durationSeconds,
         completedAmount: task.kind === 'goal' && outcome === 'completed' ? completedAmount ?? null : null,
         completionNote: outcome === 'completed' ? completionNote?.trim() || null : null,
+        ...restrictionSnapshot,
+        whitelistPackageCount: restrictionSnapshot.allowedPackagesSnapshot.length,
+        effectiveMinutes: Math.floor(durationSeconds / 60),
       };
       const restSession = outcome === 'completed' && task.timerMode === 'countdown' && task.restMinutes > 0
         ? { ...activeSession, phase: 'rest' as const, startedAt: endedAt, plannedEndAt: null,
@@ -492,7 +681,8 @@ export function createTaskStore(
 
       try {
         if (activeSession.mode === 'lock') {
-          if (outcome === 'exited') await nativeLockEngine.emergencyExit(activeSession.id, exitReason!.trim());
+          if (outcome === 'exited' && forceAbnormalRestrictionExit) await nativeLockEngine.endLockSession(activeSession.id).catch(() => undefined);
+          else if (outcome === 'exited') await nativeLockEngine.emergencyExit(activeSession.id, exitReason!.trim());
           else await nativeLockEngine.endLockSession(activeSession.id);
         }
         await repository.finishSession(nextTask, record, restSession);
@@ -503,27 +693,21 @@ export function createTaskStore(
         } else {
           track('focus_fail', { taskId: task.id, mode: activeSession.mode, sessionId: activeSession.id, outcome });
         }
-        const restrictionError = await nativeLockEngine.clearFocusRestrictions()
-          .then(() => null)
-          .catch((error) => errorMessage(error));
-        // Preview uses same trust→mode mapping as server; server remains source of truth after sync.
-        const hasWhitelist = packagesForTask(task).length > 0;
-        const trustLevel = activeSession.mode === 'lock' ? 'high' : hasWhitelist ? 'open' : 'normal';
-        const starMode = mapTrustToMode(trustLevel, task.timerMode);
+        const starMode = sessionStarMode(activeSession, task, restrictionSnapshot);
         const starOutcome = outcome === 'completed'
           ? 'completed'
           : outcome === 'exited' && activeSession.mode === 'lock'
             ? 'emergency_exit'
             : 'failed';
-        const priorMinutes = Math.floor(
-          statePriorMinutes(get().sessionRecords, endedAt),
-        );
-        const lastStarDelta = calculateSessionStars({
-          outcome: starOutcome,
-          effectiveMinutes: Math.floor(record.durationSeconds / 60),
-          mode: starMode,
-          priorEffectiveMinutesToday: priorMinutes,
-        });
+        const priorMinutes = Math.floor(statePriorMinutes(get().sessionRecords, endedAt));
+        const lastStarDelta = starMode || starOutcome === 'emergency_exit'
+          ? calculateSessionStars({
+              outcome: starOutcome,
+              effectiveMinutes: Math.floor(record.durationSeconds / 60),
+              mode: starMode ?? 'lock',
+              priorEffectiveMinutesToday: priorMinutes,
+            })
+          : 0;
         track('star_settle', {
           taskId: task.id,
           sessionId: activeSession.id,
@@ -531,16 +715,35 @@ export function createTaskStore(
           mode: starMode,
           outcome: starOutcome,
         });
+        if (restrictionSnapshot.restrictionMode === 'whitelist') {
+          track('whitelist_star_settled', {
+            effectiveMinutes: Math.floor(record.durationSeconds / 60),
+            stars: lastStarDelta,
+          });
+        }
         set((state) => ({
           tasks: state.tasks.map((candidate) => candidate.id === nextTask.id ? nextTask : candidate),
           sessionRecords: [record, ...state.sessionRecords],
           activeSession: restSession,
           isFinishingSession: false,
-          error: restrictionError,
+          error: null,
           lastStarDelta,
+          lastStarRestrictionMode: restrictionSnapshot.restrictionMode,
         }));
       } catch (error) {
         set({ isFinishingSession: false, error: errorMessage(error) });
+      } finally {
+        const restrictionError = await clearFocusRestrictionsWithRetry(nativeLockEngine);
+        if (restrictionSnapshotForSession(activeSession, task).restrictionMode !== 'none') {
+          track('focus_restriction_clear', { reason: outcome, success: restrictionError == null });
+        }
+        set((state) => ({
+          restrictionCleanupPending: restrictionError != null,
+          restrictionCleanupError: restrictionError,
+          error: restrictionError
+            ? state.error ? `${state.error}；${restrictionError}` : restrictionError
+            : state.error,
+        }));
       }
     },
     async finishRest() {
@@ -552,6 +755,33 @@ export function createTaskStore(
       } catch (error) {
         set({ isFinishingSession: false, error: errorMessage(error) });
       }
+    },
+    async clearSessionForSignOut() {
+      const session = get().activeSession;
+      if (session?.phase === 'focus') {
+        await get().finishSession('exited', undefined, '退出登录', undefined, true);
+        if (get().activeSession?.id === session.id) {
+          throw new Error(get().error ?? '退出登录前无法结束当前专注');
+        }
+        return;
+      }
+      if (session?.phase === 'rest') {
+        try {
+          await repository.finishRest();
+          set({ activeSession: null, isFinishingSession: false });
+        } catch (error) {
+          const nextError = errorMessage(error);
+          set({ isFinishingSession: false, error: nextError });
+          throw error;
+        } finally {
+          const restrictionError = await clearFocusRestrictionsWithRetry(nativeLockEngine);
+          set({ restrictionCleanupPending: restrictionError != null, restrictionCleanupError: restrictionError });
+        }
+        return;
+      }
+      const restrictionError = await clearFocusRestrictionsWithRetry(nativeLockEngine);
+      set({ restrictionCleanupPending: restrictionError != null, restrictionCleanupError: restrictionError });
+      if (restrictionError) throw new Error(restrictionError);
     },
     
     async scanFamilyAnomalies() {
@@ -603,12 +833,31 @@ async addGoalProgress(taskId, amount) {
   }));
 }
 
-export const taskStore = createTaskStore(createSQLiteTaskRepository());
+export const taskStore = createTaskStore(createSQLiteTaskRepository(), [], Date.now, lockEngine, createNativeForcedTriggerScheduler(), whitelistStore);
 
 export function useTaskStore<T>(selector: (state: TaskStore) => T) {
   return useStore(taskStore, selector);
 }
 function taskRuleId(taskId: string) { return `task:${taskId}`; }
+
+async function clearFocusRestrictionsWithRetry(nativeLockEngine: LockEngine, attempts = 3) {
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      await nativeLockEngine.clearFocusRestrictions();
+      return null;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  return errorMessage(lastError);
+}
+
+function removeErrorDetail(error: string | null, detail: string | null) {
+  if (!error || !detail) return error;
+  const remaining = error.split('；').filter((item) => item !== detail);
+  return remaining.length ? remaining.join('；') : null;
+}
 function scheduleTask(scheduler: ForcedTriggerScheduler, task: Task) {
   track('forced_trigger_schedule', { taskId: task.id, time: task.forcedTriggerTime });
   const [hour, minute] = task.forcedTriggerTime!.split(':').map(Number);
@@ -626,15 +875,11 @@ async function loadStrictOptions() {
   });
 }
 
-function packagesForTask(task: Pick<Task, 'whitelistMode' | 'whitelistPackages'>) {
-  return resolveTaskWhitelistPackages(task, selectedWhitelistPackages());
-}
-
 function restrictionsFor(
   mode: SessionMode,
   options: StrictOption[],
   capabilities: LockCapabilities,
-  whitelistPackages: string[] = [],
+  snapshot: SessionRestrictionSnapshot,
   expiresAt = 0,
 ): FocusRestrictionOptions {
   const restrictions: FocusRestrictionOptions = {
@@ -644,30 +889,78 @@ function restrictionsFor(
     hideLauncherIcon: false,
     allowedPackages: [],
     expiresAt,
+    restrictionMode: snapshot.restrictionMode,
   };
-  // 锁机模式忽略白名单（PRD 3.4）：只在专注模式启用「仅允许白名单」时注入放行包名。
-  let whitelistEnabled = false;
   for (const option of options) {
     const key = option.capabilityKey;
     if (!key) continue;
     const capability = capabilities.restrictions[key];
+    if (key === 'whitelist') continue;
     const active = capability.supported && (mode === 'lock' || option.enabled);
-    if (key === 'whitelist') {
-      // 白名单是「阻止离开」的细化：开启后 blockLeaving 生效，并把选中的应用注入放行集合。
-      if (active && mode === 'focus') {
-        whitelistEnabled = true;
-        restrictions.blockLeaving = true;
-      }
-      continue;
-    }
     restrictions[key] = active;
   }
-  restrictions.allowedPackages = whitelistEnabled ? whitelistPackages.filter((pkg) => pkg.trim().length > 0) : [];
+  if (snapshot.restrictionMode === 'whitelist') {
+    restrictions.blockLeaving = capabilities.restrictions.whitelist.supported;
+    restrictions.allowedPackages = snapshot.allowedPackagesSnapshot;
+  } else if (snapshot.restrictionMode === 'strict') {
+    restrictions.blockLeaving = capabilities.restrictions.blockLeaving.supported || capabilities.restrictions.whitelist.supported;
+    restrictions.allowedPackages = [];
+  }
   return restrictions;
 }
 
 function strictEnabled(options: StrictOption[], id: string) {
   return options.some((option) => option.id === id && option.enabled);
+}
+
+export function restrictionMissingCapabilities(capabilities: LockCapabilities): RestrictionPermissionKind[] {
+  const missing: RestrictionPermissionKind[] = [];
+  if (capabilities.usageAccess?.effective === false) missing.push('usageAccess');
+  if (capabilities.overlay?.effective === false) missing.push('overlay');
+  if (capabilities.backgroundLaunch?.effective === false) missing.push('vendorBackground');
+  return missing;
+}
+
+function restrictionSnapshotForSession(session: ActiveSession, task?: Task): SessionRestrictionSnapshot {
+  const restrictedSession = session as ActiveSession & Partial<SessionRestrictionSnapshot>;
+  const normalizedTask = task ? normalizeTaskRestriction(task) : null;
+  const restrictionMode = restrictedSession.restrictionMode ?? normalizedTask?.restrictionMode ?? 'none';
+  const whitelistSource = restrictedSession.whitelistSource ?? (
+    restrictionMode === 'whitelist'
+      ? normalizedTask?.whitelistMode === 'custom'
+        ? 'custom'
+        : `list:${normalizedTask?.whitelistListId ?? 'missing'}`
+      : restrictionMode === 'strict' ? 'strict' : 'none'
+  );
+  return {
+    restrictionMode,
+    whitelistSource,
+    restrictionEffective: restrictedSession.restrictionEffective ?? restrictionMode === 'none',
+    allowedPackagesSnapshot: restrictedSession.allowedPackagesSnapshot ?? [],
+  };
+}
+
+function restrictionAnalyticsSource(source: SessionRestrictionSnapshot['whitelistSource']) {
+  if (source.startsWith('list:')) return { source: 'list', listId: source.slice('list:'.length) };
+  return { source };
+}
+
+async function drainNativeRestrictionEvents(nativeLockEngine: LockEngine) {
+  try {
+    const events = await nativeLockEngine.drainFocusRestrictionEvents();
+    for (const event of events) track(event.event, event.props);
+  } catch {
+    // Diagnostics must not interrupt an active focus session.
+  }
+}
+
+function sessionStarMode(session: ActiveSession, task: Task, restriction: SessionRestrictionSnapshot): FocusModeForStars | null {
+  if (restriction.restrictionMode !== 'none' && !restriction.restrictionEffective) return null;
+  if (task.timerMode === 'untimed') return 'untimed';
+  if (session.mode === 'lock') return restriction.restrictionEffective ? 'lock' : null;
+  if (restriction.restrictionMode === 'strict') return restriction.restrictionEffective ? 'strict' : null;
+  if (restriction.restrictionMode === 'whitelist') return restriction.restrictionEffective ? 'whitelist' : null;
+  return null;
 }
 
 

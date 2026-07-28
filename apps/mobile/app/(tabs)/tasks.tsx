@@ -1,14 +1,13 @@
-import { useAuthStore } from '@/modules/auth/auth.store';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { View } from 'react-native';
+import { AppState, View } from 'react-native';
 import { Surface } from 'heroui-native/surface';
 
-import { FocusPanel } from '@/modules/focus-session/components/FocusPanel';
-import { useLockEngineStore } from '@/modules/lock-engine/lock-engine.store';
 import { localStatistics } from '@/modules/scoring/scoring.local';
+import { lockEngineStore } from '@/modules/lock-engine/lock-engine.store';
 import { CategoryManager, TaskActionPanel, TaskCreateForm, TaskEditForm, TaskGroups } from '@/modules/tasks/components/TasksPanel';
-import { taskStore, useTaskStore } from '@/modules/tasks/task.store';
+import { restrictionMissingCapabilities, taskStore, useTaskStore } from '@/modules/tasks/task.store';
+import type { RestrictionPermissionKind } from '@/modules/tasks/task.store';
 import type { Task } from '@/modules/tasks/task.types';
 import { BottomSheetModal } from '@/ui/bottom-sheet-modal';
 import { Button, Card, Text } from '@/ui/hero-runtime';
@@ -16,8 +15,7 @@ import { PageHeader, Screen } from '@/ui/screen-layout';
 
 type TaskSheet =
   | { mode: 'actions'; taskId: string }
-  | { mode: 'edit'; taskId: string; snapshot: Task }
-  | { mode: 'focus'; taskId: string };
+  | { mode: 'edit'; taskId: string; snapshot: Task };
 
 export default function TasksRoute() {
   const router = useRouter();
@@ -25,13 +23,12 @@ export default function TasksRoute() {
   const [categoriesOpen, setCategoriesOpen] = useState(false);
   const [taskSheet, setTaskSheet] = useState<TaskSheet | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [missingCapabilities, setMissingCapabilities] = useState<RestrictionPermissionKind[]>([]);
   const tasks = useTaskStore((state) => state.tasks);
   const scanFamilyAnomalies = useTaskStore((state) => state.scanFamilyAnomalies);
   const categories = useTaskStore((state) => state.categories);
   const records = useTaskStore((state) => state.sessionRecords);
   const activeSession = useTaskStore((state) => state.activeSession);
-  const selectedMode = useTaskStore((state) => state.selectedMode);
-  const strictOptions = useTaskStore((state) => state.strictOptions);
   const error = useTaskStore((state) => state.error);
   const createTask = useTaskStore((state) => state.createTask);
   const updateTask = useTaskStore((state) => state.updateTask);
@@ -41,39 +38,52 @@ export default function TasksRoute() {
   const deleteCategory = useTaskStore((state) => state.deleteCategory);
   const startSession = useTaskStore((state) => state.startSession);
   const addGoalProgress = useTaskStore((state) => state.addGoalProgress);
-  const selectTask = useTaskStore((state) => state.selectTask);
-  const selectMode = useTaskStore((state) => state.selectMode);
-  const toggleStrictOption = useTaskStore((state) => state.toggleStrictOption);
-  const capabilities = useLockEngineStore((state) => state.capabilities);
-  const refreshCapabilities = useLockEngineStore((state) => state.refresh);
-  const refreshServerQuota = useLockEngineStore((state) => state.refreshServerQuota);
-  const apiBaseUrl = useAuthStore((state) => state.baseUrl);
-  const confirmRisk = useLockEngineStore((state) => state.confirmRisk);
-  const openPermission = useLockEngineStore((state) => state.open);
   const visibleTasks = useMemo(() => tasks.filter((task) => task.status !== 'archived'), [tasks]);
   const pendingTasks = visibleTasks.filter((task) => task.status !== 'completed');
   const sheetTask = taskSheet ? tasks.find((task) => task.id === taskSheet.taskId) ?? null : null;
   const completedToday = localStatistics(records).todayCompleted;
 
   const start = async (taskId: string, mode: 'focus' | 'lock') => {
-    await startSession(taskId, mode);
+    const result = await startSession(taskId, mode);
+    if (!result.ok) {
+      if (result.missingCapabilities.length > 0) {
+        setTaskSheet(null);
+        setMissingCapabilities([...result.missingCapabilities]);
+      }
+      return;
+    }
     if (taskStore.getState().activeSession?.taskId !== taskId) return;
     setTaskSheet(null);
     router.push('/session');
   };
-  const openFocusSettings = (taskId: string) => {
-    selectTask(taskId);
-    setTaskSheet({ mode: 'focus', taskId });
-    void refreshCapabilities();
-  };
-
-  const sheetTitle = taskSheet?.mode === 'edit' ? '编辑任务' : taskSheet?.mode === 'focus' ? '专注设置' : sheetTask?.title ?? '任务操作';
+  const sheetTitle = taskSheet?.mode === 'edit' ? '编辑任务' : sheetTask?.title ?? '任务操作';
 
   useEffect(() => {
     void scanFamilyAnomalies();
     const timer = setInterval(() => { void scanFamilyAnomalies(); }, 5 * 60_000);
     return () => clearInterval(timer);
   }, [scanFamilyAnomalies]);
+
+  useEffect(() => {
+    if (missingCapabilities.length === 0) return;
+    let cancelled = false;
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') return;
+      void (async () => {
+        await lockEngineStore.getState().refresh();
+        if (cancelled) return;
+        const capabilities = lockEngineStore.getState().capabilities;
+        if (!capabilities) return;
+        const remaining = restrictionMissingCapabilities(capabilities);
+        setMissingCapabilities(remaining);
+        if (remaining.length === 0) setNotice('权限已恢复，可以重新开始专注');
+      })();
+    });
+    return () => {
+      cancelled = true;
+      subscription.remove();
+    };
+  }, [missingCapabilities.length]);
 
   return <Screen>
     <PageHeader title="任务" description={new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }).format(new Date())} action={<Button size="sm" onPress={() => setCreateOpen(true)}>创建任务</Button>} />
@@ -88,16 +98,24 @@ export default function TasksRoute() {
     <BottomSheetModal visible={Boolean(sheetTask)} title={sheetTitle} onClose={() => setTaskSheet(null)}>
       {sheetTask && taskSheet?.mode === 'actions' ? <TaskActionPanel task={sheetTask} records={records} activeSession={activeSession}
         onEdit={() => setTaskSheet({ mode: 'edit', taskId: sheetTask.id, snapshot: { ...sheetTask } })}
-        onConfigureFocus={() => openFocusSettings(sheetTask.id)}
+        onStart={() => void start(sheetTask.id, 'focus')}
         onDelete={async () => { const result = await deleteTask(sheetTask.id, sheetTask.version); if (result.ok) { setTaskSheet(null); setNotice('任务已删除'); } }}
         onGoalProgress={async (amount) => { await addGoalProgress(sheetTask.id, amount); if (!taskStore.getState().error) setNotice('目标进度已更新'); }} /> : null}
       {taskSheet?.mode === 'edit' ? <TaskEditForm task={taskSheet.snapshot} categories={categories}
         onUpdate={(input) => updateTask(taskSheet.taskId, taskSheet.snapshot.version, input)}
         onUpdated={() => { setTaskSheet(null); setNotice('任务已更新'); }} /> : null}
-      {sheetTask && taskSheet?.mode === 'focus' ? <FocusPanel selectedMode={selectedMode} strictOptions={strictOptions} selectedTask={sheetTask}
-        onModeChange={selectMode} onStrictOptionToggle={toggleStrictOption} onStart={() => void start(sheetTask.id, selectedMode)}
-        lockCapabilities={capabilities} onRefreshLockCapabilities={() => { void refreshCapabilities(); if (apiBaseUrl) void refreshServerQuota(apiBaseUrl); }}
-        onConfirmLockRisk={() => void confirmRisk()} onOpenLockPermission={(kind) => void openPermission(kind)} /> : null}
+    </BottomSheetModal>
+    <BottomSheetModal visible={missingCapabilities.length > 0} title="恢复软件限制权限" onClose={() => setMissingCapabilities([])}>
+      <Text type="body-sm" color="muted">恢复缺失权限后，再次开始专注。</Text>
+      {missingCapabilities.includes('usageAccess') ? (
+        <Button variant="secondary" accessibilityLabel="允许查看应用使用情况" onPress={() => void lockEngineStore.getState().open('usageAccess')}>允许查看应用使用情况</Button>
+      ) : null}
+      {missingCapabilities.includes('overlay') ? (
+        <Button variant="secondary" accessibilityLabel="允许显示在其他应用上层" onPress={() => void lockEngineStore.getState().open('overlay')}>允许显示在其他应用上层</Button>
+      ) : null}
+      {missingCapabilities.includes('vendorBackground') ? (
+        <Button variant="secondary" accessibilityLabel="打开厂商后台设置" onPress={() => void lockEngineStore.getState().open('vendorBackground')}>打开厂商后台设置</Button>
+      ) : null}
     </BottomSheetModal>
   </Screen>;
 }

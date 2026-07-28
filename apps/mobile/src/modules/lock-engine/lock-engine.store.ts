@@ -14,7 +14,7 @@ type LockEngineStore = {
   refresh(): Promise<void>;
   refreshServerQuota(baseUrl: string): Promise<void>;
   confirmRisk(): Promise<void>;
-  open(kind: 'notifications' | 'notificationListener' | 'accessibility' | 'battery' | 'exactAlarm' | 'vendorBackground'): Promise<void>;
+  open(kind: 'notifications' | 'notificationListener' | 'usageAccess' | 'overlay' | 'backgroundLaunch' | 'service' | 'battery' | 'exactAlarm' | 'vendorBackground'): Promise<void>;
 };
 
 export function createLockEngineStore(engine: LockEngine) {
@@ -62,7 +62,7 @@ export function createLockEngineStore(engine: LockEngine) {
     },
     async confirmRisk() {
       try {
-        await engine.confirmRiskAcknowledgement();
+        await engine.confirmRisk();
         await get().refresh();
       } catch (error) {
         set({ error: error instanceof Error ? error.message : '风险确认失败' });

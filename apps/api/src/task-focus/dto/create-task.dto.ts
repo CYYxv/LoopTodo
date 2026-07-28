@@ -13,6 +13,8 @@ export class CreateTaskDto {
   @IsOptional() @IsString() @Length(1, 40) targetUnit?: string;
   @IsOptional() @IsBoolean() isTodayRequired = false;
   @IsOptional() @IsString() @Matches(/^([01]\d|2[0-3]):[0-5]\d$/) forcedTriggerTime?: string;
-  @IsOptional() @IsIn(['inherit', 'custom']) whitelistMode?: 'inherit' | 'custom';
+  @IsOptional() @IsIn(['none', 'whitelist', 'strict']) restrictionMode?: 'none' | 'whitelist' | 'strict';
+  @IsOptional() @IsIn(['inherit', 'list', 'custom']) whitelistMode?: 'inherit' | 'list' | 'custom';
+  @IsOptional() @IsUUID() whitelistListId?: string;
   @IsOptional() @IsArray() @ArrayMaxSize(50) @IsString({ each: true }) whitelistPackages?: string[];
 }

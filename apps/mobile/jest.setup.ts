@@ -1,6 +1,7 @@
 jest.mock('heroui-native/button', () => require('./test/heroui.mock').buttonModule);
 jest.mock('heroui-native/card', () => require('./test/heroui.mock').cardModule);
 jest.mock('heroui-native/chip', () => require('./test/heroui.mock').chipModule);
+jest.mock('heroui-native/checkbox', () => require('./test/heroui.mock').checkboxModule);
 jest.mock('heroui-native/description', () => require('./test/heroui.mock').descriptionModule);
 jest.mock('heroui-native/input', () => require('./test/heroui.mock').inputModule);
 jest.mock('heroui-native/label', () => require('./test/heroui.mock').labelModule);

@@ -4,6 +4,8 @@ import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 
 import { clearCloudSession, configureCloudSession } from './cloud-session';
+import { lockEngine } from '../lock-engine/lock-engine.store';
+import { taskStore } from '../tasks/task.store';
 
 type User = { id: string; email: string; nickname: string; vipStatus: 'free' | 'active' | 'expired' };
 type TokenPair = { accessToken: string; refreshToken: string; expiresIn: number };
@@ -47,10 +49,7 @@ export const authStore = createStore<AuthState>((set, get) => ({
     try {
       await applySession(baseUrl, await request<AuthResult>(baseUrl, '/auth/refresh', { refreshToken }), set);
     } catch (error) {
-      clearCloudSession();
-      await SecureStore.deleteItemAsync(refreshTokenKey);
-      await SecureStore.deleteItemAsync('looptodo.access-token');
-      set({ baseUrl, status: 'signed_out', user: null, error: message(error) });
+      await clearSignedOutSession(set, message(error), baseUrl);
     }
   },
   async login(email, password) {
@@ -66,10 +65,7 @@ export const authStore = createStore<AuthState>((set, get) => ({
       const token = await SecureStore.getItemAsync('looptodo.access-token');
       if (token && state.baseUrl) await authorizedRequest(state.baseUrl, '/auth/logout', token);
     } catch (error) { logoutError = message(error); }
-    clearRefreshTimer();
-    clearCloudSession();
-    await Promise.all([SecureStore.deleteItemAsync(refreshTokenKey), SecureStore.deleteItemAsync('looptodo.access-token')]);
-    set({ status: 'signed_out', user: null, error: logoutError });
+    await clearSignedOutSession(set, logoutError, state.baseUrl);
   },
 }));
 
@@ -102,10 +98,7 @@ function scheduleRefresh(baseUrl: string, expiresIn: number, set: (value: Partia
       if (!refreshToken) throw new Error('登录会话已失效');
       await applySession(baseUrl, await request<AuthResult>(baseUrl, '/auth/refresh', { refreshToken }), set);
     } catch (error) {
-      clearCloudSession();
-      await SecureStore.deleteItemAsync(refreshTokenKey);
-      await SecureStore.deleteItemAsync('looptodo.access-token');
-      set({ status: 'signed_out', user: null, error: message(error) });
+      await clearSignedOutSession(set, message(error), baseUrl);
     }
   }, Math.max(30, expiresIn - 60) * 1000);
 }
@@ -113,6 +106,35 @@ function scheduleRefresh(baseUrl: string, expiresIn: number, set: (value: Partia
 function clearRefreshTimer() {
   if (refreshTimer) clearTimeout(refreshTimer);
   refreshTimer = null;
+}
+
+async function clearSignedOutSession(
+  set: (value: Partial<AuthState>) => void,
+  error: string | null,
+  baseUrl: string,
+) {
+  let nextError = error;
+  try {
+    await taskStore.getState().clearSessionForSignOut();
+  } catch (taskError) {
+    nextError = mergeErrors(nextError, message(taskError));
+  }
+  try {
+    const activeSession = await lockEngine.getActiveSession();
+    if (activeSession) await lockEngine.endLockSession(activeSession.id);
+  } catch (nativeError) {
+    nextError = mergeErrors(nextError, message(nativeError));
+  } finally {
+    try {
+      await lockEngine.clearFocusRestrictions();
+    } catch (nativeError) {
+      nextError = mergeErrors(nextError, message(nativeError));
+    }
+  }
+  clearRefreshTimer();
+  clearCloudSession();
+  await Promise.all([SecureStore.deleteItemAsync(refreshTokenKey), SecureStore.deleteItemAsync('looptodo.access-token')]);
+  set({ baseUrl, status: 'signed_out', user: null, error: nextError });
 }
 
 async function request<T>(baseUrl: string, path: string, payload: unknown): Promise<T> {
@@ -149,6 +171,10 @@ function deviceName() {
 
 function message(error: unknown) {
   return error instanceof Error ? error.message : '账号操作失败';
+}
+
+function mergeErrors(current: string | null, next: string) {
+  return current ? `${current}；${next}` : next;
 }
 
 export function useAuthStore<T>(selector: (state: AuthState) => T) {

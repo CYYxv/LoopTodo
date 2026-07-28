@@ -156,7 +156,6 @@ export function SocialChallengePanel() {
                 onReport={() => {
                   setReportTarget(friend);
                   setReportReason('');
-                  setReportOpen(true);
                 }}
               />
             ))}
@@ -232,7 +231,6 @@ export function SocialChallengePanel() {
             if (!reportTarget) return;
             void report(reportTarget.user.id, reportReason.trim()).then((ok) => {
               if (!ok) return;
-              setReportOpen(false);
               setReportTarget(null);
               setReportReason('');
             });

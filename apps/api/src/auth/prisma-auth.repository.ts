@@ -25,6 +25,9 @@ export class PrismaAuthRepository implements AuthRepository {
         await transaction.deviceSession.create({
           data: { ...input.session, userId: user.id },
         });
+        await transaction.whitelistList.create({
+          data: { userId: user.id, name: '默认白名单', packages: [], isDefault: true },
+        });
         return user as AuthUser;
       });
     } catch (error) {

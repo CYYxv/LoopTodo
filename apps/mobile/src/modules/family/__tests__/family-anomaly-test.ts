@@ -9,19 +9,16 @@ import {
 
 test('detects missing lock permissions as permission anomaly', () => {
   expect(isPermissionAnomaly({
-    accessibilityEnabled: true,
+    notificationGranted: true,
+    notificationListenerEnabled: true,
+    batteryOptimizationIgnored: false,
+  })).toBe(true);
+  expect(isPermissionAnomaly({
     notificationGranted: true,
     notificationListenerEnabled: true,
     batteryOptimizationIgnored: true,
   })).toBe(false);
   expect(isPermissionAnomaly({
-    accessibilityEnabled: false,
-    notificationGranted: true,
-    notificationListenerEnabled: true,
-    batteryOptimizationIgnored: true,
-  })).toBe(true);
-  expect(isPermissionAnomaly({
-    accessibilityEnabled: true,
     notificationGranted: true,
     notificationListenerEnabled: false,
     batteryOptimizationIgnored: true,
@@ -46,9 +43,8 @@ test('collectFamilyAnomalies merges permission and overdue', () => {
   const items = collectFamilyAnomalies(
     [{ id: 'a', mustDo: true, forcedTriggerTime: '20:00', deadlineAt: null, status: 'pending' }] as any,
     {
-      accessibilityEnabled: false,
       notificationGranted: true,
-      notificationListenerEnabled: true,
+      notificationListenerEnabled: false,
       batteryOptimizationIgnored: true,
     },
     now,

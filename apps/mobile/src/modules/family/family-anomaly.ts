@@ -10,11 +10,10 @@ export type FamilyAnomalyType =
 export function isPermissionAnomaly(
   capabilities: Pick<
     LockCapabilities,
-    'accessibilityEnabled' | 'notificationGranted' | 'notificationListenerEnabled' | 'batteryOptimizationIgnored'
+    'notificationGranted' | 'notificationListenerEnabled' | 'batteryOptimizationIgnored'
   >,
 ): boolean {
   return (
-    !capabilities.accessibilityEnabled ||
     !capabilities.notificationGranted ||
     !capabilities.notificationListenerEnabled ||
     !capabilities.batteryOptimizationIgnored

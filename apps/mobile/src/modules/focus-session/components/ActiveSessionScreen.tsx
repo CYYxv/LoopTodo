@@ -8,8 +8,9 @@ import { Button, Card, Chip, Input, Label, Text, TextField } from '@/ui/hero-run
 
 import type { ActiveSession } from '@/modules/focus-session/focus-session.types';
 import { formatDuration, sessionTimerSeconds } from '@/modules/focus-session/focus-session.utils';
-import type { CountdownCompletionResult } from '@/modules/tasks/task.store';
+import type { CountdownCompletionResult, RestrictionAuditResult, RestrictionAuditSource } from '@/modules/tasks/task.store';
 import type { Task } from '@/modules/tasks/task.types';
+import type { RestrictionMode } from '@/modules/whitelist/whitelist.types';
 
 const keepAwakeTag = 'looptodo-active-session';
 
@@ -24,6 +25,7 @@ export function ActiveSessionScreen({
   onExit,
   onFinishRest,
   onCountdownExpired,
+  onAuditRestriction,
 }: {
   session: ActiveSession;
   task: Task;
@@ -35,6 +37,7 @@ export function ActiveSessionScreen({
   onExit: (reason?: string) => Promise<void>;
   onFinishRest: () => Promise<void>;
   onCountdownExpired?: () => Promise<CountdownCompletionResult>;
+  onAuditRestriction?: (source: RestrictionAuditSource) => Promise<RestrictionAuditResult>;
 }) {
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [completedAmount, setCompletedAmount] = useState('');
@@ -54,13 +57,20 @@ export function ActiveSessionScreen({
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
-        expirationSessionRef.current = null;
-        setCurrentTime(Date.now());
-        setResumeAttempt((value) => value + 1);
+        const refresh = () => {
+          expirationSessionRef.current = null;
+          setCurrentTime(Date.now());
+          setResumeAttempt((value) => value + 1);
+        };
+        if (onAuditRestriction) {
+          void onAuditRestriction('foreground').catch(() => undefined).finally(refresh);
+        } else {
+          refresh();
+        }
       }
     });
     return () => subscription?.remove();
-  }, []);
+  }, [onAuditRestriction]);
 
   const timerSeconds = sessionTimerSeconds(session, currentTime);
   useEffect(() => {
@@ -85,7 +95,8 @@ export function ActiveSessionScreen({
   }, [onCountdownExpired, resumeAttempt, session.id, session.pausedAt, session.phase, session.timerMode, timerSeconds]);
 
   if (session.phase === 'rest') {
-    return <RestScreen task={task} display={formatDuration(timerSeconds ?? 0)} lastStarDelta={lastStarDelta} onFinishRest={onFinishRest} />;
+    return <RestScreen task={task} display={formatDuration(timerSeconds ?? 0)} lastStarDelta={lastStarDelta}
+      restrictionMode={session.restrictionMode} onFinishRest={onFinishRest} />;
   }
 
   const ringSize = Math.min(Math.max(width - 72, 240), 320);
@@ -101,7 +112,7 @@ export function ActiveSessionScreen({
       {typeof lastStarDelta === 'number' ? (
         <View className="mx-4 mt-3 rounded-2xl bg-accent/10 p-3" accessibilityLabel="星结算">
           <Text type="body-lg" weight="semibold" color="accent">
-            {lastStarDelta > 0 ? `本次 +${lastStarDelta} 星` : lastStarDelta < 0 ? `本次 ${lastStarDelta} 星` : '本次 +0 星'}
+            {starSettlementLabel(lastStarDelta, session.restrictionMode)}
           </Text>
           {lastStarDelta === 0 ? <Text type="body-xs" color="muted">有效专注满 25 分钟才记星</Text> : null}
         </View>
@@ -187,11 +198,13 @@ function RestScreen({
   task,
   display,
   lastStarDelta = null,
+  restrictionMode,
   onFinishRest,
 }: {
   task: Task;
   display: string;
   lastStarDelta?: number | null;
+  restrictionMode?: RestrictionMode;
   onFinishRest: () => Promise<void>;
 }) {
   return (
@@ -202,7 +215,7 @@ function RestScreen({
         {typeof lastStarDelta === 'number' ? (
           <View className="items-center gap-1 rounded-2xl bg-accent/10 px-4 py-3" accessibilityLabel="本次星结算">
             <Text type="body-lg" weight="semibold" color="accent">
-              {lastStarDelta > 0 ? `本次 +${lastStarDelta} 星` : lastStarDelta < 0 ? `本次 ${lastStarDelta} 星` : '本次 +0 星'}
+              {starSettlementLabel(lastStarDelta, restrictionMode)}
             </Text>
             {lastStarDelta === 0 ? <Text type="body-xs" color="muted">有效专注满 25 分钟才记星</Text> : null}
           </View>
@@ -217,6 +230,13 @@ function RestScreen({
       <Button onPress={() => void onFinishRest()}>结束休息</Button>
     </View>
   );
+}
+
+function starSettlementLabel(delta: number, restrictionMode?: RestrictionMode) {
+  const value = `${delta >= 0 ? '+' : ''}${delta}`;
+  return restrictionMode === 'whitelist'
+    ? `完成白名单专注，本次 ${value} 星`
+    : `本次 ${value} 星`;
 }
 
 const styles = StyleSheet.create({

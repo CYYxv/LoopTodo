@@ -11,6 +11,8 @@ const cachedSettings = {
   taskRemindersEnabled: true,
   familyAlertsEnabled: true,
   rewardNotificationsEnabled: true,
+  isMinor: false,
+  birthYear: null,
 };
 
 const originalFetch = globalThis.fetch;

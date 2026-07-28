@@ -27,7 +27,7 @@ export function FocusPanel({
   lockCapabilities: LockCapabilities | null;
   onRefreshLockCapabilities: () => void;
   onConfirmLockRisk: () => void;
-  onOpenLockPermission: (kind: 'notifications' | 'notificationListener' | 'accessibility' | 'battery') => void;
+  onOpenLockPermission: (kind: 'notifications' | 'notificationListener' | 'battery') => void;
 }) {
   if (selectedTask?.remoteActive) {
     return (
@@ -117,7 +117,6 @@ export function FocusPanel({
       {selectedMode === 'lock' ? <Card variant="secondary"><Card.Body className="gap-3"><Card.Title>锁机权限检查</Card.Title>
         <Text type="body-xs">通知权限：{lockCapabilities?.notificationGranted ? '已开启' : '未开启'}</Text>
         <Text type="body-xs">通知屏蔽：{lockCapabilities?.notificationListenerEnabled ? '已开启' : '未开启'}</Text>
-        <Text type="body-xs">增强约束：{lockCapabilities?.accessibilityEnabled ? '已开启' : '未开启（可选）'}</Text>
         <Text type="body-xs">电池优化：{lockCapabilities?.batteryOptimizationIgnored ? '已忽略' : '建议忽略'}</Text>
         <Text type="body-xs">风险确认：{lockCapabilities?.riskConfirmed ? '已确认' : '未确认'}</Text>
         <Text type="body-xs">本月紧急退出：剩余 {lockCapabilities?.emergencyExitsRemaining ?? 0} 次</Text>
@@ -125,7 +124,6 @@ export function FocusPanel({
           {!lockCapabilities?.riskConfirmed ? <Button size="sm" variant="danger" onPress={onConfirmLockRisk}>确认锁机风险</Button> : null}
           {!lockCapabilities?.notificationGranted ? <Button size="sm" variant="secondary" onPress={() => onOpenLockPermission('notifications')}>通知设置</Button> : null}
           {!lockCapabilities?.notificationListenerEnabled ? <Button size="sm" variant="secondary" onPress={() => onOpenLockPermission('notificationListener')}>通知屏蔽</Button> : null}
-          {!lockCapabilities?.accessibilityEnabled ? <Button size="sm" variant="secondary" onPress={() => onOpenLockPermission('accessibility')}>增强约束</Button> : null}
           {!lockCapabilities?.batteryOptimizationIgnored ? <Button size="sm" variant="secondary" onPress={() => onOpenLockPermission('battery')}>电池设置</Button> : null}</View>
       </Card.Body></Card> : null}
 

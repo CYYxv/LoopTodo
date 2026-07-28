@@ -1,14 +1,20 @@
 import type { FocusSessionRecord, SessionMode, SessionOutcome } from '@/modules/focus-session/focus-session.types';
 import type { Task, TaskCategory, UpdateTaskInput } from '@/modules/tasks/task.types';
+import type { RestrictionMode, WhitelistList, WhitelistMode, WhitelistSource } from '@/modules/whitelist/whitelist.types';
 
 export type SyncOperation =
+  | { type: 'whitelist.create'; list: WhitelistList }
+  | { type: 'whitelist.update'; listId: string; version: number; name: string; packages: string[] }
+  | { type: 'whitelist.set-default'; listId: string; version: number }
+  | { type: 'whitelist.delete'; listId: string; version: number; replacementId: string | null }
   | { type: 'category.create'; category: TaskCategory }
   | { type: 'category.update'; categoryId: string; version: number; name: string; color: string | null }
   | { type: 'category.delete'; categoryId: string; version: number }
   | { type: 'task.create'; task: Task }
   | { type: 'task.update'; taskId: string; version: number; patch: UpdateTaskInput & { status: 'pending' | 'completed' | 'failed' } }
   | { type: 'task.delete'; taskId: string; version: number }
-  | { type: 'session.start'; taskId: string; localSessionId: string; mode: SessionMode; startedAt: number; plannedMinutes: number }
+  | { type: 'session.start'; taskId: string; localSessionId: string; mode: SessionMode; startedAt: number; plannedMinutes: number;
+      restrictionMode: RestrictionMode; whitelistSource: WhitelistSource; restrictionEffective: boolean; allowedPackagesSnapshot: string[] }
   | { type: 'session.finish'; taskId: string; localSessionId: string; outcome: SessionOutcome; record: FocusSessionRecord }
   | { type: 'task.goal-progress'; taskId: string; version: number; amount: number };
 
@@ -44,7 +50,9 @@ export type RemoteTask = {
   completedAmount: number;
   isTodayRequired: boolean;
   forcedTriggerTime: string | null;
-  whitelistMode?: 'inherit' | 'custom';
+  restrictionMode?: RestrictionMode;
+  whitelistMode?: WhitelistMode | 'inherit';
+  whitelistListId?: string | null;
   whitelistPackages?: string[];
   status: 'pending' | 'active' | 'completed' | 'failed' | 'archived';
   activeSessionId: string | null;
@@ -61,6 +69,16 @@ export type RemoteCategory = {
   updatedAt: string;
 };
 
+export type RemoteWhitelistList = {
+  id: string;
+  name: string;
+  packages: string[];
+  isDefault: boolean;
+  version: number;
+  archivedAt: string | null;
+  updatedAt: string;
+};
+
 export type RemoteSession = {
   id: string;
   taskId: string;
@@ -73,7 +91,13 @@ export type RemoteSession = {
   outcome: 'completed' | 'failed' | 'cancelled' | 'emergency_exit' | null;
   failureReasonText: string | null;
   completionNote?: string | null;
+  restrictionMode?: RestrictionMode;
+  whitelistSource?: WhitelistSource;
+  whitelistPackageCount?: number;
+  allowedPackagesSnapshot?: string[];
+  restrictionEffective?: boolean;
+  effectiveMinutes?: number;
   updatedAt: string;
 };
 
-export type SyncSnapshot = { categories?: RemoteCategory[]; tasks: RemoteTask[]; sessions: RemoteSession[]; cursor: string };
+export type SyncSnapshot = { whitelistLists?: RemoteWhitelistList[]; categories?: RemoteCategory[]; tasks: RemoteTask[]; sessions: RemoteSession[]; cursor: string };

@@ -33,11 +33,15 @@ export type Task = {
   version: number;
   syncStatus: SyncStatus;
   remoteActive: boolean;
-  whitelistMode: 'inherit' | 'custom';
+  restrictionMode: RestrictionMode;
+  whitelistMode: WhitelistMode | 'inherit';
+  whitelistListId: string | null;
   whitelistPackages: string[];
 };
 
-export type CreateTaskInput = Omit<Task, 'id' | 'status' | 'completedAmount' | 'progressLabel' | 'version' | 'syncStatus' | 'remoteActive' | 'whitelistMode' | 'whitelistPackages'> & Partial<Pick<Task, 'whitelistMode' | 'whitelistPackages'>>;
+export type CreateTaskInput = Omit<Task, 'id' | 'status' | 'completedAmount' | 'progressLabel' | 'version' | 'syncStatus' | 'remoteActive' | 'restrictionMode' | 'whitelistMode' | 'whitelistListId' | 'whitelistPackages'>
+  & Partial<Pick<Task, 'restrictionMode' | 'whitelistMode' | 'whitelistListId' | 'whitelistPackages'>>;
 export type UpdateTaskInput = Pick<Task,
   'title' | 'timerMode' | 'estimateMinutes' | 'restMinutes' | 'deadlineAt' | 'targetAmount' | 'targetUnit' | 'mustDo' | 'forcedTriggerTime'
-> & Partial<Pick<Task, 'categoryId' | 'category' | 'whitelistMode' | 'whitelistPackages'>>;
+> & Partial<Pick<Task, 'categoryId' | 'category' | 'restrictionMode' | 'whitelistMode' | 'whitelistListId' | 'whitelistPackages'>>;
+import type { RestrictionMode, WhitelistMode } from '@/modules/whitelist/whitelist.types';

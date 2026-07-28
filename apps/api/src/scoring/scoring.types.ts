@@ -1,10 +1,16 @@
 export type ScoringSession = {
   id: string;
   userId: string;
+  mode: 'focus' | 'lock';
   timerMode: 'countdown' | 'countup' | 'untimed';
   trustLevel: 'high' | 'normal' | 'open' | 'invalid';
   endedAt: Date | null;
   actualMinutes: number | null;
+  restrictionMode: 'none' | 'whitelist' | 'strict';
+  whitelistSource: string;
+  whitelistPackageCount: number;
+  restrictionEffective: boolean;
+  effectiveMinutes: number;
   outcome: 'completed' | 'failed' | 'cancelled' | 'emergency_exit' | null;
 };
 

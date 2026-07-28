@@ -6,6 +6,8 @@ import { StyleSheet, Text, View } from 'react-native';
 import { AppProviders } from '@/providers/AppProviders';
 import { AppBootstrap } from '@/providers/AppBootstrap';
 import { useAuthStore } from '@/modules/auth/auth.store';
+import { useTaskStore } from '@/modules/tasks/task.store';
+import { rootRedirect } from '@/navigation/root-redirect';
 import { LoadingScreen } from '@/screens/LoadingScreen';
 
 export default function RootLayout() {
@@ -20,10 +22,11 @@ export default function RootLayout() {
 
 function RootNavigator() {
   const status = useAuthStore((state) => state.status);
+  const activeSession = useTaskStore((state) => state.activeSession);
   const segments = useSegments();
   if (status === 'hydrating') return <LoadingScreen label="正在恢复 LoopTodo…" />;
-  if (status === 'signed_out' && segments[0] !== 'login') return <Redirect href="/login" />;
-  if (status === 'signed_in' && segments[0] === 'login') return <Redirect href="/tasks" />;
+  const redirect = rootRedirect(status, segments[0], activeSession != null);
+  if (redirect) return <Redirect href={redirect} />;
   return <Stack screenOptions={{ headerShown: false }}><Stack.Screen name="(tabs)" /><Stack.Screen name="login" /><Stack.Screen name="create-task" options={{ presentation: 'modal' }} /><Stack.Screen name="session" options={{ gestureEnabled: false }} /><Stack.Screen name="habit/[id]" /></Stack>;
 }
 

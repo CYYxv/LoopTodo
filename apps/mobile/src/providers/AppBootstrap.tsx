@@ -1,6 +1,6 @@
 import { useEffect, type PropsWithChildren } from 'react';
 
-import { useAuthStore } from '@/modules/auth/auth.store';
+import { authStore, useAuthStore } from '@/modules/auth/auth.store';
 import { useHabitStore } from '@/modules/habits/habit.store';
 import { useTaskStore } from '@/modules/tasks/task.store';
 import { configureForegroundNotifications } from '@/modules/notifications/expo-notification.scheduler';
@@ -11,6 +11,30 @@ export function AppBootstrap({ children }: PropsWithChildren) {
   const hydrateAuth = useAuthStore((state) => state.hydrate);
   const hydrateHabits = useHabitStore((state) => state.hydrate);
   const hydrateTasks = useTaskStore((state) => state.hydrate);
-  useEffect(() => { void configureForegroundNotifications(); void hydrateAuth(); void hydrateTasks(); void hydrateHabits(); void syncStore.getState().hydrate(); }, [hydrateAuth, hydrateHabits, hydrateTasks]);
+  useEffect(() => {
+    void configureForegroundNotifications();
+    void hydrateApplicationData({
+      hydrateAuth,
+      getAuthStatus: () => authStore.getState().status,
+      hydrateTasks,
+      hydrateHabits,
+      hydrateSync: () => syncStore.getState().hydrate(),
+    });
+  }, [hydrateAuth, hydrateHabits, hydrateTasks]);
   return <><AutoSync />{children}</>;
+}
+
+export async function hydrateApplicationData(input: {
+  hydrateAuth(): Promise<void>;
+  getAuthStatus(): 'hydrating' | 'signed_out' | 'signed_in';
+  hydrateTasks(restoreActiveSession?: boolean): Promise<void>;
+  hydrateHabits(): Promise<void>;
+  hydrateSync(): Promise<void>;
+}) {
+  await input.hydrateAuth();
+  await Promise.all([
+    input.hydrateTasks(input.getAuthStatus() === 'signed_in'),
+    input.hydrateHabits(),
+    input.hydrateSync(),
+  ]);
 }

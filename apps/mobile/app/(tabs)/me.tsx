@@ -1,4 +1,5 @@
 import { useRouter } from 'expo-router';
+import { useState } from 'react';
 import { View } from 'react-native';
 import { Avatar } from 'heroui-native/avatar';
 import { ListGroup } from 'heroui-native/list-group';
@@ -6,6 +7,8 @@ import { Separator } from 'heroui-native/separator';
 import { Surface } from 'heroui-native/surface';
 
 import { useAuthStore } from '@/modules/auth/auth.store';
+import { WhitelistManager } from '@/modules/whitelist/components/WhitelistManager';
+import { BottomSheetModal } from '@/ui/bottom-sheet-modal';
 import { Button, Chip, Text } from '@/ui/hero-runtime';
 import { PageHeader, Screen } from '@/ui/screen-layout';
 
@@ -19,6 +22,7 @@ const entries = [
 
 export default function MeRoute() {
   const router = useRouter();
+  const [whitelistOpen, setWhitelistOpen] = useState(false);
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
   const displayName = user?.nickname ?? 'LoopTodo 用户';
@@ -46,6 +50,19 @@ export default function MeRoute() {
       </Surface>
 
       <View className="gap-2">
+        <Text type="body-xs" color="muted" className="px-2">专注设置</Text>
+        <ListGroup>
+          <ListGroup.Item accessibilityRole="button" onPress={() => setWhitelistOpen(true)}>
+            <ListGroup.ItemContent>
+              <ListGroup.ItemTitle>软件白名单</ListGroup.ItemTitle>
+              <ListGroup.ItemDescription>管理不同场景下允许使用的软件</ListGroup.ItemDescription>
+            </ListGroup.ItemContent>
+            <ListGroup.ItemSuffix />
+          </ListGroup.Item>
+        </ListGroup>
+      </View>
+
+      <View className="gap-2">
         <Text type="body-xs" color="muted" className="px-2">设置与服务</Text>
         <ListGroup>
           {entries.map(([path, title, description], index) => (
@@ -62,6 +79,7 @@ export default function MeRoute() {
           ))}
         </ListGroup>
       </View>
+      <BottomSheetModal visible={whitelistOpen} title="软件白名单" onClose={() => setWhitelistOpen(false)}><WhitelistManager /></BottomSheetModal>
     </Screen>
   );
 }

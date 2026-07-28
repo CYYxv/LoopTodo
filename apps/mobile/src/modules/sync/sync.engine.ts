@@ -1,5 +1,6 @@
 import { SyncApiError, type SyncApiClient } from './sync-api.client';
 import type { SyncRepository } from './sync.repository';
+import type { RemoteWhitelistList } from './sync.types';
 
 export class SyncEngine {
   constructor(
@@ -30,7 +31,9 @@ export class SyncEngine {
         }
         await this.repository.markDone(item.id);
       } catch (error) {
-        if (error instanceof SyncApiError && error.status === 409) {
+        const whitelistTombstone = error instanceof SyncApiError && error.status === 404 &&
+          item.operation.type.startsWith('whitelist.') && isRemoteWhitelistList(error.body) && Boolean(error.body.archivedAt);
+        if (error instanceof SyncApiError && (error.status === 409 || whitelistTombstone)) {
           await this.repository.recordConflict(item, error.code, error.body);
           blockedEntities.add(item.entityId);
           continue;
@@ -48,3 +51,10 @@ export class SyncEngine {
 
 function backoff(attempts: number) { return Math.min(300_000, 2_000 * 2 ** Math.min(attempts - 1, 8)); }
 function message(error: unknown) { return error instanceof Error ? error.message : 'SYNC_FAILED'; }
+function isRemoteWhitelistList(value: unknown): value is RemoteWhitelistList {
+  if (!value || typeof value !== 'object') return false;
+  const list = value as Partial<RemoteWhitelistList>;
+  return typeof list.id === 'string' && typeof list.name === 'string' && Array.isArray(list.packages) &&
+    typeof list.isDefault === 'boolean' && typeof list.version === 'number' &&
+    (list.archivedAt === null || typeof list.archivedAt === 'string') && typeof list.updatedAt === 'string';
+}

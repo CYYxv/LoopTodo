@@ -8,6 +8,8 @@ import { createUuid } from '@/shared/uuid';
 import { taskFromInput, taskProgressLabel } from './task.presentation';
 import type { TaskRepository } from './task.repository';
 import type { CreateTaskInput, Task, TaskCategory } from './task.types';
+import type { SessionRestrictionSnapshot } from '@/modules/whitelist/whitelist.types';
+import { normalizeTaskRestriction } from './task.whitelist';
 
 type TaskRow = {
   id: string;
@@ -29,7 +31,9 @@ type TaskRow = {
   version: number;
   sync_status: Task['syncStatus'];
   remote_active: number;
+  restriction_mode?: string | null;
   whitelist_mode?: string | null;
+  whitelist_list_id?: string | null;
   whitelist_packages?: string | null;
 };
 
@@ -47,17 +51,23 @@ type SessionRow = {
   rest_ends_at?: number | null;
   paused_at?: number | null;
   accumulated_paused_ms?: number;
+  restriction_mode?: SessionRestrictionSnapshot['restrictionMode'];
+  whitelist_source?: SessionRestrictionSnapshot['whitelistSource'];
+  restriction_effective?: number;
+  allowed_packages_snapshot?: string | null;
   ended_at?: number;
   outcome?: FocusSessionRecord['outcome'];
   failure_reason?: string | null;
   completion_note?: string | null;
   duration_seconds?: number;
   completed_amount?: number | null;
+  whitelist_package_count?: number;
+  effective_minutes?: number;
 };
 
 const taskColumns = `id, title, category_id, category, kind, timer_mode, estimate_minutes, rest_minutes,
   deadline_at, target_amount, target_unit, completed_amount, must_do, forced_trigger_time, trust_level, status,
-  version, sync_status, remote_active, whitelist_mode, whitelist_packages`;
+  version, sync_status, remote_active, restriction_mode, whitelist_mode, whitelist_list_id, whitelist_packages`;
 
 export function createSQLiteTaskRepository(
   getDatabase: () => Promise<SQLiteDatabase> = getLoopTodoDatabase,
@@ -101,7 +111,7 @@ export function createSQLiteTaskRepository(
       const database = await getDatabase();
       await database.withTransactionAsync(async () => {
         await database.runAsync(`INSERT INTO tasks (${taskColumns}, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, ...taskValues(task), now(), now());
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, ...taskValues(task), now(), now());
         await enqueueSyncOperation(database, { type: 'task.create', task }, task.id, `task-create-${task.id}`, now());
       });
       return task;
@@ -144,17 +154,19 @@ export function createSQLiteTaskRepository(
         const result = await database.runAsync(`UPDATE tasks SET
           title = ?, category_id = ?, category = ?, timer_mode = ?, estimate_minutes = ?, rest_minutes = ?, deadline_at = ?, target_amount = ?,
           target_unit = ?, must_do = ?, forced_trigger_time = ?, status = ?, version = ?, sync_status = 'pending',
-          whitelist_mode = ?, whitelist_packages = ?, updated_at = ?
+          restriction_mode = ?, whitelist_mode = ?, whitelist_list_id = ?, whitelist_packages = ?, updated_at = ?
           WHERE id = ? AND status != 'active' AND remote_active = 0 AND version = ?`,
           task.title, task.categoryId ?? null, task.category, task.timerMode, task.estimateMinutes, task.restMinutes, task.deadlineAt, task.targetAmount,
           task.targetUnit, task.mustDo ? 1 : 0, task.forcedTriggerTime, task.status, task.version,
-          task.whitelistMode ?? 'inherit', JSON.stringify(task.whitelistPackages ?? []), now(), task.id, previousVersion);
+          task.restrictionMode, task.whitelistMode === 'inherit' ? 'list' : task.whitelistMode, task.whitelistListId ?? null,
+          JSON.stringify(task.whitelistPackages ?? []), now(), task.id, previousVersion);
         if (result.changes !== 1) throw new Error('任务正在执行或已被其他设备更新');
         await enqueueSyncOperation(database, { type: 'task.update', taskId: task.id, version: previousVersion,
           patch: { title: task.title, categoryId: task.categoryId ?? null, category: task.category, timerMode: task.timerMode, estimateMinutes: task.estimateMinutes,
             restMinutes: task.restMinutes, deadlineAt: task.deadlineAt, targetAmount: task.targetAmount,
             targetUnit: task.targetUnit, mustDo: task.mustDo, forcedTriggerTime: task.forcedTriggerTime,
-            whitelistMode: task.whitelistMode ?? 'inherit', whitelistPackages: task.whitelistPackages ?? [],
+            restrictionMode: task.restrictionMode, whitelistMode: task.whitelistMode === 'inherit' ? 'list' : task.whitelistMode,
+            whitelistListId: task.whitelistListId ?? null, whitelistPackages: task.whitelistPackages ?? [],
             status: task.status as 'pending' | 'completed' | 'failed' } }, task.id,
           `task-update-${task.id}-${task.version}`, now());
       });
@@ -171,6 +183,7 @@ export function createSQLiteTaskRepository(
     },
     async startSession(task, session) {
       const database = await getDatabase();
+      const restrictionSnapshot = session as ActiveSession & Partial<SessionRestrictionSnapshot>;
       await database.withTransactionAsync(async () => {
         await database.runAsync(
           "UPDATE tasks SET status = ?, version = ?, sync_status = 'pending', updated_at = ? WHERE id = ?",
@@ -183,20 +196,28 @@ export function createSQLiteTaskRepository(
         await insertActive(database, session);
         await enqueueSyncOperation(database, { type: 'session.start', taskId: task.id,
           localSessionId: session.id, mode: session.mode, startedAt: session.startedAt,
-          plannedMinutes: Math.round((session.plannedFocusSeconds ?? task.estimateMinutes * 60) / 60) }, task.id, `session-start-${session.id}`, now());
+          plannedMinutes: Math.round((session.plannedFocusSeconds ?? task.estimateMinutes * 60) / 60),
+          restrictionMode: restrictionSnapshot.restrictionMode ?? 'none', whitelistSource: restrictionSnapshot.whitelistSource ?? 'none',
+          restrictionEffective: restrictionSnapshot.restrictionEffective ?? false,
+          allowedPackagesSnapshot: restrictionSnapshot.allowedPackagesSnapshot ?? [] }, task.id, `session-start-${session.id}`, now());
       });
     },
     async updateActiveSession(session) {
       const database = await getDatabase();
+      const restrictionSnapshot = session as ActiveSession & Partial<SessionRestrictionSnapshot>;
       const result = await database.runAsync(`UPDATE active_sessions SET
-        paused_at = ?, accumulated_paused_ms = ?, planned_end_at = ?, planned_focus_seconds = ?, rest_ends_at = ?
+        paused_at = ?, accumulated_paused_ms = ?, planned_end_at = ?, planned_focus_seconds = ?, rest_ends_at = ?,
+        restriction_mode = ?, whitelist_source = ?, restriction_effective = ?, allowed_packages_snapshot = ?
         WHERE singleton_id = 1 AND id = ?`,
         session.pausedAt ?? null, session.accumulatedPausedMs ?? 0, session.plannedEndAt,
-        session.plannedFocusSeconds ?? null, session.restEndsAt, session.id);
+        session.plannedFocusSeconds ?? null, session.restEndsAt, restrictionSnapshot.restrictionMode ?? 'none',
+        restrictionSnapshot.whitelistSource ?? 'none', restrictionSnapshot.restrictionEffective ? 1 : 0,
+        JSON.stringify(restrictionSnapshot.allowedPackagesSnapshot ?? []), session.id);
       if (result.changes !== 1) throw new Error('当前专注状态已变化，请重新进入专注页');
     },
     async finishSession(task, record, restSession) {
       const database = await getDatabase();
+      const restrictionSnapshot = record as FocusSessionRecord & Partial<SessionRestrictionSnapshot>;
       await database.withTransactionAsync(async () => {
         await database.runAsync(
           "UPDATE tasks SET status = ?, completed_amount = ?, version = ?, sync_status = 'pending', updated_at = ? WHERE id = ?",
@@ -209,8 +230,10 @@ export function createSQLiteTaskRepository(
         await database.runAsync(
           `INSERT INTO focus_sessions
            (id, task_id, mode, timer_mode, started_at, planned_end_at, planned_focus_seconds, ended_at, outcome,
-            failure_reason, completion_note, duration_seconds, completed_amount, synced_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+            failure_reason, completion_note, duration_seconds, completed_amount, restriction_mode,
+            whitelist_source, whitelist_package_count, restriction_effective, effective_minutes,
+            allowed_packages_snapshot, synced_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
           record.id,
           record.taskId,
           record.mode,
@@ -223,7 +246,13 @@ export function createSQLiteTaskRepository(
           record.failureReason,
           record.completionNote ?? null,
           record.durationSeconds,
-          record.completedAmount
+           record.completedAmount,
+           restrictionSnapshot.restrictionMode ?? 'none',
+           restrictionSnapshot.whitelistSource ?? 'none',
+           record.whitelistPackageCount ?? restrictionSnapshot.allowedPackagesSnapshot?.length ?? 0,
+           restrictionSnapshot.restrictionEffective ? 1 : 0,
+           record.effectiveMinutes ?? Math.floor(record.durationSeconds / 60),
+           JSON.stringify(restrictionSnapshot.allowedPackagesSnapshot ?? [])
         );
         await enqueueSyncOperation(database, { type: 'session.finish', taskId: task.id,
           localSessionId: record.id, outcome: record.outcome, record }, task.id,
@@ -272,8 +301,9 @@ function mapTask(row: TaskRow): Task {
     version: row.version,
     syncStatus: row.sync_status,
     remoteActive: Boolean(row.remote_active),
-    whitelistMode: row.whitelist_mode === 'custom' ? 'custom' : 'inherit',
-    whitelistPackages: parseStringArray(row.whitelist_packages),
+    ...normalizeTaskRestriction({ restrictionMode: row.restriction_mode as Task['restrictionMode'] | undefined,
+      whitelistMode: row.whitelist_mode as Task['whitelistMode'] | undefined, whitelistListId: row.whitelist_list_id,
+      whitelistPackages: parseStringArray(row.whitelist_packages) }),
     progressLabel: '',
   };
   return { ...task, progressLabel: taskProgressLabel(task) };
@@ -289,7 +319,7 @@ function parseStringArray(raw: string | null | undefined): string[] {
   }
 }
 
-function mapActive(row: SessionRow): ActiveSession {
+function mapActive(row: SessionRow): ActiveSession & SessionRestrictionSnapshot {
   return {
     id: row.id,
     taskId: row.task_id,
@@ -302,10 +332,14 @@ function mapActive(row: SessionRow): ActiveSession {
     restEndsAt: row.rest_ends_at ?? null,
     pausedAt: row.paused_at ?? null,
     accumulatedPausedMs: row.accumulated_paused_ms ?? 0,
+    restrictionMode: row.restriction_mode ?? 'none',
+    whitelistSource: row.whitelist_source ?? 'none',
+    restrictionEffective: row.restriction_effective === 1,
+    allowedPackagesSnapshot: parseStringArray(row.allowed_packages_snapshot),
   };
 }
 
-function mapRecord(row: SessionRow): FocusSessionRecord {
+function mapRecord(row: SessionRow): FocusSessionRecord & SessionRestrictionSnapshot {
   return {
     ...mapActive(row),
     endedAt: row.ended_at ?? row.started_at,
@@ -314,6 +348,8 @@ function mapRecord(row: SessionRow): FocusSessionRecord {
     completionNote: row.completion_note ?? null,
     durationSeconds: row.duration_seconds ?? 0,
     completedAmount: row.completed_amount ?? null,
+    whitelistPackageCount: row.whitelist_package_count ?? parseStringArray(row.allowed_packages_snapshot).length,
+    effectiveMinutes: row.effective_minutes ?? Math.floor((row.duration_seconds ?? 0) / 60),
   };
 }
 
@@ -338,17 +374,20 @@ function taskValues(task: Task): SQLiteBindValue[] {
     task.version,
     task.syncStatus,
     task.remoteActive ? 1 : 0,
-    task.whitelistMode ?? 'inherit',
+    task.restrictionMode,
+    task.whitelistMode === 'inherit' ? 'list' : task.whitelistMode,
+    task.whitelistListId ?? null,
     JSON.stringify(task.whitelistPackages ?? []),
   ];
 }
 
-async function insertActive(database: SQLiteDatabase, session: ActiveSession) {
+async function insertActive(database: SQLiteDatabase, session: ActiveSession & Partial<SessionRestrictionSnapshot>) {
   await database.runAsync(
     `INSERT INTO active_sessions
      (singleton_id, id, task_id, mode, timer_mode, phase, started_at, planned_end_at, rest_ends_at,
-      planned_focus_seconds, paused_at, accumulated_paused_ms)
-     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       planned_focus_seconds, paused_at, accumulated_paused_ms, restriction_mode, whitelist_source,
+       restriction_effective, allowed_packages_snapshot)
+      VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     session.id,
     session.taskId,
     session.mode,
@@ -359,7 +398,11 @@ async function insertActive(database: SQLiteDatabase, session: ActiveSession) {
     session.restEndsAt,
     session.plannedFocusSeconds ?? null,
     session.pausedAt ?? null,
-    session.accumulatedPausedMs ?? 0
+    session.accumulatedPausedMs ?? 0,
+    session.restrictionMode ?? 'none',
+    session.whitelistSource ?? 'none',
+    session.restrictionEffective ? 1 : 0,
+    JSON.stringify(session.allowedPackagesSnapshot ?? [])
   );
 }
 

@@ -5,16 +5,50 @@ import { CreateCategoryDto } from './dto/create-category.dto';
 import { CompleteTaskDto } from './dto/complete-task.dto';
 import { AddGoalProgressDto } from './dto/add-goal-progress.dto';
 import { CreateTaskDto } from './dto/create-task.dto';
+import { CreateWhitelistListDto } from './dto/create-whitelist-list.dto';
 import { FinishSessionDto } from './dto/finish-session.dto';
 import { StartSessionDto } from './dto/start-session.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
+import { UpdateWhitelistListDto } from './dto/update-whitelist-list.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
+import { SetDefaultWhitelistListDto } from './dto/set-default-whitelist-list.dto';
 import { TaskFocusService } from './task-focus.service';
 
 @Controller()
 @UseGuards(AccessTokenGuard)
 export class TaskFocusController {
   constructor(private readonly service: TaskFocusService) {}
+
+  @Get('whitelist-lists')
+  listWhitelistLists(@Req() request: AuthenticatedRequest) { return this.service.listWhitelistLists(request.auth.sub); }
+
+  @Post('whitelist-lists')
+  createWhitelistList(@Req() request: AuthenticatedRequest, @Headers('idempotency-key') key: string, @Body() input: CreateWhitelistListDto) {
+    return this.service.createWhitelistList(request.auth.sub, input, key);
+  }
+
+  @Get('whitelist-lists/:id')
+  getWhitelistList(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
+    return this.service.getWhitelistList(request.auth.sub, id);
+  }
+
+  @Patch('whitelist-lists/:id')
+  updateWhitelistList(@Req() request: AuthenticatedRequest, @Param('id') id: string,
+    @Headers('idempotency-key') key: string, @Body() input: UpdateWhitelistListDto) {
+    return this.service.updateWhitelistList(request.auth.sub, id, input, key);
+  }
+
+  @Post('whitelist-lists/:id/default')
+  setDefaultWhitelistList(@Req() request: AuthenticatedRequest, @Param('id') id: string,
+    @Headers('idempotency-key') key: string, @Body() input: SetDefaultWhitelistListDto) {
+    return this.service.setDefaultWhitelistList(request.auth.sub, id, input.version, key);
+  }
+
+  @Delete('whitelist-lists/:id')
+  archiveWhitelistList(@Req() request: AuthenticatedRequest, @Param('id') id: string,
+    @Headers('idempotency-key') key: string, @Query('version', ParseIntPipe) version: number, @Query('replacementId') replacementId?: string) {
+    return this.service.archiveWhitelistList(request.auth.sub, id, version, replacementId, key);
+  }
 
   @Get('task-categories')
   listCategories(@Req() request: AuthenticatedRequest) { return this.service.listCategories(request.auth.sub); }
@@ -70,12 +104,14 @@ export class TaskFocusController {
 
   @Post('tasks/:id/start-focus')
   startFocus(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Headers('idempotency-key') key: string, @Body() input: StartSessionDto) {
-    return this.service.startSession(request.auth.sub, id, 'focus', key, input.trustLevel, input.sessionId, input.startedAt, input.plannedMinutes);
+    return this.service.startSession(request.auth.sub, id, 'focus', key, input.trustLevel, input.sessionId, input.startedAt,
+      input.plannedMinutes, input.restrictionMode, input.whitelistSource, input.restrictionEffective, input.allowedPackagesSnapshot);
   }
 
   @Post('tasks/:id/start-lock')
   startLock(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Headers('idempotency-key') key: string, @Body() input: StartSessionDto) {
-    return this.service.startSession(request.auth.sub, id, 'lock', key, input.trustLevel, input.sessionId, input.startedAt, input.plannedMinutes);
+    return this.service.startSession(request.auth.sub, id, 'lock', key, input.trustLevel, input.sessionId, input.startedAt,
+      input.plannedMinutes, input.restrictionMode, input.whitelistSource, input.restrictionEffective, input.allowedPackagesSnapshot);
   }
 
   @Post('focus-sessions/:id/finish')

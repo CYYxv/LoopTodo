@@ -165,6 +165,17 @@ enum NetworkPolicy {
   online_required
 }
 
+enum RestrictionMode {
+  none
+  whitelist
+  strict
+}
+
+enum WhitelistMode {
+  list
+  custom
+}
+
 model User {
   id                       String          @id @default(uuid()) @db.Uuid
   email                    String          @unique @db.VarChar(320)
@@ -186,6 +197,8 @@ model User {
   updatedAt                DateTime        @updatedAt @map("updated_at")
   deviceSessions           DeviceSession[]
   taskCategories           TaskCategory[]
+  whitelistLists          WhitelistList[]
+  whitelistMutations      WhitelistMutation[]
   tasks                    Task[]
   focusSessions            FocusSession[]
   habits                   Habit[]
@@ -300,6 +313,37 @@ model TaskCategory {
   @@map("task_categories")
 }
 
+model WhitelistList {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  name       String    @db.VarChar(80)
+  packages   String[]  @default([])
+  isDefault  Boolean   @default(false) @map("is_default")
+  version    Int       @default(1)
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  archivedAt DateTime? @map("archived_at")
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks      Task[]
+
+  @@index([userId, updatedAt])
+  @@map("whitelist_lists")
+}
+
+model WhitelistMutation {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  idempotencyKey String   @map("idempotency_key") @db.VarChar(160)
+  fingerprint    String   @db.Char(64)
+  response       Json
+  createdAt      DateTime @default(now()) @map("created_at")
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, idempotencyKey])
+  @@index([userId, createdAt])
+  @@map("whitelist_mutations")
+}
+
 model Task {
   id                      String         @id @default(uuid()) @db.Uuid
   userId                  String         @map("user_id") @db.Uuid
@@ -315,7 +359,9 @@ model Task {
   completedAmount         Decimal        @default(0) @map("completed_amount") @db.Decimal(12, 2)
   isTodayRequired         Boolean        @default(false) @map("is_today_required")
   forcedTriggerTime       String?        @map("forced_trigger_time") @db.Char(5)
-  whitelistMode           String         @default("inherit") @map("whitelist_mode") @db.VarChar(16)
+  restrictionMode         RestrictionMode @default(whitelist) @map("restriction_mode")
+  whitelistMode           WhitelistMode  @default(list) @map("whitelist_mode")
+  whitelistListId         String?        @map("whitelist_list_id") @db.Uuid
   whitelistPackages       String[]       @default([]) @map("whitelist_packages")
   status                  TaskStatus     @default(pending)
   activeSessionId         String?        @map("active_session_id") @db.Uuid
@@ -325,6 +371,7 @@ model Task {
   updatedAt               DateTime       @updatedAt @map("updated_at")
   user                    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   category                TaskCategory?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  whitelistList           WhitelistList? @relation(fields: [whitelistListId], references: [id], onDelete: Restrict)
   focusSessions           FocusSession[]
   taskProgressEntries     TaskProgressEntry[]
   forcedLockRules         ForcedLockRule[]
@@ -336,6 +383,7 @@ model Task {
 
   @@index([userId, status, updatedAt])
   @@index([userId, activeSessionId])
+  @@index([userId, whitelistListId])
   @@map("tasks")
 }
 
@@ -471,6 +519,12 @@ model FocusSession {
   endedAt              DateTime?     @map("ended_at")
   plannedMinutes       Int           @map("planned_minutes")
   actualMinutes        Int?          @map("actual_minutes")
+  restrictionMode      RestrictionMode @default(none) @map("restriction_mode")
+  whitelistSource      String        @default("none") @map("whitelist_source") @db.VarChar(160)
+  whitelistPackageCount Int          @default(0) @map("whitelist_package_count")
+  allowedPackagesSnapshot String[]   @default([]) @map("allowed_packages_snapshot")
+  restrictionEffective Boolean       @default(false) @map("restriction_effective")
+  effectiveMinutes     Int           @default(0) @map("effective_minutes")
   outcome              FocusOutcome?
   completionNote       String?       @map("completion_note")
   failureReasonType    String?       @map("failure_reason_type") @db.VarChar(80)
